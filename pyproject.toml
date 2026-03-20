@@ -4,20 +4,77 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycanha"
-version = "0.0.1"
+version = "0.6.0"
+description = "Thermal analysis Python package built on pycanha-core"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
 authors = [
     { name = "Javier Piqueras Carreño", email = "javier.piqueras@upm.es" },
 ]
-description = "Placeholder for the future PyCanha package"
-readme = "README.md"
-requires-python = ">=3.11"
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pycanha-core==0.6.0",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/pycanha-project/pycanha"
-"Bug Tracker" = "https://github.com/pycanha-project/pycanha/issues"
+Homepage = "https://github.com/pycanha-project/pycanha"
+Repository = "https://github.com/pycanha-project/pycanha"
+Issues = "https://github.com/pycanha-project/pycanha/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pycanha"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "F",     # pyflakes
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "PIE",   # misc lints
+    "PT",    # pytest style
+    "RUF",   # ruff-specific
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pycanha"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "pycanha_core.*"
+ignore_missing_imports = true
