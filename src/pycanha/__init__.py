@@ -4,9 +4,9 @@ from . import gmm, parameters, solvers, tmm
 from .tmm import NodeType
 
 __all__ = [
+    "NodeType",
     "gmm",
     "parameters",
     "solvers",
     "tmm",
-    "NodeType",
 ]

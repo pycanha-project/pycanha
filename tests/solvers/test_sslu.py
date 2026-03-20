@@ -59,13 +59,15 @@ def test_sslu_steady_state(five_node_model):
     solver.initialize()
     solver.solve()
 
-    calculated_temps = np.array([
-        tmm.nodes.get_T(10),
-        tmm.nodes.get_T(15),
-        tmm.nodes.get_T(20),
-        tmm.nodes.get_T(25),
-        tmm.nodes.get_T(99),
-    ])
+    calculated_temps = np.array(
+        [
+            tmm.nodes.get_T(10),
+            tmm.nodes.get_T(15),
+            tmm.nodes.get_T(20),
+            tmm.nodes.get_T(25),
+            tmm.nodes.get_T(99),
+        ]
+    )
 
     expected_temps = np.array([132.38706, 306.56526, 111.78443, 200.32387, 3.14999])
 

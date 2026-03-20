@@ -10,10 +10,10 @@ from .tscnrlds import TSCNRLDS
 
 __all__ = [
     "SSLU",
-    "Solver",
-    "SteadyStateSolver",
     "TSCN",
     "TSCNRL",
     "TSCNRLDS",
+    "Solver",
+    "SteadyStateSolver",
     "TransientSolver",
 ]
