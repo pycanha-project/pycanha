@@ -7,26 +7,27 @@ __pycache__/
 dist/
 build/
 
-# Virtual environments
-.venv/
+
 
 # uv
 uv.lock
 
-# mypy
-.mypy_cache/
-
-# ruff
-.ruff_cache/
-
 # pytest
-.pytest_cache/
 results.json
 
-# IDE
-.vscode/
-.idea/
+
+# Dot folders (hidden directories) - ignore all except .github
+.*/
+!.github/
+
+# Sphinx documentation
+doc/_build/
+doc/auto_examples/
+doc/sg_execution_times.rst
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Archives
+*.zip

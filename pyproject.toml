@@ -4,26 +4,38 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycanha"
-version = "0.6.0"
+version = "0.8.0"
 description = "Thermal analysis Python package built on pycanha-core"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [
     { name = "Javier Piqueras Carreño", email = "javier.piqueras@upm.es" },
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering",
     "Typing :: Typed",
 ]
 dependencies = [
-    "pycanha-core==0.6.0",
+    "matplotlib>=3.10.8",
+    "pycanha-core==0.8.0",
+]
+
+[project.optional-dependencies]
+doc = [
+    "sphinx>=7.2",
+    "pydata-sphinx-theme>=0.16",
+    "sphinx-gallery>=0.18",
+    "sphinx-copybutton",
+    "sphinx-design",
+    "numpydoc",
+    "numpy",
 ]
 
 [project.urls]
