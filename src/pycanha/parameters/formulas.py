@@ -18,4 +18,5 @@ class Formulas(pcc.parameters.Formulas):
         if network is None:
             super().__init__()
         else:
+            assert parameters is not None
             super().__init__(network, parameters)
