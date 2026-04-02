@@ -31,7 +31,7 @@ k_Al = 180.0  # thermal conductivity [W/(m·K)]
 # Mesh
 Nx, Ny = 10, 10
 
-tmm = ThermalMathematicalModel(model_name="AluPlate")
+tmm = ThermalMathematicalModel(name="AluPlate")
 
 for j in range(1, Ny + 1):
     for i in range(1, Nx + 1):
