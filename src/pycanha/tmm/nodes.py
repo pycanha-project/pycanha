@@ -6,4 +6,5 @@ import pycanha_core as pcc
 
 
 class Nodes(pcc.tmm.Nodes):
-    pass
+    def __init__(self) -> None:
+        super().__init__()

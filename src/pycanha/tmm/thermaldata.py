@@ -6,4 +6,8 @@ import pycanha_core as pcc
 
 
 class ThermalData(pcc.tmm.ThermalData):
-    pass
+    def __init__(self, network: pcc.tmm.ThermalNetwork | None = None) -> None:
+        if network is None:
+            super().__init__()
+        else:
+            super().__init__(network)
