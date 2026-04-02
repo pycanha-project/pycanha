@@ -6,4 +6,5 @@ import pycanha_core as pcc
 
 
 class Parameters(pcc.parameters.Parameters):
-    pass
+    def __init__(self) -> None:
+        super().__init__()
