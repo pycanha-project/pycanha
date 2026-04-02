@@ -6,4 +6,16 @@ import pycanha_core as pcc
 
 
 class Formulas(pcc.parameters.Formulas):
-    pass
+    def __init__(
+        self,
+        network: pcc.tmm.ThermalNetwork | None = None,
+        parameters: pcc.parameters.Parameters | None = None,
+    ) -> None:
+        if (network is None) != (parameters is None):
+            msg = "network and parameters must be provided together"
+            raise ValueError(msg)
+
+        if network is None:
+            super().__init__()
+        else:
+            super().__init__(network, parameters)

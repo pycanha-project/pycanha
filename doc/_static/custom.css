@@ -1,0 +1,11 @@
+/* pycanha custom documentation styles */
+
+/* Slightly tighter parameter lists */
+dl.field-list>dt {
+    font-weight: 600;
+}
+
+/* Nicer code block styling */
+div.highlight pre {
+    border-radius: 4px;
+}

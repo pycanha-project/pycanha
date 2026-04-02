@@ -37,3 +37,31 @@ def test_thermal_network_links_resources():
     assert network.nodes.num_nodes == 2
     network.conductive_couplings.add_coupling(1, 2, 5.0)
     assert network.conductive_couplings.get_coupling_value(1, 2) == pytest.approx(5.0)
+
+
+def test_thermal_network_preserves_python_wrapper_identity():
+    network = pc.tmm.ThermalNetwork()
+
+    assert network.nodes is network._nodes
+    assert network.conductive_couplings is network._conductive
+    assert network.radiative_couplings is network._radiative
+
+
+def test_tmm_preserves_python_wrapper_identity():
+    tmm = pc.tmm.ThermalMathematicalModel("wrapper_identity")
+
+    assert tmm.nodes is tmm._nodes
+    assert tmm.conductive_couplings is tmm._conductive
+    assert tmm.radiative_couplings is tmm._radiative
+    assert tmm.parameters is tmm._parameters
+    assert tmm.formulas is tmm._formulas
+    assert tmm.thermal_data is tmm._thermal_data
+
+
+def test_tmm_rejects_mismatched_coupling_containers():
+    nodes = pc.tmm.Nodes()
+    other_nodes = pc.tmm.Nodes()
+    conductive = pc.tmm.ConductiveCouplings(other_nodes)
+
+    with pytest.raises(ValueError, match="same nodes container"):
+        pc.tmm.ThermalMathematicalModel("invalid", nodes=nodes, conductive=conductive)
