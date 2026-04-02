@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pycanha as pc
 
-
 FIXTURE = Path(__file__).resolve().parents[1] / "data" / "esatan" / "DISCTR_TRANSIENT.TMD"
 
 

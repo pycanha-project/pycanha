@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pycanha_core as pcc
 
-from .nodes import Nodes
+if TYPE_CHECKING:
+    from .nodes import Nodes
 
 
 class Couplings(pcc.tmm.Couplings):
