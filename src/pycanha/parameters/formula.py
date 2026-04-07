@@ -7,6 +7,10 @@ import pycanha_core as pcc
 Formula = pcc.parameters.Formula
 
 
+class ExpressionFormula(pcc.parameters.ExpressionFormula):
+    pass
+
+
 class ParameterFormula(pcc.parameters.ParameterFormula):
     pass
 

@@ -8,6 +8,8 @@ from .conductivecouplings import ConductiveCouplings
 from .nodes import Nodes
 from .radiativecouplings import RadiativeCouplings
 
+_STEFAN_BOLTZMANN = 5.670374419e-8
+
 
 class ThermalNetwork(pcc.tmm.ThermalNetwork):
     def __init__(

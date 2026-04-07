@@ -6,6 +6,7 @@ from typing import Any
 __all__ = [
     "AttributeEntity",
     "ConductiveCouplingEntity",
+    "ExpressionFormula",
     "Formula",
     "Formulas",
     "ParameterFormula",
@@ -22,6 +23,7 @@ def __getattr__(name: str) -> Any:
     module_exports = {
         "AttributeEntity": (".entity", "AttributeEntity"),
         "ConductiveCouplingEntity": (".entity", "ConductiveCouplingEntity"),
+        "ExpressionFormula": (".formula", "ExpressionFormula"),
         "Formula": (".formula", "Formula"),
         "Formulas": (".formulas", "Formulas"),
         "ParameterFormula": (".formula", "ParameterFormula"),
