@@ -60,8 +60,34 @@ class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
             thermal_data,
         )
 
-    def load_tmd(self, filepath: str, *, verbose: bool = False) -> Self:
-        super().read_tmd(filepath, verbose=verbose)
+    def read_tmd(
+        self,
+        filepath: str,
+        verbose: bool = False,
+        **kwargs: object,
+    ) -> None:
+        from pycanha.io import ESATANReader
+
+        engine = kwargs.pop("engine", "cpp")
+        if kwargs:
+            unexpected = ", ".join(sorted(kwargs))
+            msg = f"Unexpected keyword arguments: {unexpected}"
+            raise TypeError(msg)
+
+        if not isinstance(engine, str):
+            msg = "engine must be a string"
+            raise TypeError(msg)
+
+        ESATANReader(self).read_tmd(filepath, engine=engine, verbose=verbose)
+
+    def load_tmd(
+        self,
+        filepath: str,
+        *,
+        engine: str = "cpp",
+        verbose: bool = False,
+    ) -> Self:
+        self.read_tmd(filepath, engine=engine, verbose=verbose)
         return self
 
     @classmethod
@@ -70,7 +96,8 @@ class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
         filepath: str,
         name: str = "",
         *,
+        engine: str = "cpp",
         verbose: bool = False,
     ) -> Self:
         model = cls(name=name)
-        return model.load_tmd(filepath, verbose=verbose)
+        return model.load_tmd(filepath, engine=engine, verbose=verbose)

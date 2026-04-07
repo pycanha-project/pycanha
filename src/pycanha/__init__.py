@@ -1,12 +1,31 @@
 """PyCanha — Thermal analysis Python package built on pycanha-core."""
 
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import pycanha_core as pcc
+
+    from . import gmm, io, parameters, solvers, tmm
+    from .tmm.node import NodeType
+
+    LogLevel = pcc.LogLevel
+    get_logger = pcc.get_logger
+    get_python_logger = pcc.get_python_logger
+    set_logger_level = pcc.set_logger_level
+    set_python_logger_level = pcc.set_python_logger_level
+
 
 __all__ = [
+    "LogLevel",
     "NodeType",
+    "get_logger",
+    "get_python_logger",
     "gmm",
+    "io",
     "parameters",
+    "set_logger_level",
+    "set_python_logger_level",
     "solvers",
     "tmm",
 ]
@@ -17,6 +36,7 @@ def __getattr__(name: str) -> Any:
     # pull in both tmm and parameters while they are still importing each other.
     module_exports = {
         "gmm": ".gmm",
+        "io": ".io",
         "parameters": ".parameters",
         "solvers": ".solvers",
         "tmm": ".tmm",
@@ -31,6 +51,19 @@ def __getattr__(name: str) -> Any:
         node_type = import_module(".tmm.node", __name__).NodeType
         globals()[name] = node_type
         return node_type
+
+    root_exports = {
+        "LogLevel",
+        "get_logger",
+        "get_python_logger",
+        "set_logger_level",
+        "set_python_logger_level",
+    }
+
+    if name in root_exports:
+        value = getattr(import_module("pycanha_core"), name)
+        globals()[name] = value
+        return value
 
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)

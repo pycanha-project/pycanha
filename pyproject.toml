@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycanha"
-version = "0.8.0"
+version = "0.11.0"
 description = "Thermal analysis Python package built on pycanha-core"
 readme = "README.md"
 license = "MIT"
@@ -23,8 +23,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "h5py>=3.10",
     "matplotlib>=3.10.8",
-    "pycanha-core==0.8.0",
+    "numpy>=2.0",
+    "pycanha-core==0.11.0",
 ]
 
 [project.optional-dependencies]
@@ -89,4 +91,8 @@ disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = "pycanha_core.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "h5py.*"
 ignore_missing_imports = true
