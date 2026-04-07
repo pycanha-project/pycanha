@@ -31,9 +31,7 @@ def make_jacobian_example_model() -> tmm.ThermalMathematicalModel:
     model.formulas.add_formula(
         parameters.ParameterFormula(conductive_entity, model.parameters, "k")
     )
-    model.formulas.add_formula(
-        parameters.ParameterFormula(capacity_entity, model.parameters, "C")
-    )
+    model.formulas.add_formula(parameters.ParameterFormula(capacity_entity, model.parameters, "C"))
     model.formulas.apply_formulas()
 
     return model
