@@ -35,20 +35,16 @@ Creating entities
 
 .. code-block:: python
 
-   from pycanha.parameters import (
-       AttributeEntity,
-       ConductiveCouplingEntity,
-       RadiativeCouplingEntity,
-   )
+   from pycanha.parameters import Entity
 
    # Node 1's internal dissipation
-   qi_entity = AttributeEntity(tmm.network, "QI", 1)
+   qi_entity = Entity.qi(tmm.network, 1)
 
    # Conductive coupling GL(1, 2)
-   gl_entity = ConductiveCouplingEntity(tmm.network, 1, 2)
+   gl_entity = Entity.gl(tmm.network, 1, 2)
 
    # Radiative coupling GR(2, 3)
-   gr_entity = RadiativeCouplingEntity(tmm.network, 2, 3)
+   gr_entity = Entity.gr(tmm.network, 2, 3)
 
 Each entity exposes ``get_value()`` / ``set_value()`` to read or write the
 underlying model quantity directly, and ``string_representation()`` for a

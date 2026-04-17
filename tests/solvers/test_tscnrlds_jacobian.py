@@ -25,8 +25,8 @@ def make_jacobian_example_model() -> tmm.ThermalMathematicalModel:
     model.parameters.add_parameter("k", 1.0)
     model.parameters.add_parameter("C", 1.0)
 
-    conductive_entity = parameters.ConductiveCouplingEntity(model.network, 1, 2)
-    capacity_entity = parameters.AttributeEntity(model.network, "C", 1)
+    conductive_entity = parameters.Entity.gl(model.network, 1, 2)
+    capacity_entity = parameters.Entity.c(model.network, 1)
 
     model.formulas.add_formula(
         parameters.ParameterFormula(conductive_entity, model.parameters, "k")

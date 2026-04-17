@@ -4,15 +4,13 @@ from importlib import import_module
 from typing import Any
 
 __all__ = [
-    "AttributeEntity",
-    "ConductiveCouplingEntity",
+    "Entity",
+    "EntityType",
     "ExpressionFormula",
     "Formula",
     "Formulas",
     "ParameterFormula",
     "Parameters",
-    "RadiativeCouplingEntity",
-    "ThermalEntity",
     "ValueFormula",
 ]
 
@@ -21,15 +19,13 @@ def __getattr__(name: str) -> Any:
     # Re-export on demand so importing formulas does not immediately import tmm,
     # which would otherwise create a package initialization cycle.
     module_exports = {
-        "AttributeEntity": (".entity", "AttributeEntity"),
-        "ConductiveCouplingEntity": (".entity", "ConductiveCouplingEntity"),
+        "Entity": (".entity", "Entity"),
+        "EntityType": (".entity", "EntityType"),
         "ExpressionFormula": (".formula", "ExpressionFormula"),
         "Formula": (".formula", "Formula"),
         "Formulas": (".formulas", "Formulas"),
         "ParameterFormula": (".formula", "ParameterFormula"),
         "Parameters": (".parameters", "Parameters"),
-        "RadiativeCouplingEntity": (".entity", "RadiativeCouplingEntity"),
-        "ThermalEntity": (".entity", "ThermalEntity"),
         "ValueFormula": (".formula", "ValueFormula"),
     }
 

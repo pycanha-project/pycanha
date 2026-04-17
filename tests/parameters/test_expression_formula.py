@@ -26,7 +26,7 @@ def test_expression_formula_apply_updates_entity(
 ) -> None:
     tmm_model = tmm_with_params
     tmm_model.parameters.add_parameter("offset", 2.0)
-    entity = parameters.AttributeEntity(tmm_model.network, "QI", 1)
+    entity = parameters.Entity.qi(tmm_model.network, 1)
     formula = parameters.ExpressionFormula(entity, tmm_model.parameters, "k + offset")
 
     assert formula.expression == "k + offset"
@@ -43,7 +43,7 @@ def test_expression_formula_derivatives(
 ) -> None:
     tmm_model = tmm_with_params
     tmm_model.parameters.add_parameter("offset", 2.0)
-    entity = parameters.ConductiveCouplingEntity(tmm_model.network, 1, 2)
+    entity = parameters.Entity.gl(tmm_model.network, 1, 2)
     formula = parameters.ExpressionFormula(entity, tmm_model.parameters, "k * offset")
 
     formula.compile_formula()
