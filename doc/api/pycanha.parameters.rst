@@ -10,7 +10,8 @@ named parameters, entities (references to model scalars), and formulas
 The following base classes are re-exported from :mod:`pycanha_core.parameters`
 — see the :doc:`pycanha_core.parameters` page for their full documentation:
 
-* :class:`~pycanha_core.parameters.ThermalEntity`
+* :class:`~pycanha_core.parameters.Entity`
+* :class:`~pycanha_core.parameters.EntityType`
 * :class:`~pycanha_core.parameters.Formula`
 
 Parameters
@@ -25,22 +26,14 @@ Parameters
 Entities
 --------
 
-.. autoclass:: AttributeEntity
+.. autoclass:: EntityType
    :members:
-   :show-inheritance:
-   :inherited-members: pycanha_core.parameters.AttributeEntity
    :exclude-members: __dict__, __weakref__, __module__
 
-.. autoclass:: ConductiveCouplingEntity
+.. autoclass:: Entity
    :members:
    :show-inheritance:
-   :inherited-members: pycanha_core.parameters.ConductiveCouplingEntity
-   :exclude-members: __dict__, __weakref__, __module__
-
-.. autoclass:: RadiativeCouplingEntity
-   :members:
-   :show-inheritance:
-   :inherited-members: pycanha_core.parameters.RadiativeCouplingEntity
+   :inherited-members: pycanha_core.parameters.Entity
    :exclude-members: __dict__, __weakref__, __module__
 
 Formulas
@@ -50,6 +43,12 @@ Formulas
    :members:
    :show-inheritance:
    :inherited-members: pycanha_core.parameters.ParameterFormula
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: ExpressionFormula
+   :members:
+   :show-inheritance:
+   :inherited-members: pycanha_core.parameters.ExpressionFormula
    :exclude-members: __dict__, __weakref__, __module__
 
 .. autoclass:: ValueFormula

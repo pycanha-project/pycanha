@@ -16,22 +16,12 @@ Parameters
 Entities
 --------
 
-.. autoclass:: ThermalEntity
+.. autoclass:: EntityType
    :members:
    :special-members: __init__
    :exclude-members: __dict__, __weakref__, __module__
 
-.. autoclass:: AttributeEntity
-   :members:
-   :special-members: __init__
-   :exclude-members: __dict__, __weakref__, __module__
-
-.. autoclass:: ConductiveCouplingEntity
-   :members:
-   :special-members: __init__
-   :exclude-members: __dict__, __weakref__, __module__
-
-.. autoclass:: RadiativeCouplingEntity
+.. autoclass:: Entity
    :members:
    :special-members: __init__
    :exclude-members: __dict__, __weakref__, __module__
@@ -45,6 +35,11 @@ Formulas
    :exclude-members: __dict__, __weakref__, __module__
 
 .. autoclass:: ParameterFormula
+   :members:
+   :special-members: __init__
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: ExpressionFormula
    :members:
    :special-members: __init__
    :exclude-members: __dict__, __weakref__, __module__
