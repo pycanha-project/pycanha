@@ -14,7 +14,6 @@ re-running with a doubled conductive coupling.
 # ------------------------
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 from pycanha.solvers import TSCNRLDS
 from pycanha.tmm import Node, NodeType, ThermalMathematicalModel
@@ -46,18 +45,23 @@ solver.set_simulation_time(start, end, dt, out_dt)
 solver.initialize()
 solver.solve()
 
-results = tmm.thermal_data.get_table("TSCNRLDS_OUTPUT")
-times = results[:, 0]
+output_model = tmm.thermal_data.models.get_model(solver.output_model_name)
+times = output_model.T.times
 idx1 = tmm.nodes.get_idx_from_node_num(1)
-T1 = results[:, 1 + idx1]
+T1 = output_model.T.values[:, idx1]
 
 # %%
 # Sensitivity run — doubled conductance
 # --------------------------------------
 
 tmm2 = ThermalMathematicalModel("HighGL")
-n1b = Node(1); n1b.T = 273.0; n1b.C = 1.0e4; n1b.qi = 500.0
-n2b = Node(2); n2b.T = 3.0; n2b.type = NodeType.BOUNDARY
+n1b = Node(1)
+n1b.T = 273.0
+n1b.C = 1.0e4
+n1b.qi = 500.0
+n2b = Node(2)
+n2b.T = 3.0
+n2b.type = NodeType.BOUNDARY
 tmm2.add_node(n1b)
 tmm2.add_node(n2b)
 tmm2.conductive_couplings.add_coupling(1, 2, 1.0)
@@ -68,8 +72,8 @@ solver2.set_simulation_time(start, end, dt, out_dt)
 solver2.initialize()
 solver2.solve()
 
-results2 = tmm2.thermal_data.get_table("TSCNRLDS_OUTPUT")
-T1b = results2[:, 1 + tmm2.nodes.get_idx_from_node_num(1)]
+output_model2 = tmm2.thermal_data.models.get_model(solver2.output_model_name)
+T1b = output_model2.T.values[:, tmm2.nodes.get_idx_from_node_num(1)]
 
 # %%
 # Plot

@@ -24,22 +24,24 @@ Setting up a transient run
    solver.deinitialize()
 
 The ``output_stride`` controls how often results are written to the output
-table.  A larger stride saves memory when the timestep is small.
+model.  A larger stride saves memory when the timestep is small.
 
 Retrieving results
 ------------------
 
 Transient results are stored in the model's
-:class:`~pycanha.tmm.ThermalData` container as named tables:
+:class:`~pycanha.tmm.ThermalData` container as named output models:
 
 .. code-block:: python
 
-   results = tmm.thermal_data.get_table("TSCNRLDS_OUTPUT")
+   output_model = tmm.thermal_data.models.get_model(solver.output_model_name)
 
-The returned array has shape ``(n_steps, 1 + n_nodes)``:
+The temperature series is exposed as a dense time series:
 
-* Column 0 — time [s]
-* Columns 1 … N — node temperatures, ordered by **internal index**
+* ``output_model.T.times`` — time samples [s]
+* ``output_model.T.values`` — temperature matrix with shape ``(n_steps, n_nodes)``
+
+Each temperature column is ordered by **internal index**.
 
 Use :meth:`~pycanha_core.tmm.Nodes.get_idx_from_node_num` to map user node
 numbers to column indices:
@@ -51,8 +53,8 @@ numbers to column indices:
 
    idx1 = tmm.nodes.get_idx_from_node_num(1)
 
-   times = results[:, 0]
-   T1    = results[:, 1 + idx1]
+   times = output_model.T.times
+   T1    = output_model.T.values[:, idx1]
 
    plt.plot(times / 3600, T1)
    plt.xlabel("Time [h]")

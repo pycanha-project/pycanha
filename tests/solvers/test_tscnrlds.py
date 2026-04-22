@@ -4,6 +4,11 @@ import pytest
 import pycanha as pc
 
 
+def get_temperature_output(model: pc.tmm.ThermalMathematicalModel, model_name: str) -> np.ndarray:
+    output_model = model.thermal_data.models.get_model(model_name)
+    return np.column_stack((np.asarray(output_model.T.times), np.asarray(output_model.T.values)))
+
+
 @pytest.fixture
 def five_node_model():
     """Create a 5-node model with conductive and radiative couplings."""
@@ -60,7 +65,7 @@ def test_tscnrlds_transient(five_node_model):
     solver.initialize()
     solver.solve()
 
-    results = tmm.thermal_data.get_table("TSCNRLDS_OUTPUT")
+    results = get_temperature_output(tmm, solver.output_model_name)
     calculated_times = results[:, 0]
     calculated_temps = results[:, 1:]
 
