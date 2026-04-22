@@ -6,6 +6,20 @@ import pycanha.tmm as tmm
 from pycanha.tmm.node import NodeType
 
 
+def get_temperature_output(model: tmm.ThermalMathematicalModel, model_name: str) -> np.ndarray:
+    output_model = model.thermal_data.models.get_model(model_name)
+    return np.column_stack((np.asarray(output_model.T.times), np.asarray(output_model.T.values)))
+
+
+def get_jacobian_output(model: tmm.ThermalMathematicalModel, model_name: str) -> np.ndarray:
+    output_model = model.thermal_data.models.get_model(model_name)
+    jacobian = output_model.jacobian
+    flattened_rows = [
+        np.asarray(jacobian.at(index)).reshape(-1) for index in range(jacobian.num_timesteps)
+    ]
+    return np.column_stack((np.asarray(jacobian.times), np.vstack(flattened_rows)))
+
+
 def make_jacobian_example_model() -> tmm.ThermalMathematicalModel:
     model = tmm.ThermalMathematicalModel("jacobian_python_example")
 
@@ -44,7 +58,7 @@ def find_time_row(table: np.ndarray, time_value: float) -> int:
     return int(matching_rows[0])
 
 
-def test_tscnrlds_jacobian_solver_outputs_tables() -> None:
+def test_tscnrlds_jacobian_solver_outputs_models() -> None:
     model = make_jacobian_example_model()
     solver = solvers.TSCNRLDS_JACOBIAN(model)
     solver.MAX_ITERS = 50
@@ -54,12 +68,11 @@ def test_tscnrlds_jacobian_solver_outputs_tables() -> None:
     solver.initialize()
     solver.solve()
 
-    assert model.thermal_data.has_table("TSCNRLDS_OUTPUT") is True
-    assert model.thermal_data.has_table("TSCNRLDS_JACOBIAN_OUTPUT") is True
+    assert model.thermal_data.models.has_model(solver.output_model_name) is True
     assert solver.parameter_names == ["k", "C"]
 
-    temperature_output = model.thermal_data.get_table("TSCNRLDS_OUTPUT")
-    jacobian_output = model.thermal_data.get_table("TSCNRLDS_JACOBIAN_OUTPUT")
+    temperature_output = get_temperature_output(model, solver.output_model_name)
+    jacobian_output = get_jacobian_output(model, solver.output_model_name)
 
     assert temperature_output.shape[1] == 3
     assert jacobian_output.shape[1] == 3
