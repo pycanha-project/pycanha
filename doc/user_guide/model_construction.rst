@@ -9,13 +9,15 @@ Creating a model
 ----------------
 
 Every analysis starts by instantiating a
-:class:`~pycanha.tmm.ThermalMathematicalModel`:
+:class:`~pycanha.ThermalModel` root object:
 
 .. code-block:: python
 
-   from pycanha.tmm import ThermalMathematicalModel
+  import pycanha as pc
+  import pycanha.tmm as pm
 
-   tmm = ThermalMathematicalModel("MyModel")
+  tm = pc.ThermalModel("MyModel")
+  tmm = tm.tmm
 
 Adding nodes
 ------------
@@ -26,16 +28,17 @@ Nodes are either **diffusive** (temperature computed by the solver) or **boundar
 
 .. code-block:: python
 
-   from pycanha.tmm import Node, NodeType
+  import pycanha as pc
+  import pycanha.tmm as pm
 
    # Diffusive node (temperature computed by solver)
-   node1 = Node(1)
+  node1 = pm.Node(1)
    node1.C  = 1000.0      # capacity [J/K]
    node1.qi = 50.0         # internal dissipation [W]
 
    # Boundary node (temperature fixed)
-   node2 = Node(2)
-   node2.type = NodeType.BOUNDARY
+  node2 = pm.Node(2)
+  node2.type = pm.NodeType.BOUNDARY
    node2.T = 300.0         # fixed temperature [K]
 
    tmm.add_node(node1)
@@ -117,6 +120,8 @@ The model exposes its internal containers through properties:
 
 .. code-block:: python
 
+  tm.solvers                   # model-owned solver registry
+  tm.callbacks                 # model-owned callback registry
    tmm.nodes                     # Nodes container
    tmm.conductive_couplings      # ConductiveCouplings container
    tmm.radiative_couplings       # RadiativeCouplings container

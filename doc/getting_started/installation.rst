@@ -45,9 +45,11 @@ Verifying the installation
 
 .. code-block:: python
 
+   import pycanha as pc
+   import pycanha.tmm as pm
    import pycanha_core
+
    pycanha_core.print_package_info()
 
-   from pycanha.tmm import ThermalMathematicalModel
-   tmm = ThermalMathematicalModel("test")
-   print(f"Model name: {tmm.name}")
+   tm = pc.ThermalModel("test")
+   print(f"Model name: {tm.name}")

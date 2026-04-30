@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycanha"
-version = "0.13.0"
+version = "0.14.0"
 description = "Thermal analysis Python package built on pycanha-core"
 readme = "README.md"
 license = "MIT"
@@ -26,7 +26,7 @@ dependencies = [
     "h5py>=3.10",
     "matplotlib>=3.10.8",
     "numpy>=2.0",
-    "pycanha-core==0.13.0",
+    "pycanha-core==0.14.0",
 ]
 
 [project.optional-dependencies]

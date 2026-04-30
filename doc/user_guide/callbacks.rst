@@ -8,21 +8,20 @@ thermostats, heater switches, or variable loads.
 Setting up a callback
 ---------------------
 
-Assign a Python callable (no arguments, no return value) to the model and
-activate callbacks:
+Assign a Python callable that receives a callback context object and activate
+callbacks on the model root:
 
 .. code-block:: python
 
-   def thermostat():
-       T_ctrl = tmm.nodes.get_T(5)
+   def thermostat(ctx):
+     T_ctrl = ctx.tmm.nodes.get_T(5)
        if T_ctrl < 293.0:
-           tmm.nodes.set_qi(5, 100.0)    # heater ON
+       ctx.tmm.nodes.set_qi(5, 100.0)    # heater ON
        elif T_ctrl > 300.0:
-           tmm.nodes.set_qi(5, 0.0)      # heater OFF
+       ctx.tmm.nodes.set_qi(5, 0.0)      # heater OFF
 
-   tmm.python_extern_callback_transient_after_timestep = thermostat
-   tmm.python_callbacks_active = True
-   tmm.callbacks_active        = True
+   tm.callbacks.after_timestep = thermostat
+   tm.callbacks.active = True
 
 The callback fires **after every integration timestep**, giving you access
 to the latest computed temperatures.
@@ -36,25 +35,18 @@ Available callback hooks
 
    * - Attribute
      - When it fires
-   * - ``python_extern_callback_solver_loop``
+   * - ``tm.callbacks.solver_loop``
      - Each iteration within a solver step
-   * - ``python_extern_callback_transient_time_change``
+   * - ``tm.callbacks.time_change``
      - When the simulation time advances
-   * - ``python_extern_callback_transient_after_timestep``
+   * - ``tm.callbacks.after_timestep``
      - After each completed timestep (most common)
 
-All three are ``Callable[[], None]`` — they take no arguments and return
-nothing.  They interact with the model through the captured ``tmm``
-reference.
+All three are ``Callable[[CallbackContext], None]``. The callback context
+provides ``tm``, ``tmm``, the active ``solver``, and the current ``time``.
 
 Enabling / disabling callbacks
 ------------------------------
 
-Two flags must both be ``True`` for Python callbacks to execute:
-
-* ``tmm.callbacks_active`` — master switch for all callbacks (C++ and
-  Python)
-* ``tmm.python_callbacks_active`` — switch for Python-side callbacks only
-
-Setting ``tmm.callbacks_active = False`` disables all callbacks (useful for
-an initial steady-state solve before the transient phase).
+Set ``tm.callbacks.active = False`` to disable callback execution entirely,
+for example during an initial steady-state pre-solve.

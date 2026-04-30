@@ -35,16 +35,14 @@ Creating entities
 
 .. code-block:: python
 
-   from pycanha.parameters import Entity
-
    # Node 1's internal dissipation
-   qi_entity = Entity.qi(tmm.network, 1)
+   qi_entity = tmm.entity("QI1")
 
    # Conductive coupling GL(1, 2)
-   gl_entity = Entity.gl(tmm.network, 1, 2)
+   gl_entity = tmm.entities.conductive_coupling(1, 2)
 
    # Radiative coupling GR(2, 3)
-   gr_entity = Entity.gr(tmm.network, 2, 3)
+   gr_entity = tmm.entities.radiative_coupling(2, 3)
 
 Each entity exposes ``get_value()`` / ``set_value()`` to read or write the
 underlying model quantity directly, and ``string_representation()`` for a
@@ -55,14 +53,11 @@ Linking parameters to entities
 
 .. code-block:: python
 
-   from pycanha.parameters import ParameterFormula
-
    # Register a parameter
    tmm.parameters.add_parameter("k", 1.0)
 
    # Create the formula: GL(1,2) = k
-   formula = ParameterFormula(gl_entity, tmm.parameters, "k")
-   tmm.formulas.add_formula(formula)
+   tmm.formulas.add_formula("GL(1,2)", "k")
 
 Running a parameter analysis
 -------------------------
@@ -70,9 +65,8 @@ Running a parameter analysis
 .. code-block:: python
 
    import numpy as np
-   from pycanha.solvers import SSLU
 
-   solver = SSLU(tmm)
+   solver = tm.solvers.sslu
    solver.initialize()
 
    k_values = np.linspace(0.5, 10.0, 50)
@@ -97,7 +91,7 @@ be changed programmatically:
 
    from pycanha.parameters import ValueFormula
 
-   vf = ValueFormula(qi_entity)
+   vf = ValueFormula(tmm.entity("QI1"))
    vf.set_value(42.0)
    tmm.formulas.add_formula(vf)
    tmm.formulas.apply_formulas()

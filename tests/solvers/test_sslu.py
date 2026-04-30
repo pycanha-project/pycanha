@@ -2,18 +2,20 @@ import numpy as np
 import pytest
 
 import pycanha as pc
+import pycanha.tmm as pm
 
 
 @pytest.fixture
 def five_node_model():
     """Create a 5-node model with conductive and radiative couplings."""
-    tmm = pc.tmm.ThermalMathematicalModel("test_model")
+    tm = pc.ThermalModel("test_model")
+    tmm = tm.tmm
 
-    node_10 = pc.tmm.Node(10)
-    node_15 = pc.tmm.Node(15)
-    node_20 = pc.tmm.Node(20)
-    node_25 = pc.tmm.Node(25)
-    env_node = pc.tmm.Node(99)
+    node_10 = pm.Node(10)
+    node_15 = pm.Node(15)
+    node_20 = pm.Node(20)
+    node_25 = pm.Node(25)
+    env_node = pm.Node(99)
 
     init_temp = 273.15
     node_10.T = init_temp
@@ -29,7 +31,7 @@ def five_node_model():
 
     node_15.qi = 500.0
 
-    env_node.type = pc.tmm.NodeType.BOUNDARY
+    env_node.type = pm.NodeType.BOUNDARY
 
     tmm.add_node(node_10)
     tmm.add_node(node_15)
@@ -46,14 +48,15 @@ def five_node_model():
     tmm.add_radiative_coupling(15, 99, 0.8)
     tmm.add_radiative_coupling(25, 99, 0.8)
 
-    return tmm
+    return tm
 
 
 def test_sslu_steady_state(five_node_model):
-    tmm = five_node_model
+    tm = five_node_model
+    tmm = tm.tmm
 
-    solver = pc.solvers.SSLU(tmm)
-    solver.MAX_ITERS = 100
+    solver = tm.solvers.sslu
+    solver.max_iters = 100
     solver.abstol_temp = 1e-6
 
     solver.initialize()

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     import pycanha_core as pcc
 
     from . import gmm, io, parameters, solvers, tmm
+    from .thermalmodel import ThermalModel
     from .tmm.node import NodeType
 
     LogLevel = pcc.LogLevel
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 __all__ = [
     "LogLevel",
     "NodeType",
+    "ThermalModel",
     "get_logger",
     "get_python_logger",
     "gmm",
@@ -51,6 +53,11 @@ def __getattr__(name: str) -> Any:
         node_type = import_module(".tmm.node", __name__).NodeType
         globals()[name] = node_type
         return node_type
+
+    if name == "ThermalModel":
+        thermal_model = import_module(".thermalmodel", __name__).ThermalModel
+        globals()[name] = thermal_model
+        return thermal_model
 
     root_exports = {
         "LogLevel",

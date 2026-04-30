@@ -16,19 +16,19 @@ This example demonstrates the **Parameters** and **ParameterFormula** API.
 import matplotlib.pyplot as plt
 import numpy as np
 
-from pycanha.parameters import Entity, ParameterFormula
-from pycanha.solvers import SSLU
-from pycanha.tmm import Node, NodeType, ThermalMathematicalModel
+import pycanha as pc
+import pycanha.tmm as pm
 
-tmm = ThermalMathematicalModel("Parametric")
+tm = pc.ThermalModel("Parametric")
+tmm = tm.tmm
 
-node1 = Node(1)
+node1 = pm.Node(1)
 node1.C = 1.0
 node1.qi = 1.0
 
-node2 = Node(2)
+node2 = pm.Node(2)
 node2.T = 1.0
-node2.type = NodeType.BOUNDARY
+node2.type = pm.NodeType.BOUNDARY
 
 tmm.add_node(node1)
 tmm.add_node(node2)
@@ -36,15 +36,13 @@ tmm.conductive_couplings.add_coupling(1, 2, 1.0)
 
 # Link GL(1,2) to parameter "k"
 tmm.parameters.add_parameter("k", 1.0)
-gl_entity = Entity.gl(tmm.network, 1, 2)
-k_formula = ParameterFormula(gl_entity, tmm.parameters, "k")
-tmm.formulas.add_formula(k_formula)
+tmm.formulas.add_formula("GL(1,2)", "k")
 
 # %%
 # Sweep the coupling parameter
 # -------------
 
-solver = SSLU(tmm)
+solver = tm.solvers.sslu
 solver.initialize()
 
 k_values = np.linspace(0.5, 10.0, 200)

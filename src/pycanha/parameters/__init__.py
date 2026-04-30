@@ -4,11 +4,13 @@ from importlib import import_module
 from typing import Any
 
 __all__ = [
+    "DerivativeParameterRegistry",
     "Entity",
     "EntityType",
     "ExpressionFormula",
     "Formula",
     "Formulas",
+    "GeneralFormula",
     "ParameterFormula",
     "Parameters",
     "ValueFormula",
@@ -19,11 +21,13 @@ def __getattr__(name: str) -> Any:
     # Re-export on demand so importing formulas does not immediately import tmm,
     # which would otherwise create a package initialization cycle.
     module_exports = {
+        "DerivativeParameterRegistry": (".formula", "DerivativeParameterRegistry"),
         "Entity": (".entity", "Entity"),
         "EntityType": (".entity", "EntityType"),
         "ExpressionFormula": (".formula", "ExpressionFormula"),
         "Formula": (".formula", "Formula"),
         "Formulas": (".formulas", "Formulas"),
+        "GeneralFormula": (".formula", "GeneralFormula"),
         "ParameterFormula": (".formula", "ParameterFormula"),
         "Parameters": (".parameters", "Parameters"),
         "ValueFormula": (".formula", "ValueFormula"),

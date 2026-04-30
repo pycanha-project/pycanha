@@ -9,7 +9,8 @@ FIXTURE = Path(__file__).resolve().parents[1] / "data" / "esatan" / "DISCTR_TRAN
 
 @pytest.mark.parametrize("engine", ["cpp", "python"])
 def test_esatan_reader_populates_model(engine: str) -> None:
-    tmm = pc.tmm.ThermalMathematicalModel(f"reader-{engine}")
+    tm = pc.ThermalModel(f"reader-{engine}")
+    tmm = tm.tmm
     reader = pc.io.ESATANReader(tmm)
 
     reader.read_tmd(str(FIXTURE), engine=engine, verbose=False)
@@ -21,7 +22,8 @@ def test_esatan_reader_populates_model(engine: str) -> None:
 
 
 def test_esatan_reader_rejects_unknown_engine() -> None:
-    tmm = pc.tmm.ThermalMathematicalModel("reader-invalid")
+    tm = pc.ThermalModel("reader-invalid")
+    tmm = tm.tmm
     reader = pc.io.ESATANReader(tmm)
 
     with pytest.raises(ValueError, match="Unsupported ESATAN reader engine"):
