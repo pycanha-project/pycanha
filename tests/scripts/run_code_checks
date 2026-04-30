@@ -1,0 +1,30 @@
+.PHONY: quality lint format mypy pyright ty bandit metadata test
+
+ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
+
+quality: lint format mypy pyright ty bandit metadata
+	@echo "✓ All quality checks passed"
+
+lint:
+	cd $(ROOT_DIR) && uv run ruff check src/ tests/
+
+format:
+	cd $(ROOT_DIR) && uv run ruff format --check src/ tests/
+
+mypy:
+	cd $(ROOT_DIR) && uv run mypy src/
+
+pyright:
+	cd $(ROOT_DIR) && uv run pyright
+
+ty:
+	-cd $(ROOT_DIR) && uv run ty check src/
+
+bandit:
+	cd $(ROOT_DIR) && uv run bandit -r src/ -c pyproject.toml
+
+metadata:
+	cd $(ROOT_DIR) && uv run validate-pyproject pyproject.toml
+
+test:
+	cd $(ROOT_DIR) && uv run pytest

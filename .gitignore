@@ -10,7 +10,6 @@ build/
 
 
 # uv
-uv.lock
 
 # pytest
 results.json

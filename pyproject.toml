@@ -50,16 +50,46 @@ packages = ["src/pycanha"]
 
 [dependency-groups]
 dev = [
+    # Lint / format
+    "ruff>=0.6",
+    # Type checkers
     "mypy>=1.10",
+    "pyright>=1.1.380",
+    "ty>=0.0.30",
+    # Security & metadata
+    "bandit[toml]>=1.7",
+    "pip-audit>=2.7",
+    "validate-pyproject>=0.19",
+    "zizmor>=0.6",
+    # Testing
     "pytest>=8.0",
-    "ruff>=0.4",
+    "pytest-cov>=5.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/pycanha"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 src = ["src"]
 
@@ -78,16 +108,40 @@ select = [
     "PIE",   # misc lints
     "PT",    # pytest style
     "RUF",   # ruff-specific
+    "S",     # flake8-bandit (security; some overlap with bandit but cheap)
+    "A",     # flake8-builtins (don't shadow builtins)
+    "RET",   # flake8-return
+    "ARG",   # unused arguments
+    "PTH",   # use pathlib
+    "ERA",   # eradicate (commented-out code)
+    "PL",    # pylint subset (subset that's actually useful)
+    "TRY",   # tryceratops (exception antipatterns)
+    "PERF",  # perflint
+]
+ignore = [
+    "PLR0913",  # too many arguments - common in scientific code
+    "PLR2004",  # magic value comparison - too noisy in scientific code
+    "TRY003",   # long exception messages - fine
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",     # asserts are the whole point of pytest
+    "PLR2004",  # magic numbers in tests are fine
+    "ARG",      # fixtures often look unused
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["pycanha"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
 
 [[tool.mypy.overrides]]
 module = "pycanha_core.*"
@@ -96,3 +150,17 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "h5py.*"
 ignore_missing_imports = true
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+reportMissingImports = "error"
+reportMissingTypeStubs = false
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]

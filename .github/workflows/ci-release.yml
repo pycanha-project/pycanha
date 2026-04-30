@@ -1,0 +1,95 @@
+name: Release
+
+env:
+  PYTHON_PRIMARY: "3.13"
+  UV_VERSION: "0.5.11"
+
+"on":
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-gates:
+    name: "Verify quality + test gates passed"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: "Check Quality workflow status on this SHA"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA="${{ github.sha }}"
+          for wf in "Quality" "Tests"; do
+            status=$(gh run list \
+              --workflow="$wf" \
+              --commit="$SHA" \
+              --limit=1 \
+              --json conclusion \
+              --jq '.[0].conclusion')
+            if [[ "$status" != "success" ]]; then
+              echo "Workflow '$wf' did not succeed on $SHA (status: $status)"
+              exit 1
+            fi
+            echo "'$wf' succeeded on $SHA"
+          done
+
+  build:
+    name: "Build sdist + wheel (Py 3.13)"
+    needs: [verify-gates]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv python install "$PYTHON_PRIMARY"
+      - name: "uv build"
+        run: uv build
+      - name: "Verify built version matches release tag"
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${TAG#v}"
+          WHEEL=$(ls dist/*.whl | head -n1)
+          PKG_VERSION=$(echo "$WHEEL" | sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+[^-]*)-.*/\1/')
+          if [[ "$TAG_VERSION" != "$PKG_VERSION" ]]; then
+            echo "Tag version ($TAG_VERSION) != package version ($PKG_VERSION)"
+            exit 1
+          fi
+          echo "Tag matches package version: $PKG_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: "Publish to PyPI"
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pycanha
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -23,8 +23,10 @@ class ThermalModel(pcc.tmm.ThermalModel):
         if tmm is None:
             tmm = ThermalMathematicalModel(name)
             gmm = pcc.gmm.GeometryModel(name)
+        elif gmm is None:
+            msg = "tmm and gmm must be provided together"
+            raise ValueError(msg)
 
-        assert gmm is not None
         super().__init__(name, tmm, gmm)
 
         self._tmm = tmm

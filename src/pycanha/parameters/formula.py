@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import pycanha_core as pcc
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 DerivativeParameterRegistry = pcc.parameters.DerivativeParameterRegistry
 Formula = pcc.parameters.Formula

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import pycanha_core as pcc
 
 from .formula import GeneralFormula
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class Formulas(pcc.parameters.Formulas):
@@ -21,8 +24,10 @@ class Formulas(pcc.parameters.Formulas):
 
         if network is None:
             super().__init__()
+        elif parameters is None:
+            msg = "network and parameters must be provided together"
+            raise ValueError(msg)
         else:
-            assert parameters is not None
             super().__init__(network, parameters)
 
         self._general_formulas: list[GeneralFormula] = []

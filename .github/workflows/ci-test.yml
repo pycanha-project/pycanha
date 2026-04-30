@@ -1,0 +1,105 @@
+name: Tests
+
+env:
+  PYTHON_VERSIONS: '["3.13", "3.14"]'
+  PYTHON_PRIMARY: "3.13"
+  UV_VERSION: "0.5.11"
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      python-versions: ${{ env.PYTHON_VERSIONS }}
+      python-primary: ${{ env.PYTHON_PRIMARY }}
+      uv-version: ${{ env.UV_VERSION }}
+    steps:
+      - name: Show Python versions under test
+        run: |
+          echo "Python versions under test: $PYTHON_VERSIONS"
+
+  test:
+    name: "pytest - ${{ matrix.os }} / Py ${{ matrix.python-version }}"
+    needs: [setup]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - name: "pytest with coverage"
+        run: >
+          uv run pytest
+          --cov=src/pycanha
+          --cov-report=xml
+          --cov-report=term
+          --junitxml=junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
+      - name: "Upload junit report"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.os }}-${{ matrix.python-version }}
+          path: junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
+      - name: "Upload coverage (linux/primary only)"
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == needs.setup.outputs.python-primary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  coverage-report:
+    name: "Coverage report (non-blocking)"
+    needs: [setup, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-xml
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv python install ${{ needs.setup.outputs.python-primary }}
+      - run: uv sync --locked
+      - name: "Print coverage summary"
+        run: uv run coverage report --rcfile=pyproject.toml || true
+
+  test-gate:
+    name: "Test gate (blocking)"
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: "Verify test matrix succeeded"
+        run: |
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "Test matrix failed."
+            exit 1
+          fi
+          echo "All tests passed."

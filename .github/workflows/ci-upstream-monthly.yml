@@ -1,0 +1,38 @@
+name: Monthly dependency update
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.5.11"
+          enable-cache: true
+      - run: uv python install 3.13
+      - name: "Refresh uv.lock"
+        run: uv lock --upgrade
+      - name: "Open PR if lockfile changed"
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore(deps): monthly uv.lock refresh"
+          title: "chore(deps): monthly uv.lock refresh"
+          body: |
+            Automated monthly refresh of `uv.lock` via `uv lock --upgrade`.
+
+            CI on this PR runs the full quality + test matrix against the
+            newly-resolved dependency versions. Merge if green; investigate
+            or pin in `pyproject.toml` if red.
+          branch: chore/monthly-lock-refresh
+          delete-branch: true
+          labels: dependencies

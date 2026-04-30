@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
+import h5py
 import numpy as np
 import pycanha_core as pcc
 
@@ -64,14 +65,12 @@ class ESATANReader:
         reader.read_tmd(str(filepath))
 
     def _read_tmd_python(self, filepath: Path, *, verbose: bool) -> None:
-        import h5py  # type: ignore[import-untyped]
-
         if verbose:
             self._logger.info(f"Reading ESATAN TMD with Python engine: {filepath}")
 
         with h5py.File(filepath, "r") as handle:
-            analysis_group = handle[_ANALYSIS_GROUP]
-            data_group = analysis_group[_DATA_GROUP]
+            analysis_group: Any = handle[_ANALYSIS_GROUP]
+            data_group: Any = analysis_group[_DATA_GROUP]
 
             node_numbers_with_inactive = np.asarray(analysis_group["thermalNodes"])[:, 0]
             node_real_data = np.asarray(data_group["thermalNodesRealData"])[0]

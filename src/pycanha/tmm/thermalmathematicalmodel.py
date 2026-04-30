@@ -6,6 +6,7 @@ from typing import Self
 
 import pycanha_core as pcc
 
+from pycanha.io import ESATANReader
 from pycanha.parameters.formulas import Formulas
 from pycanha.parameters.parameters import Parameters
 from pycanha.tmm.conductivecouplings import ConductiveCouplings
@@ -77,8 +78,6 @@ class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
         verbose: bool = False,
         **kwargs: object,
     ) -> None:
-        from pycanha.io import ESATANReader
-
         engine = kwargs.pop("engine", "cpp")
         if kwargs:
             unexpected = ", ".join(sorted(kwargs))
