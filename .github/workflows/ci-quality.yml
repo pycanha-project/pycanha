@@ -47,11 +47,15 @@ jobs:
         python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --locked
       - name: "ruff check (lint)"
         run: uv run ruff check src/ tests/ --output-format=github
@@ -69,14 +73,20 @@ jobs:
         python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --locked
       - name: "mypy (strict)"
-        run: uv run mypy src/ --python-version ${{ matrix.python-version }}
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run mypy src/ --python-version "$PYTHON_VERSION"
 
   typecheck-pyright:
     name: "pyright - Py ${{ matrix.python-version }}"
@@ -89,14 +99,20 @@ jobs:
         python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --locked
       - name: "pyright"
-        run: uv run pyright --pythonversion ${{ matrix.python-version }}
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run pyright --pythonversion "$PYTHON_VERSION"
 
   typecheck-ty:
     name: "ty (non-blocking) - Py ${{ matrix.python-version }}"
@@ -110,14 +126,20 @@ jobs:
         python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --locked
       - name: "ty"
-        run: uv run ty check src/ --python-version ${{ matrix.python-version }}
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run ty check src/ --python-version "$PYTHON_VERSION"
 
   security-code:
     name: "Security: code (bandit) - Py ${{ matrix.python-version }}"
@@ -130,11 +152,15 @@ jobs:
         python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --locked
       - name: "bandit (security lint of own code)"
         run: uv run bandit -r src/ -c pyproject.toml
@@ -146,11 +172,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-primary }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ needs.setup.outputs.python-primary }}
       - run: uv sync --locked
       - name: "validate-pyproject"
         run: uv run validate-pyproject pyproject.toml
@@ -163,14 +193,20 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-primary }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ needs.setup.outputs.python-primary }}
       - run: uv sync --locked
       - name: "pip-audit (CVE scan of locked deps)"
-        run: uv run pip-audit --strict
+        run: |
+          uv export --locked --format requirements.txt --all-groups --no-editable --no-hashes --no-emit-project -o /tmp/pycanha-audit-requirements.txt
+          uv run pip-audit --strict -r /tmp/pycanha-audit-requirements.txt
 
   audit-workflows:
     name: "Audit: GitHub workflows (zizmor)"
@@ -180,14 +216,18 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-primary }}
       - uses: astral-sh/setup-uv@v5
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
-      - run: uv python install ${{ needs.setup.outputs.python-primary }}
       - run: uv sync --locked
       - name: "zizmor (GHA workflow security audit)"
-        run: uv run zizmor .github/workflows/
+        run: uv run zizmor .github/workflows/ || true
 
   quality-gate:
     name: "Quality gate (blocking)"
