@@ -205,7 +205,7 @@ jobs:
       - run: uv sync --locked
       - name: "pip-audit (CVE scan of locked deps)"
         run: |
-          uv export --locked --format requirements.txt --all-groups --no-editable --no-hashes --no-emit-project -o /tmp/pycanha-audit-requirements.txt
+          uv export --locked --format requirements-txt --all-groups --no-editable --no-hashes --no-emit-project -o /tmp/pycanha-audit-requirements.txt
           uv run pip-audit --strict -r /tmp/pycanha-audit-requirements.txt
 
   audit-workflows:
