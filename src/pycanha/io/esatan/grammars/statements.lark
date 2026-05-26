@@ -8,16 +8,12 @@
 
 ?start: assignment | call
 
-assignment: NAME "=" rhs
-call: CALL NAME callargs?
-
-callargs: "(" ARGTEXT? ")"
-rhs: RHSTEXT
+assignment: NAME "=" REST
+call: CALL REST?
 
 CALL.5: /CALL\b/i
 NAME: /[A-Za-z_][A-Za-z0-9_]*/
-ARGTEXT: /[^)]+/
-RHSTEXT: /.+/
+REST: /[^\n]+/
 
 %import common.WS_INLINE
 %ignore WS_INLINE

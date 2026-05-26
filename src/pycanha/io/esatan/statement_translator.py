@@ -30,25 +30,8 @@ from importlib import resources
 from lark import Lark, Token, Tree
 from lark.exceptions import LarkError
 
+from .attributes import ESATAN_NODE_ATTRS
 from .preprocessor import sanitise_d_notation
-
-# ESATAN node attribute (uppercase) -> pycanha-core Nodes setter suffix.
-# ``set_T`` / ``set_C`` keep their upper-case names; the rest are lower-case.
-_NODE_ATTR_SETTERS: dict[str, str] = {
-    "T": "set_T",
-    "C": "set_C",
-    "QI": "set_qi",
-    "QS": "set_qs",
-    "QA": "set_qa",
-    "QE": "set_qe",
-    "QR": "set_qr",
-    "A": "set_a",
-    "ALP": "set_aph",
-    "EPS": "set_eps",
-    "FX": "set_fx",
-    "FY": "set_fy",
-    "FZ": "set_fz",
-}
 
 # LHS of an entity assignment: an attribute prefix immediately followed by a
 # node number, e.g. ``QI1060``, ``T2000``, ``C27``.
@@ -142,16 +125,15 @@ def _translate_statement(code: str) -> str:
 
 def _translate_assignment(tree: Tree) -> str:
     name = str(_child_token(tree, "NAME"))
-    rhs_tree = next(c for c in tree.children if isinstance(c, Tree) and c.data == "rhs")
-    rhs = sanitise_d_notation(str(rhs_tree.children[0]).strip())
+    rhs = sanitise_d_notation(str(_child_token(tree, "REST")).strip())
 
     match = _ENTITY_LHS_RE.match(name)
     if match:
-        prefix = match.group(1).upper()
-        setter = _NODE_ATTR_SETTERS.get(prefix)
-        if setter is not None:
+        python_attr = ESATAN_NODE_ATTRS.get(match.group(1).upper())
+        if python_attr is not None:
             node_num = int(match.group(2))
-            return f"model.nodes.{setter}({node_num}, {rhs})"
+            # Setter is uniformly "set_" + python attribute (set_T, set_qi, ...).
+            return f"model.nodes.set_{python_attr}({node_num}, {rhs})"
     return f"{name} = {rhs}"
 
 

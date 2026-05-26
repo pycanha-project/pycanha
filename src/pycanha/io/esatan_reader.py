@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -12,6 +13,7 @@ import h5py
 import numpy as np
 import pycanha_core as pcc
 
+from pycanha.io.esatan.attributes import ESATAN_NODE_ATTRS, FORMULA_ENTITY_ATTRS
 from pycanha.io.esatan.codegen import emit_script
 from pycanha.io.esatan.errors import EsatanParseError, get_parser_logger
 from pycanha.io.esatan.expressions import SafeEvalError, safe_arithmetic
@@ -45,36 +47,6 @@ _NODE_ATTRIBUTE_INDICES: Final[dict[str, int]] = {
     "fx": 13,
     "fy": 14,
     "fz": 15,
-}
-
-# ESATAN node attribute (uppercase) -> pcc.parameters.Entity factory method.
-# Only these attributes can carry a formula (the engine has no entity type for
-# A / EPS / ALP / FX / FY / FZ); others fall back to a warning.
-_ENTITY_ATTR_FACTORIES: Final[dict[str, str]] = {
-    "T": "t",
-    "C": "c",
-    "QI": "qi",
-    "QS": "qs",
-    "QA": "qa",
-    "QE": "qe",
-    "QR": "qr",
-}
-
-# ESATAN node attribute names (uppercase) -> Python attribute on pcc.tmm.Node.
-_ESATAN_NODE_ATTRS: Final[dict[str, str]] = {
-    "T": "T",
-    "C": "C",
-    "QI": "qi",
-    "QS": "qs",
-    "QA": "qa",
-    "QE": "qe",
-    "QR": "qr",
-    "EPS": "eps",
-    "ALP": "aph",
-    "A": "a",
-    "FX": "fx",
-    "FY": "fy",
-    "FZ": "fz",
 }
 
 _BLOCK_KEYWORDS: Final[tuple[str, ...]] = (
@@ -121,6 +93,39 @@ _ARRAY_1D_RE = re.compile(
 _TABLE_KEYWORD_RE = re.compile(r"^\s*\$TABLE\b", re.MULTILINE)
 
 
+@dataclass(frozen=True)
+class _PendingFormula:
+    """A NODE/CONDUCTOR expression whose formula is attached only after the
+    whole network is built (the expression may reference other nodes/couplings).
+
+    ``node2 is None`` marks a node attribute (``kind`` is the ESATAN attribute,
+    e.g. ``"QI"``); otherwise it is a coupling (``kind`` is ``"GL"`` / ``"GR"``).
+    """
+
+    expr: str
+    kind: str
+    node1: int
+    node2: int | None = None
+
+    @property
+    def label(self) -> str:
+        if self.node2 is None:
+            return f"{self.kind}{self.node1}"
+        return f"{self.kind}({self.node1},{self.node2})"
+
+    def entity(self, network: Any) -> Any:
+        """Build the pycanha-core ``Entity`` this formula targets."""
+        if self.node2 is not None:
+            factory = (
+                pcc.parameters.Entity.gl
+                if self.kind == "GL"
+                else pcc.parameters.Entity.gr
+            )
+            return factory(network, self.node1, self.node2)
+        factory = getattr(pcc.parameters.Entity, ESATAN_NODE_ATTRS[self.kind].lower())
+        return factory(network, self.node1)
+
+
 class ESATANReader:
     """Read ESATAN results (``.tmd``) and analysis files (``.d``).
 
@@ -158,11 +163,8 @@ class ESATANReader:
         self._arrays: dict[str, np.ndarray] = {}
         # Non-numeric NODE/CONDUCTOR expressions, attached as formulas only
         # after the whole network is built (entities need their nodes /
-        # couplings to exist).  Each item is a tuple whose first element is the
-        # kind ("ATTR" for a node attribute, or "GL"/"GR" for a coupling), the
-        # middle elements identify the entity (attribute+node, or two nodes),
-        # and the last element is the expression string.
-        self._pending_formulas: list[tuple[str | int, ...]] = []
+        # couplings to exist).
+        self._pending_formulas: list[_PendingFormula] = []
         # Best-effort Python translation of the imperative blocks, keyed by
         # block keyword (e.g. "$INITIAL"); emitted to <basename>.py on request.
         self._translated_blocks: dict[str, list[str]] = {}
@@ -379,11 +381,9 @@ class ESATANReader:
                     "# TODO: implement submodel handling in a future phase."
                 )
                 raise EsatanParseError(msg)
-            name = model_match.group(1)
-            try:
-                self._tm.name = name  # type: ignore[misc]  # read-only on some builds
-            except AttributeError:
-                self._tmm.name = name
+            # ThermalModel.name is a read-only property that proxies the owned
+            # TMM, so set the name on the TMM (which always has a setter).
+            self._tmm.name = model_match.group(1)
 
         # Strip the $MODEL/$ENDMODEL envelope before splitting blocks.
         body = _ENDMODEL_RE.sub("", _MODEL_RE.sub("", sanitised))
@@ -578,7 +578,7 @@ class ESATANReader:
         substitutions = self._effective_subs(subs)
         text = _apply_substitutions(text, substitutions)
 
-        for definition in _split_definitions(text):
+        for definition in _split_top_level(text, ";"):
             self._parse_one_node(definition)
 
     def parse_conductors(
@@ -602,7 +602,7 @@ class ESATANReader:
         substitutions = self._effective_subs(subs)
         text = _apply_substitutions(text, substitutions)
 
-        for definition in _split_definitions(text):
+        for definition in _split_top_level(text, ";"):
             self._parse_one_conductor(definition, wanted)
 
     # ------------------------------------------- stubs for later phases
@@ -726,17 +726,17 @@ class ESATANReader:
         if prefix == "B":
             node.type = pcc.NodeType.BOUNDARY
 
-        attribute_assignments = _split_top_level_commas(rest)
+        attribute_assignments = _split_top_level(rest, ",")
         for raw_assignment in attribute_assignments:
             if "=" not in raw_assignment:
                 continue
             attr_text, expr = raw_assignment.split("=", 1)
             attr_name = attr_text.strip().upper()
             expr = expr.strip()
-            if attr_name not in _ESATAN_NODE_ATTRS:
+            if attr_name not in ESATAN_NODE_ATTRS:
                 # Drop label form (anything before the comma is consumed by head_match).
                 continue
-            python_attr = _ESATAN_NODE_ATTRS[attr_name]
+            python_attr = ESATAN_NODE_ATTRS[attr_name]
             value = self._resolve_node_attribute_value(node_num, attr_name, expr)
             if value is not None:
                 setattr(node, python_attr, value)
@@ -768,7 +768,13 @@ class ESATANReader:
             return safe_arithmetic(clean)
         except SafeEvalError:
             pass
-        self._pending_formulas.append(("ATTR", attr_name, node_num, clean))
+        if attr_name in FORMULA_ENTITY_ATTRS:
+            self._pending_formulas.append(_PendingFormula(clean, attr_name, node_num))
+        else:
+            self._logger.warning(
+                f"{attr_name}{node_num}: attribute {attr_name!r} cannot carry a "
+                f"formula ({clean!r}); no formula attached."
+            )
         return None
 
     def _parse_one_conductor(
@@ -830,7 +836,7 @@ class ESATANReader:
         # Symbolic: create the coupling with a placeholder value and defer the
         # formula (the entity references this coupling, which must exist).
         self._add_conductor_value(kind, n1, n2, 0.0)
-        self._pending_formulas.append((kind, n1, n2, clean_expr))
+        self._pending_formulas.append(_PendingFormula(clean_expr, kind, n1, n2))
 
     def _add_conductor_value(
         self,
@@ -866,20 +872,20 @@ class ESATANReader:
         network = self._tmm.network
         formulas = self._tmm.formulas
         attached = 0
-        for spec in self._pending_formulas:
-            expr = str(spec[-1])
+        for pending in self._pending_formulas:
             try:
-                entity, label = self._build_entity(network, spec)
+                entity = pending.entity(network)
             except Exception as exc:
                 self._logger.warning(
-                    f"formula {expr!r}: could not build entity ({exc}); skipping"
+                    f"{pending.label}: could not build entity for "
+                    f"{pending.expr!r} ({exc}); skipping"
                 )
                 continue
             try:
-                formula = formulas.create_formula(entity, expr)
+                formula = formulas.create_formula(entity, pending.expr)
             except (ValueError, RuntimeError) as exc:
                 self._logger.warning(
-                    f"{label} = {expr!r}: cannot create formula "
+                    f"{pending.label} = {pending.expr!r}: cannot create formula "
                     f"(likely an ESATAN intrinsic not yet supported: {exc}); "
                     "no formula attached. # TODO: GeneralFormula (Python backend)."
                 )
@@ -896,29 +902,6 @@ class ESATANReader:
                     "manually before solving."
                 )
 
-    def _build_entity(
-        self,
-        network: Any,
-        spec: tuple[str | int, ...],
-    ) -> tuple[Any, str]:
-        """Build an ``Entity`` for a pending-formula spec; return (entity, label)."""
-        kind = spec[0]
-        if kind == "ATTR":
-            _, attr_name, node_num, _ = spec
-            factory_name = _ENTITY_ATTR_FACTORIES.get(str(attr_name).upper())
-            if factory_name is None:
-                msg = f"node attribute {attr_name!r} has no formula entity"
-                raise ValueError(msg)
-            factory = getattr(pcc.parameters.Entity, factory_name)
-            return factory(network, int(node_num)), f"{attr_name}{node_num}"
-        # "GL" / "GR" conductor.
-        _, n1, n2, _ = spec
-        if kind == "GL":
-            entity = pcc.parameters.Entity.gl(network, int(n1), int(n2))
-        else:
-            entity = pcc.parameters.Entity.gr(network, int(n1), int(n2))
-        return entity, f"{kind}({n1},{n2})"
-
 
 # ---------------------------------------------------------- module helpers
 
@@ -927,18 +910,17 @@ def _apply_substitutions(text: str, subs: dict[str, str]) -> str:
     if not subs:
         return text
     # Match longest first so e.g. "Cp_Delrin_X" beats "Cp_Delrin".
-    for name in sorted(subs, key=len, reverse=True):
+    for name, value in sorted(subs.items(), key=lambda kv: len(kv[0]), reverse=True):
         pattern = re.compile(r"\b" + re.escape(name) + r"\b")
-        text = pattern.sub(subs[name], text)
+        text = pattern.sub(value, text)
     return text
 
 
-def _split_definitions(text: str) -> list[str]:
-    """Split a block on top-level ``;`` separators.
+def _split_top_level(text: str, sep: str) -> list[str]:
+    """Split ``text`` on top-level occurrences of ``sep``, respecting parens.
 
-    Keeps the surrounding whitespace per fragment.  Parentheses depth is
-    respected so commas/semicolons inside ``GL(1,2)`` or ``CNDFN1(...)`` do
-    not split a definition.
+    A separator inside ``GL(1,2)`` or ``CNDFN1(...)`` does not split.  Each
+    fragment is stripped and empty fragments are dropped.
     """
     parts: list[str] = []
     buf: list[str] = []
@@ -946,41 +928,15 @@ def _split_definitions(text: str) -> list[str]:
     for ch in text:
         if ch == "(":
             depth += 1
-            buf.append(ch)
         elif ch == ")":
             depth -= 1
-            buf.append(ch)
-        elif ch == ";" and depth == 0:
+        if ch == sep and depth == 0:
             parts.append("".join(buf).strip())
             buf = []
         else:
             buf.append(ch)
-    tail = "".join(buf).strip()
-    if tail:
-        parts.append(tail)
+    parts.append("".join(buf).strip())
     return [p for p in parts if p]
-
-
-def _split_top_level_commas(text: str) -> list[str]:
-    parts: list[str] = []
-    buf: list[str] = []
-    depth = 0
-    for ch in text:
-        if ch == "(":
-            depth += 1
-            buf.append(ch)
-        elif ch == ")":
-            depth -= 1
-            buf.append(ch)
-        elif ch == "," and depth == 0:
-            parts.append("".join(buf).strip())
-            buf = []
-        else:
-            buf.append(ch)
-    tail = "".join(buf).strip()
-    if tail:
-        parts.append(tail)
-    return parts
 
 
 _ARRAY_SHORTHAND_RE = re.compile(r"(\d+)\s*@\s*(.+)")
@@ -988,7 +944,7 @@ _ARRAY_SHORTHAND_RE = re.compile(r"(\d+)\s*@\s*(.+)")
 
 def _parse_array_values(body: str, expected: int) -> list[float]:
     """Parse the comma-separated value list of a ``$ARRAYS`` declaration."""
-    raw_tokens = _split_top_level_commas(body)
+    raw_tokens = _split_top_level(body, ",")
     out: list[float] = []
     for raw_token in raw_tokens:
         token = raw_token.strip()

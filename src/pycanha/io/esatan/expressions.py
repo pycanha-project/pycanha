@@ -29,8 +29,6 @@ class SafeEvalError(Exception):
     """Raised when :func:`safe_arithmetic` cannot evaluate an expression."""
 
 
-_SafeEvalError = SafeEvalError  # legacy alias used inside this module
-
 _BIN_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -61,7 +59,7 @@ def safe_arithmetic(
         tree = ast.parse(text, mode="eval")
     except SyntaxError as exc:
         msg = f"could not parse arithmetic expression {text!r}: {exc}"
-        raise _SafeEvalError(msg) from exc
+        raise SafeEvalError(msg) from exc
 
     def _eval(node: ast.AST) -> float:
         if isinstance(node, ast.Expression):
@@ -70,17 +68,17 @@ def safe_arithmetic(
             if isinstance(node.value, (int, float)):
                 return float(node.value)
             msg = f"unsupported literal {node.value!r}"
-            raise _SafeEvalError(msg)
+            raise SafeEvalError(msg)
         if isinstance(node, ast.Name):
             if node.id in params:
                 return float(params[node.id])
             msg = f"undefined name {node.id!r}"
-            raise _SafeEvalError(msg)
+            raise SafeEvalError(msg)
         if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPS:
             return _UNARY_OPS[type(node.op)](_eval(node.operand))
         if isinstance(node, ast.BinOp) and type(node.op) in _BIN_OPS:
             return _BIN_OPS[type(node.op)](_eval(node.left), _eval(node.right))
         msg = f"unsupported expression element: {ast.dump(node)}"
-        raise _SafeEvalError(msg)
+        raise SafeEvalError(msg)
 
     return _eval(tree)

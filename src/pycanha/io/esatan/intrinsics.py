@@ -1,19 +1,16 @@
 """Pure-Python implementations of ESATAN/Mortran intrinsics.
 
-Used **only** for parse-time snapshot evaluation of expressions in the
-$NODES and $CONDUCTORS blocks.  When pycanha-core exposes a C++
-ExpressionFormula that understands these intrinsics, the snapshot path
-can be replaced with a real formula attached to the entity.
+Currently **unused** by the reader: declarative ``$NODES`` / ``$CONDUCTORS``
+expressions go straight to the pycanha-core formula engine, which rejects
+intrinsics (the reader logs a warning and attaches no formula).  This module
+is kept to back a future ``GeneralFormula`` Python backend (milestone M4) that
+will evaluate the rejected intrinsic expressions.
 
-Each registered intrinsic is a ``Callable[[Sequence[float], dict[str, ndarray]], float]``
-where the first argument is the list of evaluated positional arguments
-and the second is the dictionary of ``$ARRAYS`` data parsed earlier.
-The dictionary maps an array name to a 2-D ``numpy.ndarray`` whose first
-column is the lookup variable and remaining columns are the interpolated
-values (matching the ESATAN convention).
-
-# TODO: replace the snapshot path with a C++ ExpressionFormula once the
-# core supports intrinsic dispatch over ThermalData tables.
+Each registered intrinsic is a ``Callable[[list[object], dict[str, ndarray]], float]``
+where the first argument is the list of evaluated positional arguments and the
+second is the dictionary of ``$ARRAYS`` data.  The dictionary maps an array
+name to a 2-D ``numpy.ndarray`` whose first column is the lookup variable and
+remaining columns are the interpolated values (matching the ESATAN convention).
 """
 
 from __future__ import annotations
@@ -27,6 +24,19 @@ IntrinsicFn = Callable[[list[object], dict[str, np.ndarray]], float]
 INTRINSIC_NAMES: frozenset[str] = frozenset(
     {"INTRP1", "INTRP2", "NODFN1", "CNDFN1", "TAV"}
 )
+
+
+def _as_float(value: object) -> float:
+    """Coerce a parsed intrinsic argument to ``float`` (numbers or numeric strings)."""
+    if isinstance(value, (int, float, str)):
+        return float(value)
+    msg = f"intrinsic expected a number, got {type(value).__name__}"
+    raise TypeError(msg)
+
+
+def _as_int(value: object) -> int:
+    """Coerce a parsed intrinsic argument to ``int``."""
+    return int(_as_float(value))
 
 
 def _interp_column(t: float, table: np.ndarray, col_index: int) -> float:
@@ -55,9 +65,9 @@ def _intrp1(args: list[object], arrays: dict[str, np.ndarray]) -> float:
     if len(args) != 3:
         msg = f"INTRP1 expects 3 args, got {len(args)}"
         raise TypeError(msg)
-    t = float(args[0])  # type: ignore[arg-type]
+    t = _as_float(args[0])
     table = _resolve_table(args[1], arrays)
-    idx = int(args[2])  # type: ignore[arg-type]
+    idx = _as_int(args[2])
     return _interp_column(t, table, idx)
 
 
@@ -69,10 +79,10 @@ def _cndfn1(args: list[object], arrays: dict[str, np.ndarray]) -> float:
     if len(args) != 4:
         msg = f"CNDFN1 expects 4 args, got {len(args)}"
         raise TypeError(msg)
-    t1 = float(args[0])  # type: ignore[arg-type]
-    t2 = float(args[1])  # type: ignore[arg-type]
+    t1 = _as_float(args[0])
+    t2 = _as_float(args[1])
     table = _resolve_table(args[2], arrays)
-    idx = int(args[3])  # type: ignore[arg-type]
+    idx = _as_int(args[3])
     return _interp_column(0.5 * (t1 + t2), table, idx)
 
 
@@ -80,7 +90,7 @@ def _tav(args: list[object], _arrays: dict[str, np.ndarray]) -> float:
     if len(args) != 2:
         msg = f"TAV expects 2 args, got {len(args)}"
         raise TypeError(msg)
-    return 0.5 * (float(args[0]) + float(args[1]))  # type: ignore[arg-type]
+    return 0.5 * (_as_float(args[0]) + _as_float(args[1]))
 
 
 def _intrp2(_args: list[object], _arrays: dict[str, np.ndarray]) -> float:
