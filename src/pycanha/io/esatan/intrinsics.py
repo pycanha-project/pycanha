@@ -21,9 +21,7 @@ import numpy as np
 
 IntrinsicFn = Callable[[list[object], dict[str, np.ndarray]], float]
 
-INTRINSIC_NAMES: frozenset[str] = frozenset(
-    {"INTRP1", "INTRP2", "NODFN1", "CNDFN1", "TAV"}
-)
+INTRINSIC_NAMES: frozenset[str] = frozenset({"INTRP1", "INTRP2", "NODFN1", "CNDFN1", "TAV"})
 
 
 def _as_float(value: object) -> float:

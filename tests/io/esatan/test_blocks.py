@@ -22,6 +22,7 @@ def reader() -> ESATANReader:
 
 # ---------------------------------------------------------------- $LOCALS
 
+
 class TestParseLocals:
     def test_real_section(self, reader: ESATANReader) -> None:
         text = "$REAL\n  k = 0.5;  density = 1800.0;\n"
@@ -29,9 +30,7 @@ class TestParseLocals:
         assert out == {"k": "0.5", "density": "1800.0"}
         assert reader._locals == out
 
-    def test_locals_property_exposes_parsed_dict(
-        self, reader: ESATANReader
-    ) -> None:
+    def test_locals_property_exposes_parsed_dict(self, reader: ESATANReader) -> None:
         reader.parse_locals("$REAL\n  k = 0.5;\n")
         assert reader.locals == {"k": "0.5"}
         # Property returns a copy: mutating it does not corrupt the reader.
@@ -39,11 +38,7 @@ class TestParseLocals:
         assert reader.locals == {"k": "0.5"}
 
     def test_multiple_type_sections(self, reader: ESATANReader) -> None:
-        text = (
-            "$INTEGER\n  N = 32;\n"
-            "$REAL\n  Cp = 2900.0;\n"
-            "$CHARACTER\n  CMOD = 'PANEL:1';\n"
-        )
+        text = "$INTEGER\n  N = 32;\n$REAL\n  Cp = 2900.0;\n$CHARACTER\n  CMOD = 'PANEL:1';\n"
         out = reader.parse_locals(text)
         assert out["N"] == "32"
         assert out["Cp"] == "2900.0"
@@ -52,6 +47,7 @@ class TestParseLocals:
 
 
 # -------------------------------------------------------------- $CONSTANTS
+
 
 class TestParseConstants:
     def test_simple_real(self, reader: ESATANReader) -> None:
@@ -66,15 +62,9 @@ class TestParseConstants:
         reader.parse_constants("$REAL\n  k = base;\n")
         assert reader._tmm.parameters.get_parameter("k") == pytest.approx(0.5)
 
-    def test_arithmetic_with_existing_parameter(
-        self, reader: ESATANReader
-    ) -> None:
-        reader.parse_constants(
-            "$REAL\n  k = 2.0;\n  k_doubled = k * 2;\n"
-        )
-        assert reader._tmm.parameters.get_parameter("k_doubled") == pytest.approx(
-            4.0
-        )
+    def test_arithmetic_with_existing_parameter(self, reader: ESATANReader) -> None:
+        reader.parse_constants("$REAL\n  k = 2.0;\n  k_doubled = k * 2;\n")
+        assert reader._tmm.parameters.get_parameter("k_doubled") == pytest.approx(4.0)
 
     def test_unknown_symbol_skipped(
         self, reader: ESATANReader, caplog: pytest.LogCaptureFixture
@@ -87,11 +77,10 @@ class TestParseConstants:
 
 # ----------------------------------------------------------------- $ARRAYS
 
+
 class TestParseArrays:
     def test_2d_array(self, reader: ESATANReader) -> None:
-        reader.parse_arrays(
-            "$REAL\nCp(2,2) = 0.0, 1000.0,\n           100.0, 1100.0;\n"
-        )
+        reader.parse_arrays("$REAL\nCp(2,2) = 0.0, 1000.0,\n           100.0, 1100.0;\n")
         assert "Cp" in reader._arrays
         table = reader._arrays["Cp"]
         assert table.shape == (2, 2)
@@ -106,9 +95,7 @@ class TestParseArrays:
     def test_shorthand_repeat(self, reader: ESATANReader) -> None:
         # m@value shorthand: 2@5.0 expands to two repetitions, so the row
         # ``5.0, 1.0`` plus ``2@7.0`` yields ``5.0, 1.0, 7.0, 7.0``.
-        reader.parse_arrays(
-            "$REAL\nshort(2,2) = 5.0, 1.0,\n              2@7.0;\n"
-        )
+        reader.parse_arrays("$REAL\nshort(2,2) = 5.0, 1.0,\n              2@7.0;\n")
         table = reader._arrays["short"]
         assert table.shape == (2, 2)
         assert table[1, 0] == pytest.approx(7.0)
@@ -116,6 +103,7 @@ class TestParseArrays:
 
 
 # ----------------------------------------------------------------- $NODES
+
 
 class TestParseNodes:
     def test_diffusive_with_attrs(self, reader: ESATANReader) -> None:
@@ -130,9 +118,7 @@ class TestParseNodes:
         node = reader._tmm.nodes.get_node_from_node_num(5)
         assert node.type == pcc.NodeType.BOUNDARY
 
-    def test_inactive_skipped(
-        self, reader: ESATANReader, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_inactive_skipped(self, reader: ESATANReader, caplog: pytest.LogCaptureFixture) -> None:
         reader.parse_nodes("X9 = 'inactive', T = 0.0;\n")
         # X-nodes are skipped: the model contains no node 9.
         assert reader._tmm.nodes.num_nodes == 0
@@ -145,14 +131,13 @@ class TestParseNodes:
 
     def test_with_locals(self, reader: ESATANReader) -> None:
         reader.parse_locals("$REAL\n  Cp = 2900.0;  Dens = 1400.0;\n")
-        reader.parse_nodes(
-            "D3 = 'c', T = 25.0, C = 1.0e-7 * Cp * Dens;\n"
-        )
+        reader.parse_nodes("D3 = 'c', T = 25.0, C = 1.0e-7 * Cp * Dens;\n")
         node = reader._tmm.nodes.get_node_from_node_num(3)
         assert pytest.approx(1.0e-7 * 2900.0 * 1400.0) == node.C
 
 
 # ------------------------------------------------------------ $CONDUCTORS
+
 
 class TestParseConductors:
     def _setup_nodes(self, reader: ESATANReader) -> None:
@@ -169,9 +154,7 @@ class TestParseConductors:
     def test_pure_numeric_gr(self, reader: ESATANReader) -> None:
         self._setup_nodes(reader)
         reader.parse_conductors("GR(1,2) = 0.05D-01;\n")
-        assert reader._tmm.radiative_couplings.get_coupling_value(1, 2) == pytest.approx(
-            0.005
-        )
+        assert reader._tmm.radiative_couplings.get_coupling_value(1, 2) == pytest.approx(0.005)
 
     def test_filter_only_gl(self, reader: ESATANReader) -> None:
         self._setup_nodes(reader)
@@ -212,9 +195,7 @@ class TestParseConductors:
         # Once applied, a ParameterFormula is attached and propagated.
         reader._apply_pending_formulas()
         assert len(list(reader._tmm.formulas.formulas)) == 1
-        assert reader._tmm.conductive_couplings.get_coupling_value(1, 2) == pytest.approx(
-            2.0
-        )
+        assert reader._tmm.conductive_couplings.get_coupling_value(1, 2) == pytest.approx(2.0)
 
     def test_expression_formula_attached(self, reader: ESATANReader) -> None:
         self._setup_nodes(reader)
@@ -229,6 +210,7 @@ class TestParseConductors:
 
 # ------------------------------------------------ intrinsics rejected for now
 
+
 class TestIntrinsicsRejected:
     """ESATAN intrinsics (CNDFN1/NODFN1/...) are not yet supported by the
     formula engine; the parser logs a warning and attaches no formula.
@@ -237,12 +219,8 @@ class TestIntrinsicsRejected:
     """
 
     def test_node_capacity_with_nodfn1(self, reader: ESATANReader) -> None:
-        reader.parse_arrays(
-            "$REAL\nCp_DUT(2,2) = 0.0, 1000.0, 100.0, 1100.0;\n"
-        )
-        reader.parse_nodes(
-            "D1 = 'x', T = 25.0, C = 9.76D-06 * NODFN1(T1, Cp_DUT, 1);\n"
-        )
+        reader.parse_arrays("$REAL\nCp_DUT(2,2) = 0.0, 1000.0, 100.0, 1100.0;\n")
+        reader.parse_nodes("D1 = 'x', T = 25.0, C = 9.76D-06 * NODFN1(T1, Cp_DUT, 1);\n")
         # Capacity is left at its default; the intrinsic is rejected on apply.
         node = reader._tmm.nodes.get_node_from_node_num(1)
         assert node.C == 0.0
@@ -251,16 +229,12 @@ class TestIntrinsicsRejected:
         assert len(list(reader._tmm.formulas.formulas)) == 0
 
     def test_conductor_with_cndfn1(self, reader: ESATANReader) -> None:
-        reader.parse_arrays(
-            "$REAL\nk(2,2) = 0.0, 1.0, 100.0, 2.0;\n"
-        )
+        reader.parse_arrays("$REAL\nk(2,2) = 0.0, 1.0, 100.0, 2.0;\n")
         for nn, t in [(1, 25.0), (2, 50.0)]:
             n = pcc.tmm.Node(nn)
             n.T = t
             reader._tmm.add_node(n)
-        reader.parse_conductors(
-            "GL(1,2) = CNDFN1(T1, T2, k, 1) * 9.530846D-03;\n"
-        )
+        reader.parse_conductors("GL(1,2) = CNDFN1(T1, T2, k, 1) * 9.530846D-03;\n")
         reader._apply_pending_formulas()
         # No formula attached; coupling stays at its placeholder value.
         assert reader._tmm.conductive_couplings.get_coupling_value(1, 2) == 0.0

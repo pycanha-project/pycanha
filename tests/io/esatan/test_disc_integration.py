@@ -9,9 +9,7 @@ import pytest
 import pycanha as pc
 from pycanha.io import ESATANReader
 
-FIXTURE_DIR = (
-    Path(__file__).resolve().parents[2] / "data" / "esatan" / "DISC"
-)
+FIXTURE_DIR = Path(__file__).resolve().parents[2] / "data" / "esatan" / "DISC"
 STEADY = FIXTURE_DIR / "DISCTR_STEADY.d"
 
 

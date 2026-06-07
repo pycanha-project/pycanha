@@ -10,13 +10,7 @@ import pycanha_core as pcc
 
 from pycanha.io.esatan_reader import ESATANReader
 
-FIXTURE = (
-    Path(__file__).resolve().parents[2]
-    / "data"
-    / "esatan"
-    / "DISC"
-    / "DISCTR_TRANSIENT.d"
-)
+FIXTURE = Path(__file__).resolve().parents[2] / "data" / "esatan" / "DISC" / "DISCTR_TRANSIENT.d"
 
 
 def _parse_with_emit(tmp_path: Path) -> Path:

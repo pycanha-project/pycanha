@@ -32,6 +32,4 @@ ESATAN_NODE_ATTRS: Final[dict[str, str]] = {
 }
 
 # Attributes that can carry a formula (the engine has an Entity factory for them).
-FORMULA_ENTITY_ATTRS: Final[frozenset[str]] = frozenset(
-    {"T", "C", "QI", "QS", "QA", "QE", "QR"}
-)
+FORMULA_ENTITY_ATTRS: Final[frozenset[str]] = frozenset({"T", "C", "QI", "QS", "QA", "QE", "QR"})

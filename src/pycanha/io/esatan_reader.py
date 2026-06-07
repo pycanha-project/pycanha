@@ -71,17 +71,11 @@ _DATA_BLOCKS: Final[frozenset[str]] = frozenset(
 _MODEL_RE = re.compile(r"\$MODEL\s+([A-Za-z_][A-Za-z0-9_]*)([^\n]*)")
 _ENDMODEL_RE = re.compile(r"\$ENDMODEL\b[^\n]*")
 _TYPE_HEADER_RE = re.compile(r"^\s*\$(REAL|INTEGER|CHARACTER|TABLE|CONTROL)\b", re.MULTILINE)
-_DEFINITION_RE = re.compile(
-    r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?);", re.DOTALL
-)
-_NODE_HEAD_RE = re.compile(
-    r"\b([DBX])\s*(\d+)\s*(?:=\s*'([^']*)'\s*)?", re.IGNORECASE
-)
+_DEFINITION_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?);", re.DOTALL)
+_NODE_HEAD_RE = re.compile(r"\b([DBX])\s*(\d+)\s*(?:=\s*'([^']*)'\s*)?", re.IGNORECASE)
 _GL_RE = re.compile(r"\bGL\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*=\s*(.+)", re.DOTALL)
 _GR_RE = re.compile(r"\bGR\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*=\s*(.+)", re.DOTALL)
-_OTHER_COND_RE = re.compile(
-    r"\b(GL|GR|GF|GV|GP|M)\s*\([^)]*\)\s*=", re.IGNORECASE
-)
+_OTHER_COND_RE = re.compile(r"\b(GL|GR|GF|GV|GP|M)\s*\([^)]*\)\s*=", re.IGNORECASE)
 _ARRAY_DEF_RE = re.compile(
     r"([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*=\s*(.*?);",
     re.DOTALL,
@@ -116,11 +110,7 @@ class _PendingFormula:
     def entity(self, network: Any) -> Any:
         """Build the pycanha-core ``Entity`` this formula targets."""
         if self.node2 is not None:
-            factory = (
-                pcc.parameters.Entity.gl
-                if self.kind == "GL"
-                else pcc.parameters.Entity.gr
-            )
+            factory = pcc.parameters.Entity.gl if self.kind == "GL" else pcc.parameters.Entity.gr
             return factory(network, self.node1, self.node2)
         factory = getattr(pcc.parameters.Entity, ESATAN_NODE_ATTRS[self.kind].lower())
         return factory(network, self.node1)
@@ -522,14 +512,11 @@ class ESATANReader:
             try:
                 values = _parse_array_values(body, cols * rows)
             except ValueError as exc:
-                self._logger.warning(
-                    f"$ARRAYS '{name}': could not parse values ({exc}); skipping"
-                )
+                self._logger.warning(f"$ARRAYS '{name}': could not parse values ({exc}); skipping")
                 continue
             if cols < 2:
                 self._logger.warning(
-                    f"$ARRAYS '{name}': only 2-D+ arrays are supported in this "
-                    "phase; skipping"
+                    f"$ARRAYS '{name}': only 2-D+ arrays are supported in this phase; skipping"
                 )
                 continue
             try:
@@ -545,9 +532,7 @@ class ESATANReader:
         # 1-D-only arrays: log and ignore (no snapshot use).
         for match in _ARRAY_1D_RE.finditer(text):
             name = match.group(1)
-            self._logger.warning(
-                f"$ARRAYS '{name}': 1-D-only arrays are skipped in this phase"
-            )
+            self._logger.warning(f"$ARRAYS '{name}': 1-D-only arrays are skipped in this phase")
 
     def _register_array_table(self, name: str, table: np.ndarray) -> None:
         """Register a 2-D array as a LookupTableVec1D in ThermalData."""
@@ -564,9 +549,7 @@ class ESATANReader:
             lookup = lookup_cls(x, y)
             tables_attr.add_table(name, lookup)
         except Exception as exc:
-            self._logger.warning(
-                f"$ARRAYS '{name}': could not register LookupTableVec1D ({exc})"
-            )
+            self._logger.warning(f"$ARRAYS '{name}': could not register LookupTableVec1D ({exc})")
 
     def parse_nodes(
         self,
@@ -713,7 +696,7 @@ class ESATANReader:
             return
         node_num = int(head_match.group(2))
 
-        rest = text[head_match.end():]
+        rest = text[head_match.end() :]
         # Detect supernode merge syntax: "= A:5 + B:12" or any colon path.
         if ":" in text:
             self._logger.error(
@@ -904,6 +887,7 @@ class ESATANReader:
 
 
 # ---------------------------------------------------------- module helpers
+
 
 def _apply_substitutions(text: str, subs: dict[str, str]) -> str:
     """Whole-symbol replacement of every ``name`` -> ``value`` in ``subs``."""

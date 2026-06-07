@@ -4,13 +4,7 @@ import pytest
 
 import pycanha as pc
 
-FIXTURE = (
-    Path(__file__).resolve().parents[1]
-    / "data"
-    / "esatan"
-    / "DISC"
-    / "DISCTR_TRANSIENT.TMD"
-)
+FIXTURE = Path(__file__).resolve().parents[1] / "data" / "esatan" / "DISC" / "DISCTR_TRANSIENT.TMD"
 
 
 @pytest.mark.parametrize("engine", ["cpp", "python"])

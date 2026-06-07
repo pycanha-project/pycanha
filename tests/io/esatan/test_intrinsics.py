@@ -17,10 +17,12 @@ def cp_table() -> np.ndarray:
 @pytest.fixture
 def two_column_table() -> np.ndarray:
     # Two value columns so we can exercise idx = 1 and idx = 2.
-    return np.array([
-        [0.0, 1.0, 10.0],
-        [100.0, 2.0, 20.0],
-    ])
+    return np.array(
+        [
+            [0.0, 1.0, 10.0],
+            [100.0, 2.0, 20.0],
+        ]
+    )
 
 
 def test_known_intrinsic_names() -> None:

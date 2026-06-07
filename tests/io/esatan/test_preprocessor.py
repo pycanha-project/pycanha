@@ -78,7 +78,7 @@ class TestExpandIncludes:
         sub.write_text("$REAL\n  k = 0.5;\n", encoding="utf-8")
         main = tmp_path / "main.d"
         main.write_text(
-            "$LOCALS\n  $INCLUDE \"sub.dat\"\n",
+            '$LOCALS\n  $INCLUDE "sub.dat"\n',
             encoding="utf-8",
         )
 

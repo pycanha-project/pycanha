@@ -23,9 +23,7 @@ class TestAssignments:
         assert _one("      C27 = 3.0*C25") == "model.nodes.set_C(27, 3.0*C25)"
 
     def test_plain_variable_d_notation_normalised(self) -> None:
-        assert _one("      STEFAN=5.670374419184429D-8") == (
-            "STEFAN = 5.670374419184429e-8"
-        )
+        assert _one("      STEFAN=5.670374419184429D-8") == ("STEFAN = 5.670374419184429e-8")
 
     def test_plain_integer_variable(self) -> None:
         assert _one("      NLOOP=1000") == "NLOOP = 1000"
@@ -41,9 +39,7 @@ class TestCalls:
         assert _one("      CALL SLCRNC") == "# CALL SLCRNC"
 
     def test_call_with_args_commented_verbatim(self) -> None:
-        assert _one("      CALL STATST('N2000', 'B')") == (
-            "# CALL STATST('N2000', 'B')"
-        )
+        assert _one("      CALL STATST('N2000', 'B')") == ("# CALL STATST('N2000', 'B')")
 
 
 class TestComments:
