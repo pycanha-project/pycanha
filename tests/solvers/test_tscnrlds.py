@@ -2,23 +2,24 @@ import numpy as np
 import pytest
 
 import pycanha as pc
+import pycanha.tmm as pm
 
 
-def get_temperature_output(model: pc.tmm.ThermalMathematicalModel, model_name: str) -> np.ndarray:
-    output_model = model.thermal_data.models.get_model(model_name)
+def get_temperature_output(output_model) -> np.ndarray:
     return np.column_stack((np.asarray(output_model.T.times), np.asarray(output_model.T.values)))
 
 
 @pytest.fixture
 def five_node_model():
     """Create a 5-node model with conductive and radiative couplings."""
-    tmm = pc.tmm.ThermalMathematicalModel("test_model")
+    tm = pc.ThermalModel("test_model")
+    tmm = tm.tmm
 
-    node_10 = pc.tmm.Node(10)
-    node_15 = pc.tmm.Node(15)
-    node_20 = pc.tmm.Node(20)
-    node_25 = pc.tmm.Node(25)
-    env_node = pc.tmm.Node(99)
+    node_10 = pm.Node(10)
+    node_15 = pm.Node(15)
+    node_20 = pm.Node(20)
+    node_25 = pm.Node(25)
+    env_node = pm.Node(99)
 
     init_temp = 273.15
     node_10.T = init_temp
@@ -34,7 +35,7 @@ def five_node_model():
 
     node_15.qi = 500.0
 
-    env_node.type = pc.NodeType.BOUNDARY
+    env_node.type = pm.NodeType.BOUNDARY
 
     tmm.add_node(node_10)
     tmm.add_node(node_15)
@@ -51,21 +52,21 @@ def five_node_model():
     tmm.add_radiative_coupling(15, 99, 0.8)
     tmm.add_radiative_coupling(25, 99, 0.8)
 
-    return tmm
+    return tm
 
 
 def test_tscnrlds_transient(five_node_model):
-    tmm = five_node_model
+    tm = five_node_model
 
-    solver = pc.solvers.TSCNRLDS(tmm)
-    solver.MAX_ITERS = 100
+    solver = tm.solvers.tscnrlds
+    solver.max_iters = 100
     solver.abstol_temp = 1e-6
     solver.set_simulation_time(0.0, 100000.0, 1000.0, 10000.0)
 
     solver.initialize()
     solver.solve()
 
-    results = get_temperature_output(tmm, solver.output_model_name)
+    results = get_temperature_output(solver.output_model)
     calculated_times = results[:, 0]
     calculated_temps = results[:, 1:]
 

@@ -10,9 +10,7 @@ Setting up a transient run
 
 .. code-block:: python
 
-   from pycanha.solvers import TSCNRLDS
-
-   solver = TSCNRLDS(tmm)
+   solver = tm.solvers.tscnrlds
    solver.set_simulation_time(
        start_time=0.0,        # [s]
        end_time=100_000.0,    # [s]
@@ -30,11 +28,12 @@ Retrieving results
 ------------------
 
 Transient results are stored in the model's
-:class:`~pycanha.tmm.ThermalData` container as named output models:
+:class:`~pycanha.tmm.ThermalData` container, and the preferred access path is
+directly from the solver:
 
 .. code-block:: python
 
-   output_model = tmm.thermal_data.models.get_model(solver.output_model_name)
+   output_model = solver.output_model
 
 The temperature series is exposed as a dense time series:
 

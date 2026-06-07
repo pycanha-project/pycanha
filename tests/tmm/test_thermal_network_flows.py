@@ -2,19 +2,18 @@ import math
 
 import pytest
 
-import pycanha.tmm as tmm
-from pycanha.tmm.node import NodeType
+import pycanha.tmm as pm
 
 STEFAN_BOLTZMANN = 5.670374419e-8
 
 
 def make_flow_network() -> tuple[
-    tmm.ThermalNetwork,
+    pm.ThermalNetwork,
     dict[int, float],
     dict[frozenset[int], float],
     dict[frozenset[int], float],
 ]:
-    network = tmm.ThermalNetwork()
+    network = pm.ThermalNetwork()
 
     temperatures = {
         17: 290.0,
@@ -25,10 +24,10 @@ def make_flow_network() -> tuple[
     }
 
     for node_num, temperature in temperatures.items():
-        node = tmm.Node(node_num)
+        node = pm.Node(node_num)
         node.T = temperature
         if node_num in {40, 55}:
-            node.type = NodeType.BOUNDARY
+            node.type = pm.NodeType.BOUNDARY
         network.add_node(node)
 
     conductive_links = {

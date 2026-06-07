@@ -20,8 +20,8 @@ boundary conditions on two edges.
 import matplotlib.pyplot as plt
 import numpy as np
 
-from pycanha.solvers import SSLU
-from pycanha.tmm import Node, NodeType, ThermalMathematicalModel
+import pycanha as pc
+import pycanha.tmm as pm
 
 # Physical data
 Lx, Ly = 1.0, 1.0  # plate dimensions [m]
@@ -31,14 +31,15 @@ k_Al = 180.0  # thermal conductivity [W/(m·K)]
 # Mesh
 Nx, Ny = 10, 10
 
-tmm = ThermalMathematicalModel(name="AluPlate")
+tm = pc.ThermalModel(name="AluPlate")
+tmm = tm.tmm
 
 for j in range(1, Ny + 1):
     for i in range(1, Nx + 1):
         node_num = i + (j - 1) * Nx
-        node = Node(node_num)
+        node = pm.Node(node_num)
         if i == 1 or j == 1:
-            node.type = NodeType.BOUNDARY
+            node.type = pm.NodeType.BOUNDARY
         tmm.add_node(node)
 
 # %%
@@ -75,7 +76,7 @@ for j in range(1, Ny + 1):
 # Solve and plot
 # --------------
 
-solver = SSLU(tmm)
+solver = tm.solvers.sslu
 solver.initialize()
 solver.solve()
 

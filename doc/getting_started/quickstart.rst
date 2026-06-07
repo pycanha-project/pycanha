@@ -12,19 +12,20 @@ is at a fixed-temperature *boundary*.
 
 .. code-block:: python
 
-   from pycanha.tmm import Node, NodeType, ThermalMathematicalModel
-   from pycanha.solvers import SSLU
+   import pycanha as pc
+   import pycanha.tmm as pm
 
-   # 1. Create the model
-   tmm = ThermalMathematicalModel("QuickStart")
+   # 1. Create the model root
+   tm = pc.ThermalModel("QuickStart")
+   tmm = tm.tmm
 
    # 2. Add nodes
-   node1 = Node(1)             # diffusive by default
+   node1 = pm.Node(1)          # diffusive by default
    node1.C  = 100.0            # thermal capacity [J/K] (not needed for steady-state analysis)
    node1.qi = 10.0             # internal heat dissipation [W]
 
-   node2 = Node(2)
-   node2.type = NodeType.BOUNDARY
+   node2 = pm.Node(2)
+   node2.type = pm.NodeType.BOUNDARY
    node2.T = 300.0             # fixed temperature [K]
 
    tmm.add_node(node1)
@@ -34,7 +35,7 @@ is at a fixed-temperature *boundary*.
    tmm.conductive_couplings.add_coupling(1, 2, 0.5)
 
    # 4. Solve
-   solver = SSLU(tmm)
+   solver = tm.solvers.sslu
    solver.initialize()
    solver.solve()
 

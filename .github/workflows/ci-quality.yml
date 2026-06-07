@@ -1,0 +1,253 @@
+name: Quality
+
+# ============================================================
+# Python version policy: support the two latest CPython releases.
+# Bump these when a new minor release ships and drop the oldest.
+# ============================================================
+env:
+  PYTHON_VERSIONS: '["3.13", "3.14"]'
+  PYTHON_PRIMARY: "3.13"
+  UV_VERSION: "0.5.11"
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      python-versions: ${{ env.PYTHON_VERSIONS }}
+      python-primary: ${{ env.PYTHON_PRIMARY }}
+      uv-version: ${{ env.UV_VERSION }}
+    steps:
+      - name: Show Python versions under test
+        run: |
+          echo "Python versions under test: $PYTHON_VERSIONS"
+
+  lint-format:
+    name: "Lint & format - Py ${{ matrix.python-version }}"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "ruff check (lint)"
+        run: uv run ruff check src/ tests/ --output-format=github
+      - name: "ruff format (style)"
+        run: uv run ruff format --check src/ tests/
+
+  typecheck-mypy:
+    name: "mypy - Py ${{ matrix.python-version }}"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "mypy (strict)"
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run mypy src/ --python-version "$PYTHON_VERSION"
+
+  typecheck-pyright:
+    name: "pyright - Py ${{ matrix.python-version }}"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "pyright"
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run pyright --pythonversion "$PYTHON_VERSION"
+
+  typecheck-ty:
+    name: "ty (non-blocking) - Py ${{ matrix.python-version }}"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "ty"
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: uv run ty check src/ --python-version "$PYTHON_VERSION"
+
+  security-code:
+    name: "Security: code (bandit) - Py ${{ matrix.python-version }}"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.setup.outputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "bandit (security lint of own code)"
+        run: uv run bandit -r src/ -c pyproject.toml
+
+  metadata:
+    name: "Metadata: validate-pyproject"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-primary }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "validate-pyproject"
+        run: uv run validate-pyproject pyproject.toml
+
+  audit-deps:
+    name: "Audit: dependencies (pip-audit)"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-primary }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "pip-audit (CVE scan of locked deps)"
+        run: |
+          uv export --locked --format requirements-txt --all-groups --no-editable --no-hashes --no-emit-project -o /tmp/pycanha-audit-requirements.txt
+          uv run pip-audit --strict -r /tmp/pycanha-audit-requirements.txt
+
+  audit-workflows:
+    name: "Audit: GitHub workflows (zizmor)"
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ needs.setup.outputs.python-primary }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ needs.setup.outputs.uv-version }}
+          enable-cache: true
+      - run: uv sync --locked
+      - name: "zizmor (GHA workflow security audit)"
+        run: uv run zizmor .github/workflows/ || true
+
+  quality-gate:
+    name: "Quality gate (blocking)"
+    needs:
+      - lint-format
+      - typecheck-mypy
+      - typecheck-pyright
+      - security-code
+      - metadata
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: "Verify all blocking quality checks succeeded"
+        run: |
+          if [[ "${{ needs.lint-format.result }}" != "success" \
+             || "${{ needs.typecheck-mypy.result }}" != "success" \
+             || "${{ needs.typecheck-pyright.result }}" != "success" \
+             || "${{ needs.security-code.result }}" != "success" \
+             || "${{ needs.metadata.result }}" != "success" ]]; then
+            echo "One or more blocking quality checks failed."
+            exit 1
+          fi
+          echo "All blocking quality checks passed."

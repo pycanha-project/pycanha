@@ -1,17 +1,18 @@
 import pytest
 
-import pycanha.parameters as parameters
-import pycanha.tmm as tmm
+import pycanha as pc
+import pycanha.tmm as pm
 
 
 @pytest.fixture
-def tmm_with_params() -> tmm.ThermalMathematicalModel:
-    tmm_model = tmm.ThermalMathematicalModel("expression_formula_test")
+def tmm_with_params() -> pm.ThermalMathematicalModel:
+    tm = pc.ThermalModel("expression_formula_test")
+    tmm_model = tm.tmm
 
-    node_1 = tmm.Node(1)
+    node_1 = pm.Node(1)
     node_1.T = 300.0
     node_1.qi = 50.0
-    node_2 = tmm.Node(2)
+    node_2 = pm.Node(2)
     node_2.T = 200.0
 
     tmm_model.add_node(node_1)
@@ -22,12 +23,12 @@ def tmm_with_params() -> tmm.ThermalMathematicalModel:
 
 
 def test_expression_formula_apply_updates_entity(
-    tmm_with_params: tmm.ThermalMathematicalModel,
+    tmm_with_params: pm.ThermalMathematicalModel,
 ) -> None:
     tmm_model = tmm_with_params
     tmm_model.parameters.add_parameter("offset", 2.0)
-    entity = parameters.Entity.qi(tmm_model.network, 1)
-    formula = parameters.ExpressionFormula(entity, tmm_model.parameters, "k + offset")
+    entity = tmm_model.entities.internal_heat(1)
+    formula = pc.parameters.ExpressionFormula(entity, tmm_model.parameters, "k + offset")
 
     assert formula.expression == "k + offset"
     assert formula.parameter_dependencies == ["k", "offset"]
@@ -39,12 +40,12 @@ def test_expression_formula_apply_updates_entity(
 
 
 def test_expression_formula_derivatives(
-    tmm_with_params: tmm.ThermalMathematicalModel,
+    tmm_with_params: pm.ThermalMathematicalModel,
 ) -> None:
     tmm_model = tmm_with_params
     tmm_model.parameters.add_parameter("offset", 2.0)
-    entity = parameters.Entity.gl(tmm_model.network, 1, 2)
-    formula = parameters.ExpressionFormula(entity, tmm_model.parameters, "k * offset")
+    entity = tmm_model.entities.conductive_coupling(1, 2)
+    formula = pc.parameters.ExpressionFormula(entity, tmm_model.parameters, "k * offset")
 
     formula.compile_formula()
     formula.calculate_derivatives()

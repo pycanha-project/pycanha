@@ -1,0 +1,19 @@
+// ESATAN imperative-block statement grammar (v1).
+//
+// Scope: a single logical line is either an assignment or a CALL.  Comments,
+// blank lines and continuation joining are handled by the Python driver in
+// statement_translator.py; anything this grammar cannot parse falls back to a
+// "# UNTRANSLATED:" comment there.  DO / IF / SUBROUTINE are intentionally not
+// modelled yet (milestone M2/M3) and therefore land in the fallback.
+
+?start: assignment | call
+
+assignment: NAME "=" REST
+call: CALL REST?
+
+CALL.5: /CALL\b/i
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
+REST: /[^\n]+/
+
+%import common.WS_INLINE
+%ignore WS_INLINE

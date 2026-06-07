@@ -13,9 +13,7 @@ deinitialize** lifecycle:
 
 .. code-block:: python
 
-   from pycanha.solvers import SSLU
-
-   solver = SSLU(tmm)
+   solver = tm.solvers.sslu
    solver.initialize()
    solver.solve()
    solver.deinitialize()
@@ -47,7 +45,7 @@ calling ``initialize()``:
 
    solver.abstol_temp  = 1e-4   # temperature convergence [K]
    solver.abstol_enrgy = 1e-4   # energy balance convergence [W]
-   solver.MAX_ITERS    = 10     # max iterations per solve step
+   solver.max_iters    = 10     # max iterations per solve step
 
 Re-using the solver
 -------------------
@@ -58,7 +56,7 @@ re-initializing:
 
 .. code-block:: python
 
-   solver = SSLU(tmm)
+   solver = tm.solvers.sslu
    solver.initialize()
 
    for k in [0.5, 1.0, 2.0]:

@@ -1,0 +1,101 @@
+"""End-to-end integration test parsing the DISC fixture into a Pycanha model."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+import pycanha as pc
+from pycanha.io import ESATANReader
+
+FIXTURE_DIR = Path(__file__).resolve().parents[2] / "data" / "esatan" / "DISC"
+STEADY = FIXTURE_DIR / "DISCTR_STEADY.d"
+
+
+@pytest.fixture
+def parsed_steady() -> pc.ThermalModel:
+    tm = pc.ThermalModel("disc-steady")
+    reader = ESATANReader(tm)
+    reader.parse_analysis_file(STEADY)
+    return tm
+
+
+def test_model_name_captured(parsed_steady: pc.ThermalModel) -> None:
+    # ``ThermalModel.name`` is read-only in the current pycanha-core build,
+    # so the parser falls back to setting ``tmm.name``.
+    assert parsed_steady.tmm.name == "DISCTR_STEADY"
+
+
+def test_node_counts(parsed_steady: pc.ThermalModel) -> None:
+    nodes = parsed_steady.tmm.nodes
+    # The DISC steady file declares 101 D-nodes, 1 B-node, and 1 X-node
+    # (the X-node is skipped per the parser's policy).
+    assert nodes.num_nodes == 102
+    assert nodes.num_diff_nodes == 101
+    assert nodes.num_bound_nodes == 1
+
+
+def test_boundary_node_attributes(parsed_steady: pc.ThermalModel) -> None:
+    # B99999 = 'ENVIRONMENT', T = -270.000000.
+    assert parsed_steady.tmm.nodes.get_T(99999) == pytest.approx(-270.0)
+
+
+def test_inactive_node_skipped(parsed_steady: pc.ThermalModel) -> None:
+    # X99998 was logged as skipped: 103 source lines minus 1 X-node = 102.
+    assert parsed_steady.tmm.nodes.num_nodes == 102
+
+
+def test_diffusive_node_attributes(parsed_steady: pc.ThermalModel) -> None:
+    # D1000 = 'DISC', T = 0.0; the C value comes from a parameter expression
+    # that the parser snapshot-evaluates at parse time.
+    nodes = parsed_steady.tmm.nodes
+    assert nodes.get_T(1000) == pytest.approx(0.0)
+    # 3.141593e-7 * 2900 * 1400 = 1.27548...
+    assert nodes.get_C(1000) == pytest.approx(3.141593e-7 * 2900.0 * 1400.0, rel=1e-5)
+
+
+def test_user_constants_registered(parsed_steady: pc.ThermalModel) -> None:
+    assert parsed_steady.parameters.contains("TIMECT")
+
+
+def test_gl_conductors_loaded(parsed_steady: pc.ThermalModel) -> None:
+    # Spot-check a known GL pair from the steady file.
+    value = parsed_steady.tmm.conductive_couplings.get_coupling_value(1000, 1010)
+    assert value > 0
+
+
+def test_gr_conductors_loaded(parsed_steady: pc.ThermalModel) -> None:
+    # Radiative couplings come from a long flat numeric list; check a sample.
+    value = parsed_steady.tmm.radiative_couplings.get_coupling_value(1000, 1010)
+    assert value > 0
+
+
+def test_no_unsupported_intrinsic_logs_for_disc(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    tm = pc.ThermalModel("disc-clean")
+    reader = ESATANReader(tm)
+    with caplog.at_level("ERROR"):
+        reader.parse_analysis_file(STEADY)
+    # DISC's nodes use the local Cp/Dens parameters (substituted textually);
+    # no INTRP1/NODFN1/CNDFN1 calls remain after expansion.
+    intrinsic_msgs = [m for m in caplog.messages if "intrinsic" in m.lower()]
+    assert intrinsic_msgs == []
+
+
+def test_per_block_methods_accept_strings() -> None:
+    """Block parsers accept raw strings for partial reprocessing."""
+    tm = pc.ThermalModel("partial")
+    reader = ESATANReader(tm)
+
+    reader.parse_locals("$REAL\n  k = 0.5;\n")
+    reader.parse_constants("$REAL\n  q = 25.0;\n")
+    assert tm.parameters.get_parameter("q") == pytest.approx(25.0)
+
+    # Conductors with a custom subs dict overriding locals.
+    n1, n2 = pc.tmm.Node(1), pc.tmm.Node(2)
+    tm.tmm.add_node(n1)
+    tm.tmm.add_node(n2)
+    reader.parse_conductors("GL(1,2) = 7.0;\n", subs={})
+    assert tm.tmm.conductive_couplings.get_coupling_value(1, 2) == 7.0

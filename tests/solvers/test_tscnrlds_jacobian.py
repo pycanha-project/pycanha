@@ -1,18 +1,14 @@
 import numpy as np
 
-import pycanha.parameters as parameters
-import pycanha.solvers as solvers
-import pycanha.tmm as tmm
-from pycanha.tmm.node import NodeType
+import pycanha as pc
+import pycanha.tmm as pm
 
 
-def get_temperature_output(model: tmm.ThermalMathematicalModel, model_name: str) -> np.ndarray:
-    output_model = model.thermal_data.models.get_model(model_name)
+def get_temperature_output(output_model) -> np.ndarray:
     return np.column_stack((np.asarray(output_model.T.times), np.asarray(output_model.T.values)))
 
 
-def get_jacobian_output(model: tmm.ThermalMathematicalModel, model_name: str) -> np.ndarray:
-    output_model = model.thermal_data.models.get_model(model_name)
+def get_jacobian_output(output_model) -> np.ndarray:
     jacobian = output_model.jacobian
     flattened_rows = [
         np.asarray(jacobian.at(index)).reshape(-1) for index in range(jacobian.num_timesteps)
@@ -20,33 +16,31 @@ def get_jacobian_output(model: tmm.ThermalMathematicalModel, model_name: str) ->
     return np.column_stack((np.asarray(jacobian.times), np.vstack(flattened_rows)))
 
 
-def make_jacobian_example_model() -> tmm.ThermalMathematicalModel:
-    model = tmm.ThermalMathematicalModel("jacobian_python_example")
+def make_jacobian_example_model() -> pc.ThermalModel:
+    model = pc.ThermalModel("jacobian_python_example")
+    tmm_model = model.tmm
 
-    diffusive_node = tmm.Node(1)
+    diffusive_node = pm.Node(1)
     diffusive_node.T = 0.0
     diffusive_node.capacity = 1.0
     diffusive_node.qi = 1.0
 
-    boundary_node = tmm.Node(2)
-    boundary_node.type = NodeType.BOUNDARY
+    boundary_node = pm.Node(2)
+    boundary_node.type = pm.NodeType.BOUNDARY
     boundary_node.T = 1.0
 
-    model.add_node(diffusive_node)
-    model.add_node(boundary_node)
-    model.add_conductive_coupling(1, 2, 1.0)
+    tmm_model.add_node(diffusive_node)
+    tmm_model.add_node(boundary_node)
+    tmm_model.add_conductive_coupling(1, 2, 1.0)
 
     model.parameters.add_parameter("k", 1.0)
     model.parameters.add_parameter("C", 1.0)
 
-    conductive_entity = parameters.Entity.gl(model.network, 1, 2)
-    capacity_entity = parameters.Entity.c(model.network, 1)
-
-    model.formulas.add_formula(
-        parameters.ParameterFormula(conductive_entity, model.parameters, "k")
-    )
-    model.formulas.add_formula(parameters.ParameterFormula(capacity_entity, model.parameters, "C"))
-    model.formulas.apply_formulas()
+    tmm_model.formulas.add_parameter_formula(tmm_model.entities.conductive_coupling(1, 2), "k")
+    tmm_model.formulas.add_parameter_formula(tmm_model.entities.capacity(1), "C")
+    tmm_model.formulas.parameters_with_derivatives.add_parameter("k")
+    tmm_model.formulas.parameters_with_derivatives.add_parameter("C")
+    tmm_model.formulas.apply_formulas()
 
     return model
 
@@ -59,9 +53,10 @@ def find_time_row(table: np.ndarray, time_value: float) -> int:
 
 
 def test_tscnrlds_jacobian_solver_outputs_models() -> None:
-    model = make_jacobian_example_model()
-    solver = solvers.TSCNRLDS_JACOBIAN(model)
-    solver.MAX_ITERS = 50
+    tm = make_jacobian_example_model()
+    model = tm.tmm
+    solver = tm.solvers.tscnrlds_jacobian
+    solver.max_iters = 50
     solver.abstol_temp = 1e-9
     solver.set_simulation_time(0.0, 5.0, 0.01, 0.1)
 
@@ -70,9 +65,10 @@ def test_tscnrlds_jacobian_solver_outputs_models() -> None:
 
     assert model.thermal_data.models.has_model(solver.output_model_name) is True
     assert solver.parameter_names == ["k", "C"]
+    assert solver.derivative_parameter_names == ["k", "C"]
 
-    temperature_output = get_temperature_output(model, solver.output_model_name)
-    jacobian_output = get_jacobian_output(model, solver.output_model_name)
+    temperature_output = get_temperature_output(solver.output_model)
+    jacobian_output = get_jacobian_output(solver.output_model)
 
     assert temperature_output.shape[1] == 3
     assert jacobian_output.shape[1] == 3
