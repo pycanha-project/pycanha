@@ -51,6 +51,11 @@ Issues = "https://github.com/pycanha-project/pycanha/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pycanha"]
 
+[tool.uv]
+# Force transitive dev-tool deps above known-vulnerable versions (pip-audit).
+# msgpack < 1.2.1 (pulled in via pip-audit -> cachecontrol): GHSA-6v7p-g79w-8964.
+constraint-dependencies = ["msgpack>=1.2.1"]
+
 [dependency-groups]
 dev = [
     # Lint / format
