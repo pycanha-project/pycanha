@@ -44,6 +44,16 @@ def test_to_polydata_from_model() -> None:
     assert poly.n_cells == tm.gmm.mesh.nt()
 
 
+def test_categorical_colors() -> None:
+    colors = gmm.viz.categorical_colors([0, 1, 2, -1, 20])
+    assert colors.shape == (5, 3)
+    assert colors.dtype == np.uint8
+    # ids cycle through the 20-color palette, so 20 wraps back to 0.
+    np.testing.assert_array_equal(colors[4], colors[0])
+    # negative ids get the "missing" grey.
+    assert colors[3].tolist() == [153, 153, 153]
+
+
 # NOTE: actual rendering (``gmm.plot`` -> ``pyvista.Plotter.show``) is intentionally
 # NOT exercised here. VTK's OpenGL backend segfaults on headless CI runners without a
 # GL context, and a segfault cannot be caught, so it would crash the whole test run.

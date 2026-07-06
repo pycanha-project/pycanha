@@ -41,6 +41,15 @@ doc = [
     "sphinx-design",
     "numpydoc",
     "numpy",
+    # Interactive pyvista rendering (Jupyter/trame backend) + notebook runtime
+    # used by the example notebooks and the interactive gallery.
+    "trame>=3.6",
+    "trame-vtk>=2.8",
+    "trame-vuetify>=2.7",
+    "ipywidgets>=8.1",
+    "ipykernel>=6.29",
+    "jupyterlab>=4.2",
+    "nbformat>=5.10",
 ]
 
 [project.urls]
