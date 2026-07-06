@@ -6,6 +6,7 @@ from typing import Self
 
 import pycanha_core as pcc
 
+from pycanha.gmm import GeometryModel
 from pycanha.tmm.thermalmathematicalmodel import ThermalMathematicalModel
 
 
@@ -22,7 +23,7 @@ class ThermalModel(pcc.tmm.ThermalModel):
 
         if tmm is None:
             tmm = ThermalMathematicalModel(name)
-            gmm = pcc.gmm.GeometryModel(name)
+            gmm = GeometryModel(name)
         elif gmm is None:
             msg = "tmm and gmm must be provided together"
             raise ValueError(msg)

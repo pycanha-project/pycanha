@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycanha"
-version = "0.14.0"
+version = "0.15.0"
 description = "Thermal analysis Python package built on pycanha-core"
 readme = "README.md"
 license = "MIT"
@@ -27,7 +27,8 @@ dependencies = [
     "lark>=1.1",
     "matplotlib>=3.10.8",
     "numpy>=2.0",
-    "pycanha-core==0.14.0",
+    "pycanha-core==0.15.0",
+    "pyvista>=0.44",
     "scipy>=1.17.1",
 ]
 
@@ -40,6 +41,15 @@ doc = [
     "sphinx-design",
     "numpydoc",
     "numpy",
+    # Interactive pyvista rendering (Jupyter/trame backend) + notebook runtime
+    # used by the example notebooks and the interactive gallery.
+    "trame>=3.6",
+    "trame-vtk>=2.8",
+    "trame-vuetify>=2.7",
+    "ipywidgets>=8.1",
+    "ipykernel>=6.29",
+    "jupyterlab>=4.2",
+    "nbformat>=5.10",
 ]
 
 [project.urls]
@@ -49,6 +59,11 @@ Issues = "https://github.com/pycanha-project/pycanha/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pycanha"]
+
+[tool.uv]
+# Force transitive dev-tool deps above known-vulnerable versions (pip-audit).
+# msgpack < 1.2.1 (pulled in via pip-audit -> cachecontrol): GHSA-6v7p-g79w-8964.
+constraint-dependencies = ["msgpack>=1.2.1"]
 
 [dependency-groups]
 dev = [
@@ -151,6 +166,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "h5py.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pyvista.*"
 ignore_missing_imports = true
 
 [tool.pyright]

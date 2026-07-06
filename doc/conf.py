@@ -1,8 +1,45 @@
 """Sphinx configuration for pycanha documentation."""
 
 import os
+import shutil
+import subprocess
 import sys
+import time
 from datetime import date
+
+import pyvista
+from pyvista.plotting.utilities.sphinx_gallery import DynamicScraper
+
+# -- Headless 3D rendering for the GMM examples ------------------------------
+# The GMM gallery examples render with pyvista. On a build server (Read the
+# Docs / CI) there is no display, so we render off-screen and, on Linux, into a
+# virtual framebuffer. ``BUILDING_GALLERY`` makes ``Plotter.show()`` capture a
+# screenshot *and* an interactive vtk.js scene (``export_vtksz``) that
+# ``DynamicScraper`` embeds in the page, so rotate/zoom works on the static site.
+pyvista.OFF_SCREEN = True
+pyvista.BUILDING_GALLERY = True
+
+
+def _start_xvfb(display: int = 99, wait: float = 3.0) -> None:
+    """Start an Xvfb virtual display (pyvista dropped ``start_xvfb`` in 0.48).
+
+    No-op off Linux, when a display is already configured, or when Xvfb is
+    unavailable (e.g. local Windows builds).
+    """
+    if not sys.platform.startswith("linux") or os.environ.get("DISPLAY"):
+        return
+    if shutil.which("Xvfb") is None:
+        return
+    subprocess.Popen(  # noqa: S603 - fixed, trusted argv; needed for headless GL
+        ["Xvfb", f":{display}", "-screen", "0", "1920x1080x24"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    os.environ["DISPLAY"] = f":{display}"
+    time.sleep(wait)
+
+
+_start_xvfb()
 
 # -- Project information -----------------------------------------------------
 project = "pycanha"
@@ -21,11 +58,23 @@ extensions = [
     "sphinx_gallery.gen_gallery",
     "sphinx_copybutton",
     "sphinx_design",
+    # Renders the interactive vtk.js scenes (``.. offlineviewer::``) that the
+    # pyvista DynamicScraper emits for the GMM examples; needs sphinx_design
+    # (above) for the Static/Interactive tab-set.
+    "pyvista.ext.viewer_directive",
     "numpydoc",
 ]
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "examples/README.rst"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    # Gallery source READMEs are section headers consumed by sphinx-gallery, not
+    # standalone documents.
+    "examples/README.rst",
+    "examples/**/README.rst",
+]
 
 # -- autodoc -----------------------------------------------------------------
 autodoc_default_options = {
@@ -59,6 +108,9 @@ sphinx_gallery_conf = {
     "remove_config_comments": True,
     "plot_gallery": "True",
     "min_reported_time": 1,
+    # Capture matplotlib figures and pyvista scenes. DynamicScraper embeds the
+    # pyvista scenes as interactive vtk.js (rotate/zoom on the static site).
+    "image_scrapers": ("matplotlib", DynamicScraper()),
 }
 
 # -- intersphinx -------------------------------------------------------------
