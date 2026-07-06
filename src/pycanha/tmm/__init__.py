@@ -4,6 +4,19 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from pycanha_core.tmm import (
+        DataModel,
+        DataModelAttribute,
+        ExtrapolationMethod,
+        InterpolationMethod,
+        LookupTable1D,
+        LookupTableVec1D,
+        NamedConstants,
+        TemperatureVariable,
+        TimeVariable,
+        read_tmd_transient,
+    )
+
     from .conductivecouplings import ConductiveCouplings
     from .coupling import Coupling
     from .couplingmatrices import CouplingMatrices
@@ -20,14 +33,42 @@ __all__ = [
     "Coupling",
     "CouplingMatrices",
     "Couplings",
+    "DataModel",
+    "DataModelAttribute",
+    "ExtrapolationMethod",
+    "InterpolationMethod",
+    "LookupTable1D",
+    "LookupTableVec1D",
+    "NamedConstants",
     "Node",
     "NodeType",
     "Nodes",
     "RadiativeCouplings",
+    "TemperatureVariable",
     "ThermalData",
     "ThermalMathematicalModel",
     "ThermalNetwork",
+    "TimeVariable",
+    "read_tmd_transient",
 ]
+
+# Types re-exported verbatim from the compiled pycanha_core.tmm module
+# (time-dependent variables, lookup tables, interpolation enums, and the
+# transient ESATAN reader).
+_CORE_TMM_EXPORTS = frozenset(
+    {
+        "DataModel",
+        "DataModelAttribute",
+        "ExtrapolationMethod",
+        "InterpolationMethod",
+        "LookupTable1D",
+        "LookupTableVec1D",
+        "NamedConstants",
+        "TemperatureVariable",
+        "TimeVariable",
+        "read_tmd_transient",
+    }
+)
 
 
 def __getattr__(name: str) -> Any:
@@ -46,6 +87,11 @@ def __getattr__(name: str) -> Any:
         "ThermalMathematicalModel": (".thermalmathematicalmodel", "ThermalMathematicalModel"),
         "ThermalNetwork": (".thermalnetwork", "ThermalNetwork"),
     }
+
+    if name in _CORE_TMM_EXPORTS:
+        value = getattr(import_module("pycanha_core").tmm, name)
+        globals()[name] = value
+        return value
 
     if name not in module_exports:
         msg = f"module {__name__!r} has no attribute {name!r}"

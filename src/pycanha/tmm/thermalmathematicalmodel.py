@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
+import numpy as np
 import pycanha_core as pcc
 
 from pycanha.io import ESATANReader
@@ -14,6 +15,22 @@ from pycanha.tmm.nodes import Nodes
 from pycanha.tmm.radiativecouplings import RadiativeCouplings
 from pycanha.tmm.thermaldata import ThermalData
 from pycanha.tmm.thermalnetwork import ThermalNetwork
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import numpy.typing as npt
+
+InterpolationMethod = pcc.tmm.InterpolationMethod
+ExtrapolationMethod = pcc.tmm.ExtrapolationMethod
+
+
+def _as_1d(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    array = np.ascontiguousarray(values, dtype=np.float64)
+    if array.ndim != 1:
+        msg = f"expected a 1-D sequence, got shape {array.shape}"
+        raise ValueError(msg)
+    return array
 
 
 class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
@@ -99,6 +116,57 @@ class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
     ) -> Self:
         self.read_tmd(filepath, engine=engine, verbose=verbose)
         return self
+
+    def add_time_variable(
+        self,
+        name: str,
+        x_data: npt.ArrayLike,
+        y_data: npt.ArrayLike,
+        interpolation: InterpolationMethod = InterpolationMethod.LINEAR,
+        extrapolation: ExtrapolationMethod = ExtrapolationMethod.CONSTANT,
+    ) -> None:
+        """Add a time-driven variable from a lookup table of time.
+
+        Accepts any array-like for ``x_data`` / ``y_data`` (coerced to float64).
+        """
+        super().add_time_variable(
+            name, _as_1d(x_data), _as_1d(y_data), interpolation, extrapolation
+        )
+
+    def add_temperature_variable(
+        self,
+        name: str,
+        x_data: npt.ArrayLike,
+        y_data: npt.ArrayLike,
+        interpolation: InterpolationMethod = InterpolationMethod.LINEAR,
+        extrapolation: ExtrapolationMethod = ExtrapolationMethod.CONSTANT,
+    ) -> None:
+        """Add a temperature-driven variable from a lookup table of temperature.
+
+        Accepts any array-like for ``x_data`` / ``y_data`` (coerced to float64).
+        """
+        super().add_temperature_variable(
+            name, _as_1d(x_data), _as_1d(y_data), interpolation, extrapolation
+        )
+
+    def read_tmd_transient(
+        self,
+        filepath: str,
+        model_name: str = "transient",
+        *,
+        overwrite: bool = False,
+        attributes: Sequence[pcc.tmm.DataModelAttribute] | None = None,
+    ) -> list[int]:
+        """Read ESATAN TMD transient results into a named DataModel.
+
+        Returns the list of node numbers found in the file.
+        """
+        thermal_data = self.thermal_data
+        if attributes is None:
+            return pcc.tmm.read_tmd_transient(filepath, thermal_data, model_name, overwrite)
+        return pcc.tmm.read_tmd_transient(
+            filepath, thermal_data, model_name, overwrite, list(attributes)
+        )
 
     @classmethod
     def from_esatan_tmd(
