@@ -44,6 +44,37 @@ def test_to_polydata_from_model() -> None:
     assert poly.n_cells == tm.gmm.mesh.nt()
 
 
+def test_to_polydata_both_sides_resolves_side2() -> None:
+    tm = _panel_model()  # node 5 on side 1, node 6 on side 2
+    mesh = tm.gmm.mesh
+
+    single = gmm.to_polydata(mesh)
+    # The mesh has one sheet of triangles and its face_ids name side-1 slots, so
+    # the single-sided polydata cannot show side 2 at all.
+    assert single.n_cells == mesh.nt()
+    assert set(np.asarray(single.cell_data["node_number"]).tolist()) == {5}
+
+    both = gmm.to_polydata(mesh, both_sides=True)
+    assert both.n_cells == 2 * mesh.nt()
+    assert set(np.asarray(both.cell_data["node_number"]).tolist()) == {5, 6}
+
+    side = np.asarray(both.cell_data["side"])
+    node_numbers = np.asarray(both.cell_data["node_number"])
+    assert set(node_numbers[side == 1].tolist()) == {5}
+    assert set(node_numbers[side == 2].tolist()) == {6}
+
+
+def test_to_polydata_both_sides_reverses_winding() -> None:
+    tm = _panel_model()
+    mesh = tm.gmm.mesh
+    both = gmm.to_polydata(mesh, both_sides=True)
+    triangles = both.faces.reshape(-1, 4)[:, 1:]
+    n_tri = mesh.nt()
+    # The side-2 copy is the same triangle wound the other way, so it faces the
+    # opposite direction and backface culling can separate the two.
+    np.testing.assert_array_equal(triangles[n_tri:], triangles[:n_tri][:, ::-1])
+
+
 def test_categorical_colors() -> None:
     colors = gmm.viz.categorical_colors([0, 1, 2, -1, 20])
     assert colors.shape == (5, 3)
@@ -52,6 +83,24 @@ def test_categorical_colors() -> None:
     np.testing.assert_array_equal(colors[4], colors[0])
     # negative ids get the "missing" grey.
     assert colors[3].tolist() == [153, 153, 153]
+
+
+def test_categorical_colors_rank_separates_sparse_labels() -> None:
+    # Node numbers are sparse: 100/200/300/400 are all 0 modulo the 20-color
+    # palette and would otherwise render identically.
+    labels = [100, 200, 300, 400]
+    unranked = gmm.viz.categorical_colors(labels)
+    assert len({tuple(c) for c in unranked}) == 1
+
+    ranked = gmm.viz.categorical_colors(labels, rank=True)
+    assert len({tuple(c) for c in ranked}) == len(labels)
+
+
+def test_categorical_colors_rank_keeps_missing_grey() -> None:
+    colors = gmm.viz.categorical_colors([100, -1, 200], rank=True)
+    assert colors[1].tolist() == [153, 153, 153]
+    # The unassigned entry must not consume a palette slot of its own.
+    assert colors[0].tolist() != colors[2].tolist()
 
 
 # NOTE: actual rendering (``gmm.plot`` -> ``pyvista.Plotter.show``) is intentionally

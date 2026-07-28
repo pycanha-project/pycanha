@@ -11,6 +11,8 @@ import pyvista as pv
 from . import viz
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import numpy.typing as npt
 
 
@@ -74,14 +76,18 @@ class GeometryModel(pcc.gmm.GeometryModel):
     """
 
     # ── mesh visualization ────────────────────────────────────────────────
-    def to_polydata(self, *, emissivity: bool = False) -> pv.PolyData:
+    def to_polydata(self, *, emissivity: bool = False, both_sides: bool = False) -> pv.PolyData:
         """Return a :class:`pyvista.PolyData` of the world mesh.
 
         With ``emissivity=True`` an extra per-face ``emissivity`` cell array is
         attached (IR emissivity of the ThermalMesh side each face belongs to;
         ``nan`` where unknown).
+
+        With ``both_sides=True`` each triangle is emitted once per ThermalMesh
+        side (see :func:`pycanha.gmm.viz.to_polydata`), so side-2 slots get their
+        own cells instead of the geometry describing side 1 alone.
         """
-        poly = viz.to_polydata(self)
+        poly = viz.to_polydata(self, both_sides=both_sides)
         if emissivity:
             poly.cell_data["emissivity"] = self._face_emissivity(poly)
         return poly
@@ -92,6 +98,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
         scalars: str | None = "face_id",
         show_edges: bool = True,
         off_screen: bool = False,
+        both_sides: bool = True,
         **kwargs: Any,
     ) -> pv.Plotter:
         """Render the world mesh with pyvista.
@@ -99,20 +106,34 @@ class GeometryModel(pcc.gmm.GeometryModel):
         ``scalars`` selects the coloring:
 
         * ``"face_id"`` (default) - a distinct color per face (categorical).
-        * ``"item"`` - a distinct color per geometry item.
-        * ``"node_number"`` / ``"emissivity"`` - a continuous scale with colorbar.
+        * ``"item"`` - a distinct color per geometry item (categorical).
+        * ``"node_number"`` - a distinct color per tmm node (categorical); node
+          numbers are labels, not a magnitude, so they are not put on a colormap.
+        * ``"emissivity"`` - a continuous scale with colorbar.
         * ``None`` - a single flat color.
 
+        ``both_sides`` (default) gives each ThermalMesh side its own cells, so
+        the back of a surface shows the side-2 node / material instead of
+        repeating side 1; backface culling then reveals whichever side faces the
+        camera. Pass ``both_sides=False`` for the raw single-sided mesh.
+
+        Categorical colorings render unshaded so the same category always reads
+        as the same color; pass ``lighting=True`` to restore the shading.
         Pass ``show_edges=False`` to hide the triangular mesh edges.
         """
-        poly = self.to_polydata(emissivity=scalars == "emissivity")
-        if scalars in ("face_id", "item"):
-            ids = (
-                np.asarray(poly.cell_data["face_id"])
-                if scalars == "face_id"
-                else self._face_item_index(poly)
-            )
-            name = viz.colorize_categorical(poly, ids)
+        poly = self.to_polydata(emissivity=scalars == "emissivity", both_sides=both_sides)
+        if both_sides:
+            kwargs.setdefault("backface_culling", True)
+        if scalars in ("face_id", "item", "node_number"):
+            if scalars == "face_id":
+                ids = np.asarray(poly.cell_data["face_id"])
+            elif scalars == "item":
+                ids = self._face_item_index(poly)
+            else:
+                ids = np.asarray(poly.cell_data["node_number"])
+            # Node numbers are sparse (100, 200, 300...) and would collide modulo
+            # the palette size, so rank them densely before picking colors.
+            name = viz.colorize_categorical(poly, ids, rank=scalars == "node_number")
             return viz.render(
                 poly, scalars=name, rgb=True, show_edges=show_edges, off_screen=off_screen, **kwargs
             )
@@ -129,13 +150,18 @@ class GeometryModel(pcc.gmm.GeometryModel):
         other_color: str = "lightgray",
         show_edges: bool = True,
         off_screen: bool = False,
+        both_sides: bool = True,
         **kwargs: Any,
     ) -> pv.Plotter:
         """Highlight faces whose tmm node number lies in ``[lo, hi]``.
 
         In-range faces are drawn in ``color``, the rest in ``other_color``.
+        ``both_sides`` (default) resolves each ThermalMesh side separately, so a
+        node on the far side of a surface is highlighted where it actually is.
         """
-        poly = viz.to_polydata(self)
+        poly = viz.to_polydata(self, both_sides=both_sides)
+        if both_sides:
+            kwargs.setdefault("backface_culling", True)
         node_numbers = np.asarray(poly.cell_data["node_number"])
         in_range = ((node_numbers >= lo) & (node_numbers <= hi)).astype(np.float64)
 
@@ -151,6 +177,26 @@ class GeometryModel(pcc.gmm.GeometryModel):
         )
         plotter.show()
         return plotter
+
+    # ── raytracer scene assembly ──────────────────────────────────────────
+    def mesh_parts(self, split: Sequence[str] = ()) -> list[pcc.radiative.ScenePart]:
+        """Split the world mesh into rigid ``ScenePart`` pieces for the raytracer.
+
+        Each name in ``split`` becomes its own part (that geometry's subtree, in
+        its local frame); everything else forms a single remainder part in the
+        world frame. Face ids stay global across parts, so results index back
+        into the full mesh. The parts feed :class:`pycanha_core.radiative.RadiativeScene`.
+        """
+        return super().mesh_parts(list(split))
+
+    def material_table(self) -> pcc.radiative.MaterialTable:
+        """Build the per-face-slot ``MaterialTable`` from the ThermalMesh data.
+
+        Collects each face slot's optical material and activity flag (from the
+        per-side ThermalMesh optical properties) into the table the raytracer
+        consumes alongside :meth:`mesh_parts`.
+        """
+        return super().material_table()
 
     def _emissivity_by_node(self) -> dict[int, float]:
         """Map each tmm node number to the IR emissivity of its ThermalMesh side."""

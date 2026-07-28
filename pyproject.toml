@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycanha"
-version = "0.15.0"
+version = "0.16.0"
 description = "Thermal analysis Python package built on pycanha-core"
 readme = "README.md"
 license = "MIT"
@@ -27,7 +27,7 @@ dependencies = [
     "lark>=1.1",
     "matplotlib>=3.10.8",
     "numpy>=2.0",
-    "pycanha-core==0.15.0",
+    "pycanha-core==0.16.0",
     "pyvista>=0.44",
     "scipy>=1.17.1",
 ]
@@ -170,6 +170,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "pyvista.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "scipy.*"
 ignore_missing_imports = true
 
 [tool.pyright]

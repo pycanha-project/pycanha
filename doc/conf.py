@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from datetime import date
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
 import pyvista
 from pyvista.plotting.utilities.sphinx_gallery import DynamicScraper
@@ -45,8 +46,14 @@ _start_xvfb()
 project = "pycanha"
 author = "Javier Piqueras Carreño"
 copyright = f"{date.today().year}, {author}"  # noqa: A001
-release = "0.8.0"
-version = "0.8"
+
+# Single source of truth: the installed package version (from pyproject.toml via
+# the build backend). ``release`` is the full version, ``version`` its X.Y part.
+try:
+    release = _pkg_version("pycanha")
+except PackageNotFoundError:  # not installed (e.g. a bare checkout) - degrade gracefully
+    release = "0.0.0"
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
 extensions = [

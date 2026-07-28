@@ -1,9 +1,10 @@
 """Geometric Mathematical Model subpackage.
 
-Object-centric scene graph mirroring ``pycanha-core`` 0.15: primitives,
+Object-centric scene graph mirroring ``pycanha-core`` 0.16: primitives,
 materials, thermal meshes, transformations, the scene tree
 (``GeometryItem`` / ``GeometryGroup`` / ``GeometryGroupCutted``), the
-``GeometryModel``, ``ops`` / ``mesh.ops`` operations, and pyvista visualization.
+``GeometryModel`` (incl. ``mesh_parts`` / ``material_table`` raytracer scene
+assembly), ``ops`` / ``mesh.ops`` operations, and pyvista visualization.
 """
 
 from __future__ import annotations
