@@ -15,7 +15,11 @@ import numpy as np
 import pycanha_core as pcc
 import pyvista as pv
 
+from . import picking
+
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import numpy.typing as npt
 
 _TriMesh = (pcc.gmm.TriMeshD, pcc.gmm.TriMeshF)
@@ -89,6 +93,79 @@ def to_polydata(obj: object, *, both_sides: bool = False) -> pv.PolyData:
     return poly
 
 
+def _map_cell_data(
+    poly: pv.PolyData,
+    data: Mapping[int, float],
+    key: str,
+    default: float,
+) -> npt.NDArray[np.float64]:
+    """Spread ``data`` over the cells of ``poly``, keyed by the ``key`` cell array."""
+    keys = np.asarray(poly.cell_data[key]).astype(np.int64)
+    if not data:
+        return np.full(keys.size, default, dtype=np.float64)
+    lookup = np.fromiter(data.keys(), dtype=np.int64, count=len(data))
+    values = np.fromiter(data.values(), dtype=np.float64, count=len(data))
+    order = np.argsort(lookup)
+    lookup, values = lookup[order], values[order]
+    # searchsorted gives the insertion point, so an exact-match test is needed to
+    # tell "this key is in the mapping" from "it would go here".
+    position = np.clip(np.searchsorted(lookup, keys), 0, lookup.size - 1)
+    return np.where(lookup[position] == keys, values[position], default)
+
+
+def map_node_data(
+    poly: pv.PolyData,
+    data: Mapping[int, float],
+    *,
+    default: float = np.nan,
+) -> npt.NDArray[np.float64]:
+    """Spread a ``{node number: value}`` mapping over the cells of ``poly``.
+
+    Returns an array aligned with ``poly``'s cells, ready to be attached as cell
+    data and plotted on a color scale. Cells whose node is missing from ``data``
+    get ``default`` (``nan``, which pyvista draws in its ``nan_color``).
+    """
+    return _map_cell_data(poly, data, "node_number", default)
+
+
+def map_face_data(
+    poly: pv.PolyData,
+    data: Mapping[int, float],
+    *,
+    default: float = np.nan,
+) -> npt.NDArray[np.float64]:
+    """Spread a ``{face slot: value}`` mapping over the cells of ``poly``.
+
+    Like :func:`map_node_data` but keyed by face slot, so the two sides of a face
+    can carry different values (side 1 slots are even, side 2 odd).
+    """
+    return _map_cell_data(poly, data, "face_id", default)
+
+
+def cell_columns(
+    poly: pv.PolyData,
+    keys: npt.ArrayLike,
+    key: str,
+) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.bool_]]:
+    """Match each cell of ``poly`` to its column in a ``keys``-ordered series.
+
+    Returns the per-cell column index and a mask of the cells that have one at
+    all. Doing this once turns every later frame of a time series into a single
+    fancy-index instead of a per-cell dict lookup.
+    """
+    cell_keys = np.asarray(poly.cell_data[key]).astype(np.int64)
+    key_array = np.asarray(keys).astype(np.int64)
+    if key_array.size == 0:
+        return (
+            np.zeros(cell_keys.size, dtype=np.intp),
+            np.zeros(cell_keys.size, dtype=np.bool_),
+        )
+    order = np.argsort(key_array)
+    position = np.clip(np.searchsorted(key_array[order], cell_keys), 0, key_array.size - 1)
+    found = key_array[order][position] == cell_keys
+    return order[position], found
+
+
 def categorical_colors(
     ids: npt.ArrayLike,
     *,
@@ -135,6 +212,8 @@ def render(
     rgb: bool = False,
     scalar_bar: bool = True,
     lighting: bool | None = None,
+    pick: bool = True,
+    pick_source: object | None = None,
     **kwargs: Any,
 ) -> pv.Plotter:
     """Render a prepared :class:`pyvista.PolyData` and show it.
@@ -148,6 +227,10 @@ def render(
     ``lighting=False`` renders flat, unshaded faces. Categorical plots default to
     that, because the default specular shading darkens faces by orientation and
     makes two patches of the same category look like different colors.
+
+    ``pick_source`` is the TriMesh or GeometryModel ``poly`` was built from; when
+    given (and ``pick``), right-clicking a face prints its properties to the
+    console (see :func:`pycanha.gmm.picking.enable_face_picking`).
     """
     if lighting is None:
         lighting = not rgb
@@ -172,6 +255,9 @@ def render(
             lighting=lighting,
             **kwargs,
         )
+    if pick and pick_source is not None:
+        model = pick_source if isinstance(pick_source, pcc.gmm.GeometryModel) else None
+        picking.enable_face_picking(plotter, poly, _resolve_mesh(pick_source), model=model)
     plotter.show()
     return plotter
 
@@ -183,6 +269,7 @@ def plot(
     show_edges: bool = True,
     off_screen: bool = False,
     both_sides: bool = True,
+    pick: bool = True,
     **kwargs: Any,
 ) -> pv.Plotter:
     """Render a TriMesh or GeometryModel with pyvista.
@@ -194,6 +281,9 @@ def plot(
 
     ``both_sides`` (default) draws each ThermalMesh side with its own data, so
     the far side of a surface shows *its* face slot rather than the near side's.
+
+    ``pick`` (default) makes right-clicking a face print its properties to the
+    console; pass ``pick=False`` to leave the mouse buttons alone.
     """
     poly = to_polydata(obj, both_sides=both_sides)
     if both_sides:
@@ -203,6 +293,21 @@ def plot(
             poly, np.asarray(poly.cell_data[scalars]), rank=scalars == "node_number"
         )
         return render(
-            poly, scalars=name, rgb=True, show_edges=show_edges, off_screen=off_screen, **kwargs
+            poly,
+            scalars=name,
+            rgb=True,
+            show_edges=show_edges,
+            off_screen=off_screen,
+            pick=pick,
+            pick_source=obj,
+            **kwargs,
         )
-    return render(poly, scalars=scalars, show_edges=show_edges, off_screen=off_screen, **kwargs)
+    return render(
+        poly,
+        scalars=scalars,
+        show_edges=show_edges,
+        off_screen=off_screen,
+        pick=pick,
+        pick_source=obj,
+        **kwargs,
+    )

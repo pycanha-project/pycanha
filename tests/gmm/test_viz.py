@@ -107,3 +107,74 @@ def test_categorical_colors_rank_keeps_missing_grey() -> None:
 # NOT exercised here. VTK's OpenGL backend segfaults on headless CI runners without a
 # GL context, and a segfault cannot be caught, so it would crash the whole test run.
 # The data path used for visualization (``to_polydata``) is fully covered above.
+
+
+def test_map_node_data_spreads_values_over_cells() -> None:
+    tm = _panel_model()  # node 5 on side 1, node 6 on side 2
+    poly = gmm.to_polydata(tm.gmm, both_sides=True)
+
+    values = gmm.viz.map_node_data(poly, {5: 300.0, 6: 250.0})
+
+    node_numbers = np.asarray(poly.cell_data["node_number"])
+    np.testing.assert_array_equal(values[node_numbers == 5], 300.0)
+    np.testing.assert_array_equal(values[node_numbers == 6], 250.0)
+
+
+def test_map_node_data_marks_missing_nodes() -> None:
+    tm = _panel_model()
+    poly = gmm.to_polydata(tm.gmm, both_sides=True)
+
+    values = gmm.viz.map_node_data(poly, {5: 300.0})
+    node_numbers = np.asarray(poly.cell_data["node_number"])
+    assert np.all(np.isnan(values[node_numbers == 6]))
+    np.testing.assert_array_equal(values[node_numbers == 5], 300.0)
+
+    # An empty mapping is not an error - everything is simply unknown.
+    assert np.all(np.isnan(gmm.viz.map_node_data(poly, {})))
+    # Keys that are not in the mesh at all must not leak into neighbouring nodes.
+    assert np.all(np.isnan(gmm.viz.map_node_data(poly, {99: 1.0})))
+
+
+def test_map_face_data_distinguishes_the_two_sides() -> None:
+    tm = _panel_model()
+    poly = gmm.to_polydata(tm.gmm, both_sides=True)
+
+    # Slot 0 is side 1 of the face, slot 1 is side 2.
+    values = gmm.viz.map_face_data(poly, {0: 1.0, 1: 2.0})
+    face_ids = np.asarray(poly.cell_data["face_id"])
+    np.testing.assert_array_equal(values[face_ids == 0], 1.0)
+    np.testing.assert_array_equal(values[face_ids == 1], 2.0)
+
+
+def test_map_data_default_is_configurable() -> None:
+    tm = _panel_model()
+    poly = gmm.to_polydata(tm.gmm)
+    np.testing.assert_array_equal(gmm.viz.map_node_data(poly, {}, default=-1.0), -1.0)
+
+
+def test_cell_columns_matches_cells_to_series_columns() -> None:
+    tm = _panel_model()  # node 5 on side 1, node 6 on side 2
+    poly = gmm.to_polydata(tm.gmm, both_sides=True)
+
+    column, known = gmm.viz.cell_columns(poly, [6, 5], "node_number")
+
+    assert known.all()
+    node_numbers = np.asarray(poly.cell_data["node_number"])
+    # Column order follows the caller's key order, not sorted order.
+    np.testing.assert_array_equal(column[node_numbers == 6], 0)
+    np.testing.assert_array_equal(column[node_numbers == 5], 1)
+
+
+def test_cell_columns_flags_cells_without_a_column() -> None:
+    tm = _panel_model()
+    poly = gmm.to_polydata(tm.gmm, both_sides=True)
+
+    _, known = gmm.viz.cell_columns(poly, [5], "node_number")
+    node_numbers = np.asarray(poly.cell_data["node_number"])
+    assert known[node_numbers == 5].all()
+    assert not known[node_numbers == 6].any()
+
+    # No keys at all: nothing is known, and the column array is still usable.
+    column, known = gmm.viz.cell_columns(poly, [], "node_number")
+    assert not known.any()
+    assert column.shape == known.shape == (poly.n_cells,)
