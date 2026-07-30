@@ -6,19 +6,22 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pycanha_core as pcc
 
-    from . import gmm, io, parameters, solvers, tmm
+    from . import gmm, io, parameters, radiative, solvers, tmm
     from .thermalmodel import ThermalModel
     from .tmm.node import NodeType
 
     LogLevel = pcc.LogLevel
+    Logger = pcc.Logger
     get_logger = pcc.get_logger
     get_python_logger = pcc.get_python_logger
+    print_package_info = pcc.print_package_info
     set_logger_level = pcc.set_logger_level
     set_python_logger_level = pcc.set_python_logger_level
 
 
 __all__ = [
     "LogLevel",
+    "Logger",
     "NodeType",
     "ThermalModel",
     "get_logger",
@@ -26,6 +29,8 @@ __all__ = [
     "gmm",
     "io",
     "parameters",
+    "print_package_info",
+    "radiative",
     "set_logger_level",
     "set_python_logger_level",
     "solvers",
@@ -40,6 +45,7 @@ def __getattr__(name: str) -> Any:
         "gmm": ".gmm",
         "io": ".io",
         "parameters": ".parameters",
+        "radiative": ".radiative",
         "solvers": ".solvers",
         "tmm": ".tmm",
     }
@@ -61,8 +67,10 @@ def __getattr__(name: str) -> Any:
 
     root_exports = {
         "LogLevel",
+        "Logger",
         "get_logger",
         "get_python_logger",
+        "print_package_info",
         "set_logger_level",
         "set_python_logger_level",
     }

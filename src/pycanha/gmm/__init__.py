@@ -1,16 +1,18 @@
 """Geometric Mathematical Model subpackage.
 
-Object-centric scene graph mirroring ``pycanha-core`` 0.15: primitives,
+Object-centric scene graph mirroring ``pycanha-core`` 0.16: primitives,
 materials, thermal meshes, transformations, the scene tree
 (``GeometryItem`` / ``GeometryGroup`` / ``GeometryGroupCutted``), the
-``GeometryModel``, ``ops`` / ``mesh.ops`` operations, and pyvista visualization.
+``GeometryModel`` (incl. ``mesh_parts`` / ``material_table`` raytracer scene
+assembly), ``ops`` / ``mesh.ops`` operations, and pyvista visualization with
+click-to-inspect face picking.
 """
 
 from __future__ import annotations
 
 import pycanha_core as pcc
 
-from . import mesh, ops, viz
+from . import mesh, ops, picking, viz
 from .materials import BulkMaterial, Color, OpticalMaterial
 from .model import GeometryModel
 from .primitives import (
@@ -68,6 +70,7 @@ __all__ = [
     "is_closed_solid",
     "mesh",
     "ops",
+    "picking",
     "plot",
     "to_polydata",
     "viz",

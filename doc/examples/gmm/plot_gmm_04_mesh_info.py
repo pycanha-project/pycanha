@@ -9,6 +9,14 @@ properties. We overlay two kinds of per-face information:
    number falls in a range (``plot_node_range``).
 2. **Emissivity**: color faces by the IR emissivity of their thermal-mesh side
    (``plot(scalars="emissivity")``).
+3. **Your own results**: color faces from a ``{node: value}`` or
+   ``{face slot: value}`` mapping (``plot_node_data`` / ``plot_face_data``), and
+   scrub a transient with a time slider (``plot_node_series``).
+
+Every plot is also interactive: in a live (non-off-screen) window, right-click a
+face - or press ``P`` with the cursor over it - and its face slot, side, node
+number, item, optical material and color are printed to the console while the
+face lights up in the view. Pass ``pick=False`` to turn that off.
 """
 
 # %%
@@ -69,3 +77,30 @@ tm.gmm.plot_node_range(10, 20, color="green", off_screen=True)
 # Plate A has emissivity 0.1, plate B has 0.85.
 
 tm.gmm.plot(scalars="emissivity", off_screen=True)
+
+# %%
+# Color faces by your own per-node results
+# ----------------------------------------
+#
+# Any ``{node number: value}`` mapping can be drawn on a color scale. Nodes that
+# are missing from the mapping are left in the ``nan`` color.
+
+temperatures = {node: 250.0 + 3.0 * node for node in range(1, 33)}
+tm.gmm.plot_node_data(temperatures, name="T [K]", cmap="inferno", off_screen=True)
+
+# %%
+# Plot a transient result
+# ------------------------
+#
+# ``plot_node_series`` takes a ``(len(times), len(nodes))`` array and adds a time
+# slider. The color scale is fixed over the whole series so the frames stay
+# comparable, and the current time is drawn in the corner. Off-screen (as here)
+# there is nothing to drag, so only the first frame is rendered.
+
+nodes = list(range(1, 33))
+times = np.linspace(0.0, 3600.0, 25)
+history = 250.0 + np.outer(times / 3600.0, np.linspace(20.0, 90.0, len(nodes)))
+
+tm.gmm.plot_node_series(
+    history, nodes, times, name="T [K]", time_format="t = {time:.0f} s", off_screen=True
+)

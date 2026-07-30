@@ -6,8 +6,7 @@ import ast
 import shutil
 from pathlib import Path
 
-import pycanha_core as pcc
-
+import pycanha as pc
 from pycanha.io.esatan_reader import ESATANReader
 
 FIXTURE = Path(__file__).resolve().parents[2] / "data" / "esatan" / "DISC" / "DISCTR_TRANSIENT.d"
@@ -16,7 +15,7 @@ FIXTURE = Path(__file__).resolve().parents[2] / "data" / "esatan" / "DISC" / "DI
 def _parse_with_emit(tmp_path: Path) -> Path:
     work = tmp_path / FIXTURE.name
     shutil.copy(FIXTURE, work)
-    tmm = pcc.tmm.ThermalMathematicalModel("DISCTR_TRANSIENT")
+    tmm = pc.tmm.ThermalMathematicalModel("DISCTR_TRANSIENT")
     reader = ESATANReader(tmm)
     reader.parse_analysis_file(work, emit_python_script=True)
     return work.with_suffix(".py")
@@ -51,7 +50,7 @@ def test_explicit_output_path(tmp_path: Path) -> None:
     work = tmp_path / FIXTURE.name
     shutil.copy(FIXTURE, work)
     target = tmp_path / "custom_name.py"
-    tmm = pcc.tmm.ThermalMathematicalModel("X")
+    tmm = pc.tmm.ThermalMathematicalModel("X")
     reader = ESATANReader(tmm)
     reader.parse_analysis_file(work, emit_python_script=True, python_script_path=target)
     assert target.exists()
@@ -61,7 +60,7 @@ def test_explicit_output_path(tmp_path: Path) -> None:
 def test_no_script_emitted_by_default(tmp_path: Path) -> None:
     work = tmp_path / FIXTURE.name
     shutil.copy(FIXTURE, work)
-    tmm = pcc.tmm.ThermalMathematicalModel("X")
+    tmm = pc.tmm.ThermalMathematicalModel("X")
     reader = ESATANReader(tmm)
     reader.parse_analysis_file(work)
     assert not work.with_suffix(".py").exists()

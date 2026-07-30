@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import numpy as np
-import pycanha_core as pcc
 
 import pycanha as pc
 
@@ -33,8 +32,8 @@ def set_uniform_temperature(
 
 
 def align_temperature_outputs(
-    output_model: pcc.tmm.DataModel,
-    reference_model: pcc.tmm.DataModel,
+    output_model: pc.tmm.DataModel,
+    reference_model: pc.tmm.DataModel,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     output_node_numbers = list(output_model.node_numbers)
     reference_node_numbers = list(reference_model.node_numbers)
@@ -72,7 +71,7 @@ def test_tscnrlds_matches_esatan_disc_transient() -> None:
         excluded_node_numbers={BOUNDARY_NODE_SPACE},
     )
 
-    pcc.tmm.read_tmd_transient(
+    pc.tmm.read_tmd_transient(
         str(TRANSIENT_FIXTURE),
         model.tmm.thermal_data,
         "esatan_transient",

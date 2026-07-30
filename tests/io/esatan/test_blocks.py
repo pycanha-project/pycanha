@@ -1,6 +1,6 @@
 """Tests for the per-block parsers exposed by ESATANReader.
 
-These tests construct a bare :class:`pycanha_core.tmm.ThermalMathematicalModel`
+These tests construct a bare :class:`pycanha.tmm.ThermalMathematicalModel`
 and pass it to ``ESATANReader``.  ``ESATANReader`` accepts both
 ``ThermalModel`` (preferred) and ``ThermalMathematicalModel`` (legacy) so we
 can exercise the parsers without depending on pycanha's wrappers.
@@ -8,15 +8,15 @@ can exercise the parsers without depending on pycanha's wrappers.
 
 from __future__ import annotations
 
-import pycanha_core as pcc
 import pytest
 
+import pycanha as pc
 from pycanha.io.esatan_reader import ESATANReader
 
 
 @pytest.fixture
 def reader() -> ESATANReader:
-    tmm = pcc.tmm.ThermalMathematicalModel("test")
+    tmm = pc.tmm.ThermalMathematicalModel("test")
     return ESATANReader(tmm)
 
 
@@ -111,12 +111,12 @@ class TestParseNodes:
         node = reader._tmm.nodes.get_node_from_node_num(1)
         assert pytest.approx(300.0) == node.T
         assert pytest.approx(100.0) == node.C
-        assert node.type == pcc.NodeType.DIFFUSIVE
+        assert node.type == pc.NodeType.DIFFUSIVE
 
     def test_boundary(self, reader: ESATANReader) -> None:
         reader.parse_nodes("B5 = 'bnd', T = 250.0;\n")
         node = reader._tmm.nodes.get_node_from_node_num(5)
-        assert node.type == pcc.NodeType.BOUNDARY
+        assert node.type == pc.NodeType.BOUNDARY
 
     def test_inactive_skipped(self, reader: ESATANReader, caplog: pytest.LogCaptureFixture) -> None:
         reader.parse_nodes("X9 = 'inactive', T = 0.0;\n")
@@ -142,7 +142,7 @@ class TestParseNodes:
 class TestParseConductors:
     def _setup_nodes(self, reader: ESATANReader) -> None:
         for nn in (1, 2, 3):
-            n = pcc.tmm.Node(nn)
+            n = pc.tmm.Node(nn)
             n.T = 25.0
             reader._tmm.add_node(n)
 
@@ -231,7 +231,7 @@ class TestIntrinsicsRejected:
     def test_conductor_with_cndfn1(self, reader: ESATANReader) -> None:
         reader.parse_arrays("$REAL\nk(2,2) = 0.0, 1.0, 100.0, 2.0;\n")
         for nn, t in [(1, 25.0), (2, 50.0)]:
-            n = pcc.tmm.Node(nn)
+            n = pc.tmm.Node(nn)
             n.T = t
             reader._tmm.add_node(n)
         reader.parse_conductors("GL(1,2) = CNDFN1(T1, T2, k, 1) * 9.530846D-03;\n")
