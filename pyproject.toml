@@ -61,9 +61,11 @@ Issues = "https://github.com/pycanha-project/pycanha/issues"
 packages = ["src/pycanha"]
 
 [tool.uv]
-# Force transitive dev-tool deps above known-vulnerable versions (pip-audit).
+# Force transitive deps above known-vulnerable versions (pip-audit).
 # msgpack < 1.2.1 (pulled in via pip-audit -> cachecontrol): GHSA-6v7p-g79w-8964.
-constraint-dependencies = ["msgpack>=1.2.1"]
+# pillow < 12.3.0 (pulled in via matplotlib / pyvista / sphinx-gallery):
+# PYSEC-2026-2253..2257, -3451..3454, -3493..3496.
+constraint-dependencies = ["msgpack>=1.2.1", "pillow>=12.3.0"]
 
 [dependency-groups]
 dev = [
