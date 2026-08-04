@@ -12,17 +12,13 @@ if TYPE_CHECKING:
 DerivativeParameterRegistry = pcc.parameters.DerivativeParameterRegistry
 Formula = pcc.parameters.Formula
 
-
-class ExpressionFormula(pcc.parameters.ExpressionFormula):
-    pass
-
-
-class ParameterFormula(pcc.parameters.ParameterFormula):
-    pass
-
-
-class ValueFormula(pcc.parameters.ValueFormula):
-    pass
+# These add nothing on top of the pycanha-core versions, so they are
+# re-exported rather than subclassed, like Formula above: an object handed back
+# by the core is then already an instance of the ``pycanha.parameters`` name,
+# which an empty subclass would not be.
+ExpressionFormula = pcc.parameters.ExpressionFormula
+ParameterFormula = pcc.parameters.ParameterFormula
+ValueFormula = pcc.parameters.ValueFormula
 
 
 class GeneralFormula:

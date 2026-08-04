@@ -6,11 +6,13 @@ from typing import TYPE_CHECKING
 
 import pycanha_core as pcc
 
+from ..errors import ModelReadError
+
 if TYPE_CHECKING:
     from pycanha_core import Logger
 
 
-class EsatanParseError(Exception):
+class EsatanParseError(ModelReadError):
     """Raised for unrecoverable structural problems in a .d file.
 
     Lenient errors (unsupported intrinsic, unresolved symbol, malformed line)

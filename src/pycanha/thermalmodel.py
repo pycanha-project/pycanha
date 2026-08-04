@@ -15,7 +15,7 @@ class ThermalModel(pcc.tmm.ThermalModel):
         self,
         name: str = "",
         tmm: ThermalMathematicalModel | None = None,
-        gmm: pcc.gmm.GeometryModel | None = None,
+        gmm: GeometryModel | None = None,
     ) -> None:
         if (tmm is None) != (gmm is None):
             msg = "tmm and gmm must be provided together"
@@ -33,6 +33,19 @@ class ThermalModel(pcc.tmm.ThermalModel):
         self._tmm = tmm
         self._gmm = gmm
         tmm._set_root_model(self)
+
+    # The compiled base declares these as returning the pycanha-core classes.
+    # Return the objects handed to the base constructor instead, so a caller
+    # always gets the pycanha subclass, by construction rather than by
+    # convention. The base getter returns these same objects today; going
+    # through the stored reference is what keeps that guaranteed.
+    @property
+    def tmm(self) -> ThermalMathematicalModel:
+        return self._tmm
+
+    @property
+    def gmm(self) -> GeometryModel:
+        return self._gmm
 
     def read_tmd(
         self,

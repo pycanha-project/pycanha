@@ -32,14 +32,14 @@ from .transformations import CoordinateTransformation
 from .trimesh import TriMeshD, TriMeshF
 from .viz import plot, to_polydata
 
+# These add nothing on top of the pycanha-core versions, so they are
+# re-exported rather than subclassed: an empty subclass would not match the
+# objects the core hands back.
+#: Meshing tolerances (chordal deviation).
+MeshOptions = pcc.gmm.MeshOptions
 
-class MeshOptions(pcc.gmm.MeshOptions):
-    """Meshing tolerances (chordal deviation)."""
-
-
-class UvMesher(pcc.gmm.UvMesher):
-    """Meshes a single primitive against a ThermalMesh into a TriMeshD."""
-
+#: Meshes a single primitive against a ThermalMesh into a TriMeshD.
+UvMesher = pcc.gmm.UvMesher
 
 is_closed_solid = pcc.gmm.is_closed_solid
 

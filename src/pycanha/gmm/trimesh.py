@@ -1,36 +1,17 @@
-"""Triangular meshes (TriMeshD / TriMeshF) with pyvista convenience methods."""
+"""Triangular meshes: TriMeshD (float64) and TriMeshF (float32).
+
+These are built and cached by the core, so nothing on the Python side ever
+constructs one; they are re-exported rather than subclassed, because a subclass
+would not match the objects the core hands back and any method defined on it
+would be unreachable from ``GeometryModel.mesh`` and friends.
+
+For pyvista output use the free functions, which take any mesh:
+``pycanha.gmm.to_polydata(mesh)`` and ``pycanha.gmm.plot(mesh)``.
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
 import pycanha_core as pcc
 
-from . import viz
-
-if TYPE_CHECKING:
-    import pyvista as pv
-
-
-class TriMeshD(pcc.gmm.TriMeshD):
-    """Triangular surface mesh with float64 vertices."""
-
-    def to_polydata(self) -> pv.PolyData:
-        """Return a :class:`pyvista.PolyData` view of this mesh."""
-        return viz.to_polydata(self)
-
-    def plot(self, **kwargs: Any) -> pv.Plotter:
-        """Render this mesh with pyvista (see :func:`pycanha.gmm.viz.plot`)."""
-        return viz.plot(self, **kwargs)
-
-
-class TriMeshF(pcc.gmm.TriMeshF):
-    """Triangular surface mesh with float32 vertices (the visualization mesh)."""
-
-    def to_polydata(self) -> pv.PolyData:
-        """Return a :class:`pyvista.PolyData` view of this mesh."""
-        return viz.to_polydata(self)
-
-    def plot(self, **kwargs: Any) -> pv.Plotter:
-        """Render this mesh with pyvista (see :func:`pycanha.gmm.viz.plot`)."""
-        return viz.plot(self, **kwargs)
+TriMeshD = pcc.gmm.TriMeshD
+TriMeshF = pcc.gmm.TriMeshF

@@ -70,7 +70,9 @@ def test_view_factor_end_to_end() -> None:
     result = acc.result()
 
     assert result.vf.rows == nf
-    assert result.vf.cols == nf
+    # The trailing virtual columns account for energy that never reaches
+    # another face: to space, to an inactive face, or lost.
+    assert result.vf.cols == nf + rad.num_virtual_columns
     # Row sums are view factors in [0, 1]; the deficit is the VF to space.
     row_sums = np.asarray(result.row_sums)
     assert np.all(row_sums >= -1e-6)

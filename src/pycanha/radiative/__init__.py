@@ -14,9 +14,15 @@ exposure of the C++ core). :func:`to_scipy` is added on top so view-factor
 matrices reach user code as ``scipy.sparse.csr_matrix``, matching the rest of
 pycanha (e.g. :meth:`pycanha.tmm.CouplingMatrices.sparse_dd_copy`).
 
-In pycanha-core 0.16 the engine computes geometric **view factors** only; the
-solar and exchange kernels are not part of this release, so
-:func:`is_available` gating plus ``accumulate_vf`` is the whole compute surface.
+Since pycanha-core 0.17 the engine covers geometric **view factors**, multi-bounce
+**exchange factors**, **solar** absorption and **Gebhart** factors.
+
+A view-factor or exchange matrix has ``num_virtual_columns`` more columns than
+face slots: the three trailing columns account for energy that leaves the face
+set rather than reaching another face -- to space, to an inactive face, or lost
+to absorption -- at ``space_column_offset``, ``inactive_column_offset`` and
+``lost_column_offset`` past the last real face. A caller slicing a matrix by
+face index has to stop before them.
 """
 
 from __future__ import annotations
@@ -34,10 +40,16 @@ if TYPE_CHECKING:
         Band,
         Device,
         DeviceInfo,
+        ExchangeAccumulator,
+        ExchangeResult,
         MaterialTable,
+        MemoryEstimate,
         PartKind,
         RadiativeScene,
         ScenePart,
+        SolarAccumulator,
+        SolarResult,
+        SolarState,
         SparseF64,
         TraceSettings,
         TraceStats,
@@ -47,7 +59,14 @@ if TYPE_CHECKING:
         aggregate_matrix,
         aggregate_nodes,
         enumerate_devices,
+        estimate_memory,
+        gebhart_factors,
+        gebhart_node_factors,
+        inactive_column_offset,
         is_available,
+        lost_column_offset,
+        num_virtual_columns,
+        space_column_offset,
     )
 
 __all__ = [
@@ -56,10 +75,16 @@ __all__ = [
     "Band",
     "Device",
     "DeviceInfo",
+    "ExchangeAccumulator",
+    "ExchangeResult",
     "MaterialTable",
+    "MemoryEstimate",
     "PartKind",
     "RadiativeScene",
     "ScenePart",
+    "SolarAccumulator",
+    "SolarResult",
+    "SolarState",
     "SparseF64",
     "TraceSettings",
     "TraceStats",
@@ -69,7 +94,14 @@ __all__ = [
     "aggregate_matrix",
     "aggregate_nodes",
     "enumerate_devices",
+    "estimate_memory",
+    "gebhart_factors",
+    "gebhart_node_factors",
+    "inactive_column_offset",
     "is_available",
+    "lost_column_offset",
+    "num_virtual_columns",
+    "space_column_offset",
     "to_scipy",
 ]
 

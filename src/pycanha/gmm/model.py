@@ -9,6 +9,7 @@ import pycanha_core as pcc
 import pyvista as pv
 
 from . import picking, viz
+from .io import GeometryIo
 
 #: Actor name of the time readout, so each frame replaces the previous one.
 _TIME_LABEL = "_time_label"
@@ -74,9 +75,19 @@ class GeometryModel(pcc.gmm.GeometryModel):
     """Object-centric scene container that owns the world mesh.
 
     Adds pyvista convenience on top of the pycanha-core model
-    (:meth:`plot`, :meth:`to_polydata`, :meth:`plot_node_range`) plus a textual
-    view of the scene hierarchy (:meth:`format_tree` / :meth:`print_tree`).
+    (:meth:`plot`, :meth:`to_polydata`, :meth:`plot_node_range`), geometry
+    import/export through :attr:`io`, plus a textual view of the scene
+    hierarchy (:meth:`format_tree` / :meth:`print_tree`).
     """
+
+    # ── import / export ───────────────────────────────────────────────────
+    @property
+    def io(self) -> GeometryIo:
+        """Geometry import and export for this model, e.g. ``model.io.read_esatan_erg(...)``."""
+        # Built per access rather than cached: the accessor is a thin handle,
+        # and an attribute set in __init__ would not survive the round trip
+        # through the C++ base when the model is reached from a ThermalModel.
+        return GeometryIo(self)
 
     # ── mesh visualization ────────────────────────────────────────────────
     def to_polydata(self, *, emissivity: bool = False, both_sides: bool = False) -> pv.PolyData:
