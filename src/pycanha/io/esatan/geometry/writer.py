@@ -38,6 +38,7 @@ from .canonical import (
     indent_arguments,
     sort_attributes,
 )
+from .mappings import activity_name
 from .palette import nearest_name
 
 if TYPE_CHECKING:
@@ -293,8 +294,11 @@ class _Writer:
                 out.append((f"meshPositions{direction}", f"{{{interior}}}"))
 
         for side in _SIDES:
-            active = getattr(mesh, f"side{side}_activity")
-            out.append((f"side{side}", '"Active"' if active else '"Inactive"'))
+            activity = activity_name(
+                radiative=mesh.is_radiative_active(side),
+                conductive=mesh.is_conductive_active(side),
+            )
+            out.append((f"side{side}", f'"{activity}"'))
             start = getattr(mesh, f"node{side}_start")
             if start is not None and start >= 0:
                 out.append((f"nbase{side}", str(int(start))))

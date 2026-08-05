@@ -789,35 +789,47 @@ GEOMETRY_ALTERING_PROCEDURES: dict[str, str] = {
 
 # -- attribute value conversions -------------------------------------------
 
-#: ESATAN's four-state surface activity reduced to pycanha's radiative boolean.
+#: ESATAN's four-state surface activity as ``(radiative, conductive)``.
 #:
 #: "Radiative" and "Conductive" name a surface that takes part in only one of
-#: the two calculations; pycanha's flag *is* the radiative one, so each reduces
-#: to the value that keeps the radiative model faithful.
-ACTIVITY: dict[str, bool] = {
-    "active": True,
-    "inactive": False,
-    "radiative": True,
-    "conductive": False,
+#: the two calculations, and a mesh carries one activity per calculation, so
+#: every ESATAN value has an exact counterpart in both directions.
+ACTIVITY: dict[str, tuple[bool, bool]] = {
+    "active": (True, True),
+    "inactive": (False, False),
+    "radiative": (True, False),
+    "conductive": (False, True),
 }
 
-#: Activities whose reduction loses the conductive half of the distinction.
-LOSSY_ACTIVITY = frozenset({"radiative", "conductive"})
+#: The reverse of :data:`ACTIVITY`, for the writer.
+_ACTIVITY_NAMES: dict[tuple[bool, bool], str] = {
+    sides: name.capitalize() for name, sides in ACTIVITY.items()
+}
 
 
-def split_thickness(total: float, side1_active: bool, side2_active: bool) -> tuple[float, float]:
+def activity_name(*, radiative: bool, conductive: bool) -> str:
+    """One side's two activities as the ESATAN word for them."""
+    return _ACTIVITY_NAMES[radiative, conductive]
+
+
+def split_thickness(
+    total: float, side1_conductive: bool, side2_conductive: bool
+) -> tuple[float, float]:
     """Share a ``composition = "SINGLE"`` thickness between the two surfaces.
 
     ESATAN carries one thickness for the whole shell; pycanha stores one per
     side.  Half goes to each participating surface, matching how ESATAN itself
     splits a single thickness when it exports a model, and all of it to the one
     surface that participates when only one does.
+
+    Participating means *conductively* active: a thickness is only ever read as
+    a conduction length, so a side that does not conduct has no use for one.
     """
-    if side1_active and side2_active:
+    if side1_conductive and side2_conductive:
         return total / 2.0, total / 2.0
-    if side1_active:
+    if side1_conductive:
         return total, 0.0
-    if side2_active:
+    if side2_conductive:
         return 0.0, total
     return 0.0, 0.0
 

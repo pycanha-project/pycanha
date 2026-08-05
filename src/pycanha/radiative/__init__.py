@@ -17,6 +17,10 @@ pycanha (e.g. :meth:`pycanha.tmm.CouplingMatrices.sparse_dd_copy`).
 Since pycanha-core 0.17 the engine covers geometric **view factors**, multi-bounce
 **exchange factors**, **solar** absorption and **Gebhart** factors.
 
+:func:`is_available` reports whether this machine has a GPU the engine can use:
+Vulkan with ray queries on Windows and Linux, and since pycanha-core 0.18 Metal
+on macOS, where it needs GPU family Apple9 (M3 / M4 / A17 Pro) or newer.
+
 A view-factor or exchange matrix has ``num_virtual_columns`` more columns than
 face slots: the three trailing columns account for energy that leaves the face
 set rather than reaching another face -- to space, to an inactive face, or lost

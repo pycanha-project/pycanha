@@ -15,7 +15,13 @@ import numpy as np
 import pycanha_core as pcc
 import pytest
 
-from pycanha.gmm import GeometryGroup, GeometryGroupCutted, GeometryItem, GeometryModel
+from pycanha.gmm import (
+    ActiveSide,
+    GeometryGroup,
+    GeometryGroupCutted,
+    GeometryItem,
+    GeometryModel,
+)
 from pycanha.io.steptas import StepTasError
 
 FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
@@ -36,6 +42,9 @@ EXPECTED_CODES = {
     "TAS_SIDE_NOT_NUMBERED",
     # One surface carries a name for its first side, which a mesh cannot hold.
     "TAS_LABEL_DROPPED",
+    # The format states which sides radiate and never which ones conduct, so
+    # every surface's conductive activity is inferred rather than read.
+    "TAS_CONDUCTIVE_INFERRED",
 }
 
 
@@ -200,12 +209,13 @@ def test_a_surface_numbered_per_direction_is_reported_not_guessed(converted: tup
 # -- attributes -------------------------------------------------------------
 
 
-def test_activity_comes_from_the_active_side(converted: tuple) -> None:
+def test_radiative_activity_comes_from_the_active_side(converted: tuple) -> None:
+    """``active_side`` states which sides radiate, and only that."""
     model, _ = converted
     both = item(model, "SCS_DISC").thermal_mesh
-    assert (both.side1_activity, both.side2_activity) == (True, True)
+    assert both.radiative_active_side is ActiveSide.BOTH
     one = item(model, "ATTRS").thermal_mesh
-    assert (one.side1_activity, one.side2_activity) == (True, False)
+    assert one.radiative_active_side is ActiveSide.SIDE1
 
 
 def test_optical_properties_are_rebuilt_from_the_material_table(converted: tuple) -> None:

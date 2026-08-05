@@ -23,7 +23,7 @@ import numpy as np
 # reaches this package through its own `io` accessor, so going through the
 # package __init__ would close an import cycle.
 from pycanha.gmm.scene import GeometryGroup, GeometryGroupCutted, GeometryItem
-from pycanha.gmm.thermalmesh import ThermalMesh
+from pycanha.gmm.thermalmesh import ThermalMesh, active_side
 from pycanha.gmm.transformations import CoordinateTransformation
 
 from ..part21 import read_part21
@@ -81,6 +81,14 @@ _SENSE: Final = 5
 
 #: The material environment pycanha keeps, when a file defines several.
 _DEFAULT_ENVIRONMENT: Final = "DEFAULT"
+
+
+def _describe_sides(sides: Sequence[bool]) -> str:
+    """Name the sides a per-side flag is set on, for a diagnostic message."""
+    active = [str(side) for side, is_set in enumerate(sides, start=1) if is_set]
+    if not active:
+        return "neither side"
+    return f"side {' and '.join(active)}"
 
 
 class _Materials:
@@ -303,9 +311,12 @@ class _Reader:
     def _apply_attributes(self, item: GeometryItem, fields: Fields, *, swapped: bool) -> None:
         mesh = item.thermal_mesh
         counts = self._mesh(mesh, fields, swapped=swapped)
-        self._activity(mesh, fields)
         self._materials_of(mesh, fields)
         self._thickness(mesh, fields)
+        # After the two of them: the format states only which sides radiate, so
+        # the conductive activity is inferred from the material and thickness
+        # they just set.
+        self._activity(mesh, fields)
         self._nodes(mesh, fields, counts, swapped=swapped)
         label = fields.text(_LABEL)
         if label and label != fields.name:
@@ -330,6 +341,15 @@ class _Reader:
         return counts[0], counts[1]
 
     def _activity(self, mesh: pcc.gmm.ThermalMesh, fields: Fields) -> None:
+        """Set both activity selectors from the one thing the format states.
+
+        ``MGM_ACTIVE_SIDE_TYPE`` says which sides *radiate*, so it sets the
+        radiative selector and nothing else.  The conductive one is inferred
+        from the only conduction-related information a STEP-TAS surface
+        carries -- a bulk material and a thickness to conduct through -- rather
+        than copied from the radiative one, which would silently drop every
+        conductive-only side.
+        """
         active = fields.enum(_ACTIVE_SIDE, "BOTH")
         sides = mappings.ACTIVITY.get(active)
         if sides is None:
@@ -339,8 +359,22 @@ class _Reader:
                 "both sides are kept active",
                 line=fields.entity.line,
             )
-            return
-        mesh.side1_activity, mesh.side2_activity = sides
+        else:
+            mesh.radiative_active_side = active_side(side1=sides[0], side2=sides[1])
+
+        conducts = [
+            getattr(mesh, f"side{side}_material") is not None
+            and getattr(mesh, f"side{side}_thick") > 0.0
+            for side in (1, 2)
+        ]
+        mesh.conductive_active_side = active_side(side1=conducts[0], side2=conducts[1])
+        self.diagnostics.info(
+            "TAS_CONDUCTIVE_INFERRED",
+            f"'{fields.name}' conducts on {_describe_sides(conducts)}; the format states "
+            "only which sides radiate, so this was inferred from the bulk material and "
+            "thickness rather than read",
+            line=fields.entity.line,
+        )
 
     def _materials_of(self, mesh: pcc.gmm.ThermalMesh, fields: Fields) -> None:
         for side, optical_at, bulk_at, colour_at in zip(

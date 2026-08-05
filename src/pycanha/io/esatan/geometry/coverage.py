@@ -152,14 +152,17 @@ _INVENTORY: Mapping[str, _Entry] = {
     # -- per-side attributes
     "side1 / side2 Active|Inactive": _Entry("attribute", status="supported"),
     "side1 / side2 Radiative|Conductive": _Entry(
-        "attribute", "reduced to the radiative activity", status="lossy"
+        "attribute", "a mesh carries one activity per calculation", status="supported"
     ),
     "opt1 / opt2": _Entry("attribute", status="supported"),
     "colour1 / colour2": _Entry(
         "attribute", "resolved through the format's 32-colour palette", status="supported"
     ),
     'composition "SINGLE" + thick': _Entry(
-        "attribute", "half the thickness to each participating surface", status="supported"
+        "attribute",
+        "half the thickness to each conductively active surface; a shell with "
+        "neither side conducting has no use for one and keeps none",
+        status="supported",
     ),
     'composition "DUAL" + thickY': _Entry("attribute", status="supported"),
     "bulk / bulkY": _Entry("attribute", status="supported"),

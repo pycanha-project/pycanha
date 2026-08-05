@@ -169,6 +169,13 @@ Codes specific to this reader:
 ``TAS_SIDE_NOT_NUMBERED``, ``TAS_FACE_NOT_NUMBERED``
    A surface side carries no thermal nodes, or only some of its faces do.
 
+``TAS_CONDUCTIVE_INFERRED``
+   ``active_side`` states which sides *radiate* and the format says nothing
+   about which conduct, so the conductive activity is inferred from the only
+   conduction-related information a surface carries: a bulk material and a
+   thickness to conduct through.  Reported on every surface, because a value
+   that was inferred rather than read is worth knowing about.
+
 the rest
    ``TAS_LABEL_DROPPED``, ``TAS_MATERIAL_NOT_OPTICAL``,
    ``TAS_BOX_NOT_ORTHOGONAL``, ``TAS_DUPLICATE_NAME``, ``TAS_EMPTY_GROUP``,
@@ -185,6 +192,11 @@ Codes specific to writing:
 ``TAS_WRITE_ACTIVE_WITHOUT_OPTICAL``
    A side is radiatively active and names no optical material.  The format has
    no such surface, so the side is written inactive.
+
+``TAS_CONDUCTIVE_ONLY_DROPPED``
+   A side conducts without radiating.  ``active_side`` names only the sides that
+   radiate, so the conductive activity has nowhere to go and is not written.
+   ESATAN's ``"Conductive"`` surfaces arrive here.
 
 ``TAS_WRITE_THICKNESS_DROPPED``, ``TAS_WRITE_BULK_DROPPED``
    A side has a thickness without a bulk material, or a bulk material without a

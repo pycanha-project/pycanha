@@ -1,11 +1,17 @@
 """Geometric Mathematical Model subpackage.
 
-Object-centric scene graph mirroring ``pycanha-core`` 0.16: primitives,
+Object-centric scene graph mirroring ``pycanha-core`` 0.18: primitives,
 materials, thermal meshes, transformations, the scene tree
 (``GeometryItem`` / ``GeometryGroup`` / ``GeometryGroupCutted``), the
 ``GeometryModel`` (incl. ``mesh_parts`` / ``material_table`` raytracer scene
 assembly), ``ops`` / ``mesh.ops`` operations, and pyvista visualization with
 click-to-inspect face picking.
+
+A thermal mesh states its activity once per calculation -- ``ActiveSide``
+selectors for the radiative and the conductive model separately -- so a surface
+can take part in one and not the other.  :func:`active_side`,
+:func:`active_sides` and :func:`with_side` convert between a selector and the
+pair of per-side flags that file formats tend to store.
 """
 
 from __future__ import annotations
@@ -27,7 +33,7 @@ from .primitives import (
     Triangle,
 )
 from .scene import Geometry, GeometryGroup, GeometryGroupCutted, GeometryItem
-from .thermalmesh import ThermalMesh
+from .thermalmesh import ActiveSide, ThermalMesh, active_side, active_sides, with_side
 from .transformations import CoordinateTransformation
 from .trimesh import TriMeshD, TriMeshF
 from .viz import plot, to_polydata
@@ -44,6 +50,7 @@ UvMesher = pcc.gmm.UvMesher
 is_closed_solid = pcc.gmm.is_closed_solid
 
 __all__ = [
+    "ActiveSide",
     "BulkMaterial",
     "Color",
     "Cone",
@@ -67,6 +74,8 @@ __all__ = [
     "TriMeshF",
     "Triangle",
     "UvMesher",
+    "active_side",
+    "active_sides",
     "is_closed_solid",
     "mesh",
     "ops",
@@ -74,4 +83,5 @@ __all__ = [
     "plot",
     "to_polydata",
     "viz",
+    "with_side",
 ]

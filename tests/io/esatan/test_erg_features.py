@@ -19,7 +19,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pycanha.gmm import GeometryGroup, GeometryGroupCutted, GeometryItem, GeometryModel
+from pycanha.gmm import (
+    ActiveSide,
+    GeometryGroup,
+    GeometryGroupCutted,
+    GeometryItem,
+    GeometryModel,
+)
 
 FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
 FULL = FEATURES / "FEATURES_ERG.erg"
@@ -31,7 +37,6 @@ CONVERTIBLE = FEATURES / "FEATURES_TAS.erg"
 #: case its entry belongs in the supported tests instead -- or has started being
 #: dropped in silence, which is the failure this list exists to catch.
 EXPECTED_CODES = {
-    "ERG_ACTIVITY_REDUCED",
     "ERG_BOX_CUTTER",
     "ERG_BOX_DECOMPOSED",
     "ERG_CUTTER_SENSE",
@@ -154,8 +159,8 @@ def test_every_per_side_attribute_lands_on_the_right_side(convertible: tuple) ->
     model, _ = convertible
     mesh = model.get_item("ATTRS").thermal_mesh
 
-    assert mesh.side1_activity is True
-    assert mesh.side2_activity is False
+    assert mesh.radiative_active_side is ActiveSide.SIDE1
+    assert mesh.conductive_active_side is ActiveSide.SIDE1
     assert mesh.side1_optical is not None
     assert mesh.side1_optical.name == "Black"
     assert mesh.side2_optical is not None
@@ -302,10 +307,15 @@ def test_a_variable_rebound_after_use_does_not_change_what_was_built(
     assert early != pytest.approx(late)
 
 
-def test_the_activity_pair_that_only_half_survives_is_reported(convertible: tuple) -> None:
-    """ "Radiative" and "Conductive" both reduce to the radiative flag."""
+def test_the_one_sided_activities_survive_whole(convertible: tuple) -> None:
+    """ "Radiative" and "Conductive" each land on their own selector.
+
+    A mesh carries one activity per calculation, so the surface that radiates
+    without conducting and the one that conducts without radiating are both
+    stated exactly -- and neither costs a diagnostic.
+    """
     model, diagnostics = convertible
     mesh = model.get_item("DROPPED_ATTRS").thermal_mesh
-    assert mesh.side1_activity is True
-    assert mesh.side2_activity is False
-    assert len([note for note in diagnostics if note.code == "ERG_ACTIVITY_REDUCED"]) == 2
+    assert mesh.radiative_active_side is ActiveSide.SIDE1
+    assert mesh.conductive_active_side is ActiveSide.SIDE2
+    assert "ERG_ACTIVITY_REDUCED" not in diagnostics.codes()

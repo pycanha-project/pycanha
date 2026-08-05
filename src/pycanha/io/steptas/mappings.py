@@ -345,10 +345,10 @@ UNSUPPORTED_ENTITIES: dict[str, str] = {
 
 # -- attributes --------------------------------------------------------------
 
-#: STEP-TAS radiative activity, as the pair of pycanha side flags.
+#: STEP-TAS ``active_side``, as the pair of sides it names.
 #:
-#: pycanha's flag is the radiative one, which is exactly what ``active_side``
-#: states, so nothing is lost in either direction.
+#: The enumeration states which sides *radiate*, so it maps to the radiative
+#: activity alone; a surface's conductive activity is not in the format.
 ACTIVITY: dict[str, tuple[bool, bool]] = {
     "BOTH": (True, True),
     "SIDE1": (True, False),
@@ -781,7 +781,11 @@ def _matrix_of_quaternion(quaternion: npt.ArrayLike) -> npt.NDArray[np.float64]:
 
 
 def activity_name(*, side1: bool, side2: bool) -> str:
-    """Which sides are radiatively active, as the format's enumeration."""
+    """Which sides radiate, as the format's enumeration.
+
+    Only the radiative activity has a counterpart here; a side that conducts
+    without radiating cannot be stated in this format at all.
+    """
     for name, sides in ACTIVITY.items():
         if sides == (side1, side2):
             return name

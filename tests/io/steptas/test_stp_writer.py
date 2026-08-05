@@ -24,7 +24,7 @@ from pycanha.gmm import GeometryItem, GeometryModel
 from pycanha.gmm.materials import BulkMaterial, Color, OpticalMaterial
 from pycanha.gmm.primitives import Cube, Disc, Rectangle
 from pycanha.gmm.scene import GeometryGroup, GeometryGroupCutted
-from pycanha.gmm.thermalmesh import ThermalMesh
+from pycanha.gmm.thermalmesh import ActiveSide, ThermalMesh
 from pycanha.io.part21 import Reference, read_part21
 from pycanha.io.steptas.dictionary import reference_dictionary
 
@@ -397,15 +397,13 @@ def codes(model: GeometryModel, path: Path) -> set[str]:
 
 def test_an_active_side_with_no_optical_is_written_inactive(tmp_path: Path) -> None:
     mesh = ThermalMesh()
-    mesh.side1_activity = True
-    mesh.side2_activity = True
+    mesh.radiative_active_side = ActiveSide.BOTH
     target = tmp_path / "active.stp"
     assert "TAS_WRITE_ACTIVE_WITHOUT_OPTICAL" in codes(one_surface(mesh), target)
     back = GeometryModel("back")
     back.io.read_steptas(target, on_diagnostic=quiet)
     plate = items(back)["PLATE"].thermal_mesh
-    assert not plate.side1_activity
-    assert not plate.side2_activity
+    assert plate.radiative_active_side is ActiveSide.NONE
 
 
 def test_a_thickness_with_no_bulk_material_is_left_out(tmp_path: Path) -> None:
@@ -441,7 +439,7 @@ def test_a_thickness_and_a_bulk_together_are_both_written(tmp_path: Path) -> Non
 def test_one_name_carries_an_optical_and_a_bulk_at_once(tmp_path: Path) -> None:
     """The format keeps both under one material; a model keeps two objects."""
     mesh = ThermalMesh()
-    mesh.side1_activity = True
+    mesh.radiative_active_side = ActiveSide.SIDE1
     mesh.side1_optical = OpticalMaterial("Skin", [0.9, 0.0, 0.0, 0.3, 0.0, 0.0])
     mesh.side1_thick = 0.001
     mesh.side1_material = BulkMaterial("Skin", 1000.0, 5.0, 800.0)

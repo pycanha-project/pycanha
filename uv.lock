@@ -2261,7 +2261,7 @@ wheels = [
 
 [[package]]
 name = "pycanha"
-version = "0.17.0"
+version = "0.18.0"
 source = { editable = "." }
 dependencies = [
     { name = "h5py" },
@@ -2317,7 +2317,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0" },
     { name = "numpy", marker = "extra == 'doc'" },
     { name = "numpydoc", marker = "extra == 'doc'" },
-    { name = "pycanha-core", specifier = "==0.17.0" },
+    { name = "pycanha-core", specifier = "==0.18.0" },
     { name = "pydata-sphinx-theme", marker = "extra == 'doc'", specifier = ">=0.16" },
     { name = "pyvista", specifier = ">=0.44" },
     { name = "scipy", specifier = ">=1.17.1" },
@@ -2347,20 +2347,20 @@ dev = [
 
 [[package]]
 name = "pycanha-core"
-version = "0.17.0"
+version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mkl", marker = "sys_platform != 'darwin'" },
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/30/825ca35582e965ce1c143aebc8f11c2c1dc402c969078b1b36712934215a/pycanha_core-0.17.0.tar.gz", hash = "sha256:95b6fa1a456658e41786b9f155fb2b64a98ce193eb8349f56843018cb7861ff3", size = 74583, upload-time = "2026-07-30T19:16:07.425Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/f4/27d8e6938389442b6e6180e989d7fa42367e49adda66f60b999030f22434/pycanha_core-0.18.0.tar.gz", hash = "sha256:229a048e974b6ae7d574752a1a4e931b0e5e120448d8040c373788318cb2b333", size = 81383, upload-time = "2026-08-04T08:59:18.07Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/2d/db6920ddbf547b3e6a519e4acf385180e3db771f68111cb090b1e6bc666a/pycanha_core-0.17.0-cp313-cp313-macosx_26_0_arm64.whl", hash = "sha256:f62573aeb2225af7bd0b4cea9febd53a2b4d8e04c2d20ec91abb7c045bd0d6ec", size = 3206723, upload-time = "2026-07-30T19:15:56.311Z" },
-    { url = "https://files.pythonhosted.org/packages/04/ce/024de75cb5885c41df9fdeb0102e20fd768b66bd32f1fc2252d7a46e6016/pycanha_core-0.17.0-cp313-cp313-manylinux_2_39_x86_64.whl", hash = "sha256:9e3ec209d1eb1e1412dbec5efbde814d49309afe2484dd091b37c619df32db47", size = 5253117, upload-time = "2026-07-30T19:15:58.513Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/08/ff88c78f7b6bb64d158f8f1fd2abee8335ef4ab923ba5458f7ed721ed3e5/pycanha_core-0.17.0-cp313-cp313-win_amd64.whl", hash = "sha256:2293e7550cf938e424b6aa0142021f4ed304d43d9b45cb180c06b335fc3ac2b6", size = 2563659, upload-time = "2026-07-30T19:16:00.666Z" },
-    { url = "https://files.pythonhosted.org/packages/ab/27/2188bc3c1a3e3f25d64c8b961265dd33b1671f461c40c9323038e6ba9e86/pycanha_core-0.17.0-cp314-cp314-macosx_26_0_arm64.whl", hash = "sha256:999af1ac661324bdf45f1750b851bb57efd08eb1c96e02781acabaab6906f5f5", size = 3206610, upload-time = "2026-07-30T19:16:02.35Z" },
-    { url = "https://files.pythonhosted.org/packages/d8/a1/c57d8913c0fb224acd60a7a643e1df4cb70c9c40fa285dd5cc9aa29d35c6/pycanha_core-0.17.0-cp314-cp314-manylinux_2_39_x86_64.whl", hash = "sha256:0bb50013ed73a1e115ea0fcb86a526bea4e121d8f0ee74b2ea372324a2e03ad2", size = 5253057, upload-time = "2026-07-30T19:16:04.285Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/8e/f7a6f0d9002f816e8e30c5aa63a971a85e6bd99688833e3a7c6e062eb037/pycanha_core-0.17.0-cp314-cp314-win_amd64.whl", hash = "sha256:5589fd0862b228df92906c84894ac003b9e2055db8027dca73c7af8c29ce38dc", size = 2638437, upload-time = "2026-07-30T19:16:05.971Z" },
+    { url = "https://files.pythonhosted.org/packages/90/81/6e8982514a849c035253f78be739795bf7bc9b4807918b8ea7e4375b636a/pycanha_core-0.18.0-cp313-cp313-macosx_26_0_arm64.whl", hash = "sha256:72f4731ae176fcd7129b611f6ba1764fe8b28d7abd09adbfed4a40ad1ec82069", size = 3291910, upload-time = "2026-08-04T08:59:07.817Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/c8/aef21d3ac1a44498279bb47ab0f8bc37e800cb01e0d515d672a2484af12e/pycanha_core-0.18.0-cp313-cp313-manylinux_2_39_x86_64.whl", hash = "sha256:9b345fa2f76c1c29ff443987587ab1d3902f51e8b73d0d05000235698df05211", size = 5284252, upload-time = "2026-08-04T08:59:09.876Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/f1/a683acf22973ba31916de6d2aa755302cd6660901dd4fcc2664e02e379a1/pycanha_core-0.18.0-cp313-cp313-win_amd64.whl", hash = "sha256:d0eb34951f5f40dddaaeb20a7a2a0e0b4452bbdd8156ce2d901308882ca934bb", size = 2589099, upload-time = "2026-08-04T08:59:11.501Z" },
+    { url = "https://files.pythonhosted.org/packages/49/e2/d7a6597f4db91660b2165fe5847f032dc1495c873c58616bb7483b1909a1/pycanha_core-0.18.0-cp314-cp314-macosx_26_0_arm64.whl", hash = "sha256:3a5406a7e70295b9bf92d28a383ad315664980ad2733eafce7adbb61d0da7169", size = 3291633, upload-time = "2026-08-04T08:59:13.1Z" },
+    { url = "https://files.pythonhosted.org/packages/48/1a/4beec143dd1b1be70cad383fdc2638f8c0de553b5f08b83749a8a630f2e5/pycanha_core-0.18.0-cp314-cp314-manylinux_2_39_x86_64.whl", hash = "sha256:1c934346900a8caa8394fb055f0a22d65049c45ed1b92dfaca2db0c81e1db483", size = 5284220, upload-time = "2026-08-04T08:59:14.901Z" },
+    { url = "https://files.pythonhosted.org/packages/17/98/a2328db9c19e1eb925378e15653ad706abef630b531f83aec8a919f7f4b8/pycanha_core-0.18.0-cp314-cp314-win_amd64.whl", hash = "sha256:a0cdf1d4c1d399393d6eaf55ac523b10f1f837af4181ee7d3b9be568d10178d0", size = 2664943, upload-time = "2026-08-04T08:59:16.548Z" },
 ]
 
 [[package]]

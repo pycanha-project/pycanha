@@ -18,7 +18,13 @@ import pycanha_core as pcc
 import pytest
 
 from pycanha import ThermalModel
-from pycanha.gmm import GeometryGroup, GeometryGroupCutted, GeometryItem, GeometryModel
+from pycanha.gmm import (
+    ActiveSide,
+    GeometryGroup,
+    GeometryGroupCutted,
+    GeometryItem,
+    GeometryModel,
+)
 from pycanha.io.esatan.errors import EsatanParseError
 from pycanha.io.esatan.geometry import cuts_to_esatan_mesh, esatan_mesh_to_cuts
 
@@ -512,7 +518,9 @@ def test_inactive_surface(tmp_path: Path) -> None:
         tmp_path,
         'GEOMETRY R;\nR = SHELL_SCS_RECTANGLE(xmax = 1.0, ymax = 1.0, side1 = "Inactive");',
     )
-    assert model.get_item("R").thermal_mesh.side1_activity is False
+    mesh = model.get_item("R").thermal_mesh
+    assert mesh.radiative_active_side is ActiveSide.SIDE2
+    assert mesh.conductive_active_side is ActiveSide.SIDE2
 
 
 def test_colour_resolves_through_the_shared_palette(tmp_path: Path) -> None:

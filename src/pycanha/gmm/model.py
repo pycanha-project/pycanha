@@ -435,9 +435,11 @@ class GeometryModel(pcc.gmm.GeometryModel):
     def material_table(self) -> pcc.radiative.MaterialTable:
         """Build the per-face-slot ``MaterialTable`` from the ThermalMesh data.
 
-        Collects each face slot's optical material and activity flag (from the
-        per-side ThermalMesh optical properties) into the table the raytracer
-        consumes alongside :meth:`mesh_parts`.
+        Collects each face slot's optical material and radiative activity (from
+        the per-side ThermalMesh optical properties and
+        ``radiative_active_side``) into the table the raytracer consumes
+        alongside :meth:`mesh_parts`.  A side that conducts but does not radiate
+        counts as inactive here.
         """
         return super().material_table()
 

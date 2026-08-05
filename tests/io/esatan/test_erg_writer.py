@@ -20,7 +20,13 @@ import numpy as np
 import pycanha_core as pcc
 import pytest
 
-from pycanha.gmm import GeometryGroup, GeometryGroupCutted, GeometryItem, GeometryModel
+from pycanha.gmm import (
+    ActiveSide,
+    GeometryGroup,
+    GeometryGroupCutted,
+    GeometryItem,
+    GeometryModel,
+)
 
 FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
 
@@ -341,8 +347,43 @@ def test_an_inactive_side_stays_inactive(tmp_path: Path) -> None:
     )
     _, second = round_trip(tmp_path, body)
     mesh = items(second)["R"].thermal_mesh
-    assert mesh.side1_activity is True
-    assert mesh.side2_activity is False
+    assert mesh.radiative_active_side is ActiveSide.SIDE1
+    assert mesh.conductive_active_side is ActiveSide.SIDE1
+
+
+@pytest.mark.parametrize(
+    ("activity", "radiative", "conductive"),
+    [
+        ("Active", True, True),
+        ("Inactive", False, False),
+        ("Radiative", True, False),
+        ("Conductive", False, True),
+    ],
+)
+def test_every_activity_survives_a_round_trip(
+    tmp_path: Path, activity: str, radiative: bool, conductive: bool
+) -> None:
+    """All four ESATAN activities, out and back unchanged.
+
+    A mesh holds one activity per calculation, so each of the four is a state
+    the model can be in -- and the word it was written from is the word it
+    comes back as.
+    """
+    body = (
+        "GEOMETRY R;\nR = SHELL_SCS_RECTANGLE(xmax = 1.0, ymax = 1.0, "
+        f'side1 = "{activity}", side2 = "Active", opt1 = Paint, opt2 = Paint);\nM = R;\n'
+    )
+    first, second = round_trip(tmp_path, body)
+    for model in (first, second):
+        mesh = items(model)["R"].thermal_mesh
+        assert mesh.is_radiative_active(1) is radiative
+        assert mesh.is_conductive_active(1) is conductive
+        # The other side is "Active" throughout, so a selector that had
+        # collapsed the two calculations into one would show up here.
+        assert mesh.is_radiative_active(2) is True
+        assert mesh.is_conductive_active(2) is True
+    written = (tmp_path / "written.erg").read_text(encoding="utf-8")
+    assert f'side1 = "{activity}"' in written
 
 
 # -- the whole feature model ----------------------------------------------

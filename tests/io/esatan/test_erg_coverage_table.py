@@ -124,6 +124,16 @@ def test_a_construct_only_the_wider_model_carries_does_not_convert(
     assert by_construct["SHELL_SCS_DISC"].steptas_status == "yes"
 
 
+def test_the_one_sided_activities_are_no_longer_a_reduction(table: list[coverage.Row]) -> None:
+    """A mesh holds one activity per calculation, so nothing is dropped.
+
+    This row was ``lossy`` while a mesh had a single flag and "Radiative" and
+    "Conductive" both had to collapse onto it.
+    """
+    by_construct = {row.construct: row for row in table}
+    assert by_construct["side1 / side2 Radiative|Conductive"].pycanha_status == "supported"
+
+
 # -- rendering -------------------------------------------------------------
 
 

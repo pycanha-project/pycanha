@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pycanha_core as pcc
 
-    from . import gmm, io, parameters, radiative, solvers, tmm
+    from . import conduction, gmm, io, parameters, radiative, solvers, tmm
     from .thermalmodel import ThermalModel
     from .tmm.node import NodeType
 
@@ -24,6 +24,7 @@ __all__ = [
     "Logger",
     "NodeType",
     "ThermalModel",
+    "conduction",
     "get_logger",
     "get_python_logger",
     "gmm",
@@ -42,6 +43,7 @@ def __getattr__(name: str) -> Any:
     # Import subpackages on first access so importing pycanha does not eagerly
     # pull in both tmm and parameters while they are still importing each other.
     module_exports = {
+        "conduction": ".conduction",
         "gmm": ".gmm",
         "io": ".io",
         "parameters": ".parameters",

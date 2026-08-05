@@ -35,7 +35,7 @@ import pycanha_core as pcc
 # package __init__ would close an import cycle.
 from pycanha.gmm.materials import Color, OpticalMaterial
 from pycanha.gmm.scene import GeometryGroup, GeometryGroupCutted, GeometryItem
-from pycanha.gmm.thermalmesh import ThermalMesh
+from pycanha.gmm.thermalmesh import ThermalMesh, with_side
 from pycanha.gmm.transformations import CoordinateTransformation
 
 from ..lang import ast
@@ -46,7 +46,6 @@ from .mappings import (
     ACTIVITY,
     BOXES,
     GEOMETRY_ALTERING_PROCEDURES,
-    LOSSY_ACTIVITY,
     OPTICAL_PROPERTIES,
     OPTICAL_ROW,
     PRIMITIVES,
@@ -89,6 +88,9 @@ _TRANSFORMS = frozenset({"ROTATE", "TRANSLATE"})
 
 #: Both surfaces, in the order ESATAN numbers them.
 _BOTH_SIDES = (1, 2)
+
+#: The two per-calculation activity selectors, in the order ACTIVITY pairs them.
+_ACTIVITY_ATTRIBUTES = ("radiative_active_side", "conductive_active_side")
 
 
 def _rotation_matrix(x_ang: float, y_ang: float, z_ang: float) -> npt.NDArray[np.float64]:
@@ -697,14 +699,8 @@ class _Builder:
                     "ERG_UNKNOWN_ACTIVITY", f"unknown surface activity '{raw}'", line=line
                 )
                 continue
-            if raw in LOSSY_ACTIVITY:
-                self.diagnostics.warning(
-                    "ERG_ACTIVITY_REDUCED",
-                    f"surface {side} is '{raw}'; only radiative activity is represented, "
-                    "so the conductive half of the distinction is lost",
-                    line=line,
-                )
-            setattr(mesh, f"side{side}_activity", ACTIVITY[raw])
+            for attribute, active in zip(_ACTIVITY_ATTRIBUTES, ACTIVITY[raw], strict=True):
+                setattr(mesh, attribute, with_side(getattr(mesh, attribute), side, active=active))
 
     def _apply_materials(
         self,
@@ -804,7 +800,9 @@ class _Builder:
         if "thick" not in args:
             return
         first, second = split_thickness(
-            args.real("thick", 0.0), mesh.side1_activity, mesh.side2_activity
+            args.real("thick", 0.0),
+            mesh.is_conductive_active(1),
+            mesh.is_conductive_active(2),
         )
         if 1 in sides:
             mesh.side1_thick = first

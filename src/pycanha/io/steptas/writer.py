@@ -420,14 +420,28 @@ class _Writer:
         return (counts[0], counts[1]), (grids[0], grids[1])
 
     def _activity(self, mesh: pcc.gmm.ThermalMesh, name: str, optical: Sequence[int | None]) -> str:
-        """Which sides are active, reduced to those that can say what they are.
+        """Which sides radiate, reduced to those that can say what they are.
 
-        The format will not have a side both radiatively active and without a
-        surface material, because there would be nothing to compute with.  A
-        mesh that is in that state is written inactive on that side and the
-        reduction reported, which keeps the rest of the file usable.
+        ``active_side`` states the radiative activity only, so a side that
+        conducts without radiating has nowhere to go in this format and is
+        reported.  Separately, the format will not have a side both radiatively
+        active and without a surface material, because there would be nothing to
+        compute with.  A mesh that is in that state is written inactive on that
+        side and the reduction reported, which keeps the rest of the file usable.
         """
-        active = [bool(getattr(mesh, f"side{side}_activity")) for side in _SIDES]
+        active = [mesh.is_radiative_active(side) for side in _SIDES]
+        dropped = [
+            side
+            for side in _SIDES
+            if mesh.is_conductive_active(side) and not mesh.is_radiative_active(side)
+        ]
+        if dropped:
+            self.diagnostics.warning(
+                "TAS_CONDUCTIVE_ONLY_DROPPED",
+                f"'{name}' conducts without radiating on side "
+                f"{' and '.join(str(side) for side in dropped)}; the format states only "
+                "which sides radiate, so the conductive activity is not written",
+            )
         unstated = [
             side
             for side, (is_active, material) in enumerate(zip(active, optical, strict=True), start=1)
