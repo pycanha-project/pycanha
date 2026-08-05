@@ -2287,6 +2287,7 @@ doc = [
     { name = "sphinx-design" },
     { name = "sphinx-gallery" },
     { name = "trame" },
+    { name = "trame-client" },
     { name = "trame-vtk" },
     { name = "trame-vuetify" },
 ]
@@ -2326,6 +2327,7 @@ requires-dist = [
     { name = "sphinx-design", marker = "extra == 'doc'" },
     { name = "sphinx-gallery", marker = "extra == 'doc'", specifier = ">=0.18" },
     { name = "trame", marker = "extra == 'doc'", specifier = ">=3.6" },
+    { name = "trame-client", marker = "extra == 'doc'", specifier = "<3.13.3" },
     { name = "trame-vtk", marker = "extra == 'doc'", specifier = ">=2.8" },
     { name = "trame-vuetify", marker = "extra == 'doc'", specifier = ">=2.7" },
 ]
