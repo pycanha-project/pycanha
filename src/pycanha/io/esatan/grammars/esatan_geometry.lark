@@ -1,0 +1,148 @@
+// Grammar for the ESATAN-TMS Workbench modelling language (.erg / .gmm / .etms).
+//
+// The grammar knows statement *shapes*, not the ESATAN function vocabulary:
+// SHELL_SCS_DISC, ROTATE, DEFINE_OPTICAL and DEFINE_MISSION are all just an
+// identifier followed by a named-argument list.  Keeping the vocabulary out of
+// the grammar means an unknown primitive parses cleanly and is reported as an
+// unsupported construct rather than as a syntax error, and it keeps the rule
+// set small enough to stay LALR-clean -- the largest models in use run to
+// ~100k lines, which rules out a general-purpose Earley parse.
+//
+// Only these are structural: the model header/footer, INCLUDE, DEFINE, DELETE,
+// CONST and the flow-control keywords.  Everything else is an identifier.
+//
+// Terminals whose name starts with an underscore are dropped from the tree, so
+// only the keywords that actually carry information (CONST, the model header)
+// reach the transformer.
+
+?start: model | fragment
+
+// An included fragment (conventionally .gmm) is a bare statement list with no
+// model header of its own.
+fragment: statement*
+model: MODEL_HEADER statement* _MODEL_END
+
+?statement: declaration
+          | assignment
+          | call_stmt
+          | include_stmt
+          | define_stmt
+          | delete_stmt
+          | if_block
+          | for_block
+          | while_block
+          | repeat_block
+          | switch_block
+
+// TYPE name [dims] [= value];  -- covers `GEOMETRY DISC;`, `BULK Delrin;`,
+// `REAL v[3] = {...};` and `GROUP g = {...};` alike.  The type name is a plain
+// identifier so that an ESATAN type we have never seen still parses.
+declaration: CONST? NAME NAME dims? ("=" expr)? ";"
+dims: "[" expr ("," expr)* "]"
+
+assignment: lvalue "=" expr ";"
+lvalue: dotted_name env_suffix?
+// Thermal property environment selector, e.g. `Keplacoat [EOL] = [...];`
+env_suffix: "[" NAME "]"
+
+call_stmt: NAME "(" arglist? ")" ";"
+
+// INCLUDE and DEFINE take no trailing semicolon.
+include_stmt: _INCLUDE STRING
+define_stmt: _DEFINE NAME STRING
+delete_stmt: _DELETE dotted_name ("," dotted_name)* ";"
+
+if_block: _IF "(" expr ")" _THEN statement* else_part? _END_IF
+else_part: _ELSE statement*
+for_block: _FOR "(" [for_assign] ";" [expr] ";" [for_assign] ")" statement* _END_FOR
+for_assign: lvalue "=" expr
+while_block: _WHILE "(" expr ")" statement* _END_WHILE
+repeat_block: _REPEAT statement* _UNTIL "(" expr ")" _END_REPEAT
+switch_block: _SWITCH "(" expr ")" switch_case* switch_default? _END_SWITCH
+switch_case: _CASE expr ":" statement*
+switch_default: _DEFAULT ":" statement*
+
+// Precedence cascade, loosest first.  `+` and `-` are one production shared by
+// geometry composition (combine / cut) and arithmetic; which one a given
+// expression is follows from the operand types and is decided by the builder,
+// exactly as the language itself decides it.
+?expr: or_expr
+?or_expr: and_expr (OR_OP and_expr)*
+?and_expr: cmp_expr (AND_OP cmp_expr)*
+?cmp_expr: add_expr (CMP_OP add_expr)*
+?add_expr: mul_expr (ADD_OP mul_expr)*
+?mul_expr: pow_expr (MUL_OP pow_expr)*
+?pow_expr: unary_expr (POW_OP unary_expr)*
+?unary_expr: ADD_OP unary_expr -> unary
+           | NOT_OP unary_expr -> unary
+           | atom
+
+?atom: func_call
+     | vector
+     | array
+     | NUMBER  -> number
+     | STRING  -> string
+     | BOOL    -> boolean
+     | dotted_name
+     | "(" expr ")"
+
+func_call: NAME "(" arglist? ")"
+// Procedure arguments are named; the predefined functions (SQRT, EVAL, ...)
+// take positional ones, so both forms are admitted everywhere.
+arglist: argument ("," argument)* ","?
+argument: NAME "=" expr -> named_arg
+        | expr          -> positional_arg
+
+vector: "[" (expr ("," expr)*)? "]"
+array: "{" (expr ("," expr)*)? "}"
+dotted_name: NAME ("." NAME)*
+
+// -- terminals -------------------------------------------------------------
+//
+// Keywords carry an explicit priority so they win the tie against NAME, plus a
+// trailing negative lookahead so that a longer identifier starting with the
+// keyword (DEFINE_OPTICAL, IF_BRACKET) still lexes as a NAME.
+
+MODEL_HEADER.6: /BEGIN_MODEL[^\r\n]*/
+_MODEL_END.6: /END_MODEL(?![A-Za-z_0-9])/i
+
+CONST.5: /CONST(?![A-Za-z_0-9])/i
+_INCLUDE.5: /INCLUDE(?![A-Za-z_0-9])/i
+_DEFINE.5: /DEFINE(?![A-Za-z_0-9])/i
+_DELETE.5: /DELETE(?![A-Za-z_0-9])/i
+_IF.5: /IF(?![A-Za-z_0-9])/i
+_THEN.5: /THEN(?![A-Za-z_0-9])/i
+_ELSE.5: /ELSE(?![A-Za-z_0-9])/i
+_END_IF.5: /END_IF(?![A-Za-z_0-9])/i
+_FOR.5: /FOR(?![A-Za-z_0-9])/i
+_END_FOR.5: /END_FOR(?![A-Za-z_0-9])/i
+_WHILE.5: /WHILE(?![A-Za-z_0-9])/i
+_END_WHILE.5: /END_WHILE(?![A-Za-z_0-9])/i
+_REPEAT.5: /REPEAT(?![A-Za-z_0-9])/i
+_UNTIL.5: /UNTIL(?![A-Za-z_0-9])/i
+_END_REPEAT.5: /END_REPEAT(?![A-Za-z_0-9])/i
+_SWITCH.5: /SWITCH(?![A-Za-z_0-9])/i
+_CASE.5: /CASE(?![A-Za-z_0-9])/i
+_DEFAULT.5: /DEFAULT(?![A-Za-z_0-9])/i
+_END_SWITCH.5: /END_SWITCH(?![A-Za-z_0-9])/i
+BOOL.5: /(TRUE|FALSE)(?![A-Za-z_0-9])/i
+
+// A backslash is a literal character, so `"C:\usr\model.gmm"` survives intact,
+// and a string may span lines and hold arbitrary text -- .etms files embed
+// whole FORTRAN routines, complete with statement-looking lines, inside one.
+STRING: /"[^"]*"/
+COMMENT: /\/\*(\*(?!\/)|[^*])*\*\//
+NUMBER: /\d+(\.\d*)?([eE][+-]?\d+)?|\.\d+([eE][+-]?\d+)?/
+NAME: /[A-Za-z_][A-Za-z_0-9]*/
+
+OR_OP: "||"
+AND_OP: "&&"
+CMP_OP: "==" | "!=" | ">=" | "<=" | ">" | "<"
+ADD_OP: "+" | "-"
+MUL_OP: "*" | "/"
+POW_OP: "**"
+NOT_OP: "!"
+
+%import common.WS
+%ignore WS
+%ignore COMMENT

@@ -16,8 +16,7 @@ from pycanha import radiative as rad
 def _panel_model() -> pc.ThermalModel:
     """A single meshed rectangle with optical materials and node numbers."""
     mesh = gmm.ThermalMesh()
-    mesh.side1_activity = True
-    mesh.side2_activity = True
+    mesh.radiative_active_side = gmm.ActiveSide.BOTH
     mesh.side1_optical = gmm.OpticalMaterial("white", 0.9, 0.2)
     mesh.side2_optical = gmm.OpticalMaterial("white", 0.9, 0.2)
     mesh.node1_start = 100
@@ -70,7 +69,9 @@ def test_view_factor_end_to_end() -> None:
     result = acc.result()
 
     assert result.vf.rows == nf
-    assert result.vf.cols == nf
+    # The trailing virtual columns account for energy that never reaches
+    # another face: to space, to an inactive face, or lost.
+    assert result.vf.cols == nf + rad.num_virtual_columns
     # Row sums are view factors in [0, 1]; the deficit is the VF to space.
     row_sums = np.asarray(result.row_sums)
     assert np.all(row_sums >= -1e-6)

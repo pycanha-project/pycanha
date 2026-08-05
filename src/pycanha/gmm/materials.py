@@ -1,17 +1,19 @@
-"""Material and color types (thin subclasses of the pycanha-core versions)."""
+"""Material and color types.
+
+These add nothing on top of the pycanha-core versions, so they are re-exported
+rather than subclassed: an object handed back by the core is then already an
+instance of the ``pycanha.gmm`` name, which an empty subclass would not be.
+"""
 
 from __future__ import annotations
 
 import pycanha_core as pcc
 
+#: A 3-channel (RGB) color, 0-255 per channel.
+Color = pcc.gmm.Color
 
-class Color(pcc.gmm.Color):
-    """A 3-channel (RGB) color, 0-255 per channel."""
+#: Structural / thermal bulk properties (density, conductivity, specific heat).
+BulkMaterial = pcc.gmm.BulkMaterial
 
-
-class BulkMaterial(pcc.gmm.BulkMaterial):
-    """Structural / thermal bulk properties (density, conductivity, specific heat)."""
-
-
-class OpticalMaterial(pcc.gmm.OpticalMaterial):
-    """Thermo-optical surface properties (emissivity, absorptivity, ...)."""
+#: Thermo-optical surface properties (emissivity, absorptivity, ...).
+OpticalMaterial = pcc.gmm.OpticalMaterial

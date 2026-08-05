@@ -39,7 +39,7 @@ def _public(module: object) -> set[str]:
 
 
 def test_core_root_symbols_reachable() -> None:
-    subpackages = {"gmm", "io", "parameters", "radiative", "solvers", "tmm"}
+    subpackages = {"conduction", "gmm", "io", "parameters", "radiative", "solvers", "tmm"}
     missing = [
         name
         for name in _public(pcc)
@@ -86,6 +86,7 @@ def test_core_subpackage_symbols_reachable() -> None:
         "parameters": {"C", "GL", "GR", "QA", "QE", "QI", "QR", "QS", "T"},
         "solvers": set(),
         "radiative": set(),
+        "conduction": set(),
     }
     # gmm is checked by test_gmm_mesh_helpers_reachable: its free functions live
     # on the pc.gmm.mesh.ops / pc.gmm.ops submodules rather than on pc.gmm.
@@ -131,6 +132,14 @@ def test_radiative_to_scipy_roundtrip() -> None:
     assert isinstance(converted, csr_matrix)
     assert converted.shape == (2, 2)
     np.testing.assert_allclose(converted.toarray(), [[0.0, 0.25], [0.5, 0.0]])
+
+
+def test_conduction_reexports_engine() -> None:
+    # hasattr, not dir: the subpackage resolves its re-exports lazily, so a name
+    # only lands in the module dict once something has asked for it.
+    missing = [name for name in _public(pcc.conduction) if not hasattr(pc.conduction, name)]
+    assert not missing, f"pycanha_core.conduction symbols with no pycanha path: {missing}"
+    assert pc.conduction.TmmBuildOptions is pcc.conduction.TmmBuildOptions
 
 
 def test_solvers_does_not_leak_core_alias() -> None:

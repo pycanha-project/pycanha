@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycanha"
-version = "0.16.0"
+version = "0.18.0"
 description = "Thermal analysis Python package built on pycanha-core"
 readme = "README.md"
 license = "MIT"
@@ -27,7 +27,7 @@ dependencies = [
     "lark>=1.1",
     "matplotlib>=3.10.8",
     "numpy>=2.0",
-    "pycanha-core==0.16.0",
+    "pycanha-core==0.18.0",
     "pyvista>=0.44",
     "scipy>=1.17.1",
 ]
@@ -179,11 +179,27 @@ module = "scipy.*"
 ignore_missing_imports = true
 
 [tool.pyright]
-include = ["src"]
+include = ["src", "tests"]
+# Test files that still have pre-existing type errors. This list is a ratchet:
+# every test file not named here is checked, so new breakage cannot land.
+# Remove entries as they are fixed; do not add new ones.
+exclude = [
+    # Needs the same accessor-narrowing on ThermalMathematicalModel.formulas.
+    "tests/tmm/test_thermal_model.py",
+]
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
 reportMissingImports = "error"
 reportMissingTypeStubs = false
+
+# Tests are checked, but at a lower strictness than the package: test code
+# legitimately reaches for private attributes and passes deliberately-wrong
+# types to assert that they raise. A bare expression is the normal way to
+# trigger the error inside a `with pytest.raises(...)` block.
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = "none"
+reportUnusedExpression = "none"
 
 [tool.ty.rules]
 unused-ignore-comment = "warn"

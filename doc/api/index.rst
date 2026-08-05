@@ -11,6 +11,7 @@ its C++ foundation **pycanha-core**.
    pycanha.parameters
    pycanha.solvers
    pycanha.gmm
+   pycanha.conduction
    pycanha_core
    pycanha_core.tmm
    pycanha_core.parameters

@@ -6,10 +6,14 @@ import subprocess
 import sys
 import time
 from datetime import date
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+from pathlib import Path
 
 import pyvista
 from pyvista.plotting.utilities.sphinx_gallery import DynamicScraper
+
+from pycanha.io.esatan.geometry import coverage
 
 # -- Headless 3D rendering for the GMM examples ------------------------------
 # The GMM gallery examples render with pyvista. On a build server (Read the
@@ -162,3 +166,33 @@ html_context = {
 }
 
 html_show_sourcelink = False
+
+
+# -- Generated content -------------------------------------------------------
+
+
+def _write_esatan_coverage() -> None:
+    """Regenerate the ESATAN construct-coverage table from the reader itself.
+
+    The table states what the reader does with every construct of the ESATAN
+    geometry language.  Deriving it here, on every build, is what stops the
+    published version drifting from the code: a checked-in copy would only be
+    as current as the last person who remembered to refresh it.
+
+    The ``fixture`` column comes from reading the committed feature models, so
+    it too is a fact about the tree rather than a claim about it.
+    """
+    # Resolved: Sphinx does not promise an absolute ``__file__``, and a relative
+    # one walks to the wrong place silently -- the table still renders, with the
+    # two columns that come from the feature models mysteriously blank.
+    here = Path(__file__).resolve().parent
+    fixtures = here.parent / "tests" / "data" / "esatan" / "FEATURES"
+    if not fixtures.is_dir():
+        msg = f"cannot generate the ESATAN coverage table: no feature models at {fixtures}"
+        raise FileNotFoundError(msg)
+
+    target = here / "user_guide" / "esatan-coverage.csv"
+    target.write_text(coverage.to_csv(coverage.rows(fixtures)), encoding="utf-8")
+
+
+_write_esatan_coverage()
