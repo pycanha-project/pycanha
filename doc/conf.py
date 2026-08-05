@@ -46,6 +46,53 @@ def _start_xvfb(display: int = 99, wait: float = 3.0) -> None:
 
 _start_xvfb()
 
+
+def _interactive_scenes_work(timeout: float = 120.0) -> bool:
+    """Whether ``export_vtksz`` can produce an interactive scene here.
+
+    That export stands up a trame server, so it depends on a whole aiohttp /
+    Jupyter stack that the rendering itself does not need. When any piece of it
+    is broken -- a trame release that ships without its client assets is enough
+    -- the first export raises and *every export after it blocks forever*: the
+    docs build then hangs until the build server's timeout kills it, with no
+    error to explain why. One throwaway export in a subprocess buys an answer
+    that cannot hang the build and cannot leave a half-started server behind.
+    """
+    probe = (
+        "import pyvista\n"
+        "pyvista.OFF_SCREEN = True\n"
+        "p = pyvista.Plotter(off_screen=True)\n"
+        "p.add_mesh(pyvista.Sphere())\n"
+        "p.export_vtksz(filename=None)\n"
+    )
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed, trusted argv
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    return completed.returncode == 0
+
+
+# Interactive scenes are a bonus: without them the gallery still gets its
+# screenshots, which is much better than a build that never finishes.
+_INTERACTIVE_SCENES = _interactive_scenes_work()
+if not _INTERACTIVE_SCENES:
+    # ``show()`` exports the scene itself, and tolerates the export being
+    # *absent* but not being broken -- so take it away rather than let it run.
+    # Turning ``BUILDING_GALLERY`` off instead would be worse than useless: it
+    # is also what makes ``show()`` keep the screenshot, so the gallery would
+    # end up with no images at all.
+    pyvista.Plotter.export_vtksz = lambda *_args, **_kwargs: None
+    # Printed rather than logged: Sphinx has not started its own logging yet.
+    print(
+        "WARNING: pyvista cannot export interactive scenes here; the gallery "
+        "will show static screenshots only."
+    )
+
 # -- Project information -----------------------------------------------------
 project = "pycanha"
 author = "Javier Piqueras Carreño"
@@ -120,8 +167,11 @@ sphinx_gallery_conf = {
     "plot_gallery": "True",
     "min_reported_time": 1,
     # Capture matplotlib figures and pyvista scenes. DynamicScraper embeds the
-    # pyvista scenes as interactive vtk.js (rotate/zoom on the static site).
-    "image_scrapers": ("matplotlib", DynamicScraper()),
+    # pyvista scenes as interactive vtk.js (rotate/zoom on the static site); the
+    # plain ``"pyvista"`` scraper is the screenshot-only fallback, and pairing
+    # DynamicScraper with scenes that were never exported only produces broken
+    # ``offlineviewer`` blocks.
+    "image_scrapers": ("matplotlib", DynamicScraper() if _INTERACTIVE_SCENES else "pyvista"),
 }
 
 # -- intersphinx -------------------------------------------------------------

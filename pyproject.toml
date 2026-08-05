@@ -44,6 +44,14 @@ doc = [
     # Interactive pyvista rendering (Jupyter/trame backend) + notebook runtime
     # used by the example notebooks and the interactive gallery.
     "trame>=3.6",
+    # trame-client 3.13.3 ships without its bundled client assets
+    # (``trame_client/module/vue{2,3}-www``). pyvista's ``export_vtksz`` - the
+    # call behind every gallery plot once ``BUILDING_GALLERY`` is on - launches
+    # a trame server that registers those directories as static routes: the
+    # first launch raises and every launch after it blocks forever, so a docs
+    # build hangs until the builder kills it. Lift the cap once a release ships
+    # the assets again.
+    "trame-client<3.13.3",
     "trame-vtk>=2.8",
     "trame-vuetify>=2.7",
     "ipywidgets>=8.1",
