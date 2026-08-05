@@ -37,7 +37,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, final
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -72,6 +72,7 @@ class Part21Error(Exception):
     """
 
 
+@final
 class Derived:
     """The ``*`` value: an attribute whose value comes from a supertype.
 
@@ -91,6 +92,7 @@ class Derived:
 DERIVED: Final = Derived()
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class Reference:
     """A reference to another instance in the same exchange structure."""
@@ -101,6 +103,7 @@ class Reference:
         return f"#{self.id}"
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class Enumeration:
     """An enumeration value, written ``.NAME.``, with the dots stripped."""
@@ -111,6 +114,7 @@ class Enumeration:
         return f".{self.name}."
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class TypedValue:
     """A value tagged with the type it was selected as, written ``NAME(value)``."""
@@ -119,7 +123,7 @@ class TypedValue:
     value: Value
 
 
-Value = (
+type Value = (
     float
     | int
     | str
@@ -130,7 +134,7 @@ Value = (
     | Reference
     | Enumeration
     | TypedValue
-    | tuple["Value", ...]
+    | tuple[Value, ...]
 )
 """Anything that can appear as an attribute value."""
 

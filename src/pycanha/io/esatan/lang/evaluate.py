@@ -38,7 +38,7 @@ __all__ = [
 #: ``ATAN2`` is the only predefined function taking two arguments.
 _ATAN2_ARITY = 2
 
-Value = float | int | str | bool | tuple["Value", ...]
+type Value = float | int | str | bool | tuple[Value, ...]
 
 
 class EvaluationError(Exception):
