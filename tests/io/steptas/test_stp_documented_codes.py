@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 READER = ROOT / "src" / "pycanha" / "io" / "steptas"
-PAGE = ROOT / "doc" / "user_guide" / "steptas_geometry.rst"
+PAGE = ROOT / "doc" / "import_export" / "steptas_geometry.rst"
 
 CODE = re.compile(r"TAS_[A-Z_]+")
 
