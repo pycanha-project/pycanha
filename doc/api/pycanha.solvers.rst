@@ -1,10 +1,14 @@
-:mod:`pycanha.solvers` — Thermal Solvers
-========================================
+:mod:`pycanha.solvers` — Solvers
+================================
 
 .. currentmodule:: pycanha.solvers
 
-The following base classes are re-exported from :mod:`pycanha_core.solvers`
-— see the :doc:`pycanha_core.solvers` page for their full documentation:
+Steady-state and transient solvers. Every solver follows the same
+``initialize()``, ``solve()``, ``deinitialize()`` lifecycle. See
+:doc:`/user_guide/steady_state` and :doc:`/user_guide/transient`.
+
+These base classes are re-exported from :mod:`pycanha_core.solvers` and are
+documented on the :doc:`pycanha_core.solvers` page:
 
 * :class:`~pycanha_core.solvers.Solver`
 * :class:`~pycanha_core.solvers.SteadyStateSolver`

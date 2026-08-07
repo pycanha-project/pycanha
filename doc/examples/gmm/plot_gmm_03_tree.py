@@ -1,16 +1,17 @@
 """
-Geometry tree and hierarchy
-===========================
+Groups and items
+================
 
-A single model built from several primitives organised into **nested
-GeometryGroups**, each item with its own **mesh density** and explicit **tmm
-node numbering**. We print the scene **hierarchy** with ``print_tree()`` and
-render one interactive plot with a **distinct color per item** and the **mesh
-edges hidden**.
+One model built from several primitives, organised into nested
+``GeometryGroup`` objects. Each item has its own mesh density and its own node
+numbering.
+
+``print_tree()`` prints the model structure. The plot gives each item a
+distinct color, with the mesh edges hidden.
 """
 
 # %%
-# Build the scene
+# Build the model
 # ---------------
 
 import numpy as np
@@ -25,14 +26,14 @@ TAU = 2 * np.pi
 
 
 def simple_mesh(a=3, b=3):
-    """A ThermalMesh with a small a-by-b UV subdivision."""
+    """A ThermalMesh with an a by b subdivision."""
     return gmm.ThermalMesh(list(np.linspace(0, 1, a)), list(np.linspace(0, 1, b)))
 
 
 def item(name, primitive, mesh, node_start):
     mesh.node1_start = node_start
     mesh.node2_start = node_start
-    mesh.node1_step = 1  # number each face sequentially
+    mesh.node1_step = 1  # one node number per face
     mesh.node2_step = 1
     return gmm.GeometryItem(name, primitive, mesh)
 
@@ -70,20 +71,20 @@ tm = pc.ThermalModel("satellite")
 tm.gmm.add(gmm.GeometryGroup("spacecraft", [body, panels, dish]))
 
 # %%
-# The hierarchy
+# The structure
 # -------------
 #
-# ``print_tree`` shows every group / item, its primitive, mesh size and node
-# range.
+# ``print_tree`` shows every group and item with its primitive, mesh size and
+# node number range.
 
 tm.gmm.print_tree()
 
 # %%
-# The model, one color per item, edges hidden
-# -------------------------------------------
+# One color per item, edges hidden
+# ---------------------------------
 #
-# ``scalars="item"`` gives each geometry item a distinct color (no numeric
-# scale). ``show_edges=False`` hides the triangular mesh.
+# ``scalars="item"`` colors by item instead of by a numeric scale.
+# ``show_edges=False`` hides the triangulation.
 
-print(f"world mesh: {tm.gmm.mesh.nt()} triangles")
+print(f"triangulation: {tm.gmm.mesh.nt()} triangles")
 tm.gmm.plot(scalars="item", show_edges=False, off_screen=True)

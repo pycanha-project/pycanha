@@ -8,26 +8,25 @@ This example reproduces the *Simple 4-nodes model* from
     "Efficient transient correlation of thermal lumped network models to
     reference data", *Acta Astronautica* **210** (2023).
 
-The model (Fig. 3) has three diffusive nodes (1, 2, 3) and one boundary node
-(4) held at 20 °C. A 100 W load is applied to node 1. Nodes are linked by
-conductive couplings ``GL(1,2)``, ``GL(1,3)``, ``GL(1,4)`` and radiative
-couplings ``GR(2,3)``, ``GR(2,4)``, ``GR(3,4)``.
+The model of Fig. 3 has three diffusive nodes, 1 to 3, and one boundary node,
+4, held at 20 degC. An internal heat load of 100 W is applied to node 1. The
+nodes are linked by three conductive couplings, (1, 2), (1, 3) and (1, 4), and
+three radiative couplings, (2, 3), (2, 4) and (3, 4).
 
-The goal is to recover a set of *reference* parameter values starting from a
-perturbed *base* set, by correlating the transient response. The correlation
-is a non-linear least-squares problem whose Jacobian ``dT/dp`` is provided
-by the Jacobian Propagation method described in the paper and implemented
-in the ``TSCNRLDS_JACOBIAN`` solver, so no finite differences are needed.
+The goal is to recover a set of reference parameter values, starting from a
+perturbed base set, by correlating the transient response. The correlation is a
+non-linear least-squares problem. Its Jacobian dT/dp comes from the Jacobian
+Propagation method of the paper, implemented in the ``TSCNRLDS_JACOBIAN``
+solver, so no finite differences are needed.
 """
 
 # %%
-# Build the model and generate the reference data
-# -----------------------------------------------
+# The reference data
+# ------------------
 #
-# We build the 4-node model, drive every free parameter with a formula, set
-# the parameters to their *reference* values, run the (non-Jacobian)
-# ``TSCNRLDS`` transient solver, store the reference temperatures, and plot
-# them.
+# Build the 4-node model, drive every free parameter with a formula, set the
+# parameters to their reference values, run the plain ``TSCNRLDS`` solver and
+# keep the resulting temperatures as the reference.
 
 import contextlib
 import os
@@ -44,10 +43,9 @@ import pycanha.tmm as pm
 pcc.set_logger_level(pcc.OFF)
 
 
-# The solver's separate "profiling" logger writes straight to the OS stdout,
-# so it is not affected by set_logger_level. This small context manager
-# redirects the stdout file descriptor to null while a solver runs, keeping
-# the example output clean. (Simple, repetitive-use helper.)
+# The solver profiling logger writes to the OS stdout and ignores
+# set_logger_level. This context manager sends that file descriptor to null
+# while a solver runs, to keep the example output readable.
 @contextlib.contextmanager
 def silence():
     devnull = os.open(os.devnull, os.O_WRONLY)
@@ -65,12 +63,13 @@ def silence():
 KELVIN = 273.15
 T0 = 20.0 + KELVIN  # initial temperature of every node and boundary value [K]
 Q1 = 100.0  # heat load applied to node 1 [W]
-DT = 100.0  # time step [s]
+DT = 100.0  # timestep [s]
 T_END = 7200.0  # end time [s]
 ABSTOL = 1e-5  # temperature convergence tolerance [K]
 
-# Free parameters (Table 1). Names must NOT look like entities (e.g. "C1"),
-# hence the "par_" prefix. REFERENCE = true values, BASE = perturbed start.
+# Free parameters of Table 1. A parameter name must not look like an entity
+# label such as "C1", hence the "par_" prefix. REFERENCE holds the true values,
+# BASE the perturbed starting point.
 PARAM_NAMES = [
     "par_c1",
     "par_c2",
@@ -98,7 +97,7 @@ for node_num in (1, 2, 3):
     node.capacity = 1.0  # placeholder; overwritten by the capacity formula
     tmm.add_node(node)
 
-# 100 W applied to node 1 as internal dissipation.
+# 100 W of internal heat load on node 1.
 tmm.nodes.get_node_from_node_num(1).qi = Q1
 
 # Node 4 is the boundary heat sink held at 20 degC.
@@ -107,8 +106,8 @@ boundary.type = pm.NodeType.BOUNDARY
 boundary.T = T0
 tmm.add_node(boundary)
 
-# Couplings must exist before a formula can target them; the placeholder value
-# 1.0 is immediately overwritten by apply_formulas().
+# A coupling must exist before a formula can target it. The placeholder value
+# of 1.0 is overwritten by apply_formulas().
 tmm.add_conductive_coupling(1, 2, 1.0)
 tmm.add_conductive_coupling(1, 3, 1.0)
 tmm.add_conductive_coupling(1, 4, 1.0)
@@ -162,22 +161,19 @@ ax.grid(True)
 plt.show()
 
 # %%
-# Base model: simulate and compare with the reference
-# ---------------------------------------------------
+# The base model
+# --------------
 #
-# Reusing the **same** model, we switch the parameters to the perturbed
-# *base* values, run the transient again, and plot both the base
-# temperatures and the error (base − reference) of the three nodes versus
-# time.
+# The same model, with the parameters switched to the perturbed base values.
+# The plots show the base temperatures and the error against the reference.
 
 # Set the parameters to the perturbed BASE values and propagate to the network.
 for name, value in zip(PARAM_NAMES, BASE):
     model.parameters.set_parameter(name, float(value))
 tmm.formulas.apply_formulas()
 
-# The solver writes the final temperatures back into the nodes (Td is an
-# Eigen::Map view over the node temperatures), so reset every node to the
-# initial condition before solving again.
+# The solver writes the final temperatures back into the nodes, so every node
+# has to be reset to the initial condition before solving again.
 for node_num in (1, 2, 3, 4):
     tmm.nodes.set_T(node_num, T0)
 
@@ -208,8 +204,8 @@ ax2.grid(True)
 plt.show()
 
 # %%
-# Transient sensitivities (Jacobian solver)
-# -----------------------------------------
+# Transient sensitivities
+# -----------------------
 #
 # The ``TSCNRLDS_JACOBIAN`` solver integrates the model and, at the same
 # time, propagates the derivatives ``dT/dp`` of every flagged parameter
@@ -265,8 +261,8 @@ ax2.grid(True)
 plt.show()
 
 # %%
-# Correlation: recover the reference parameters
-# ---------------------------------------------
+# Recovering the reference parameters
+# -----------------------------------
 #
 # We define the least-squares residual and the Jacobian and pass them to
 # ``scipy.optimize.least_squares`` (Levenberg–Marquardt). Each residual is

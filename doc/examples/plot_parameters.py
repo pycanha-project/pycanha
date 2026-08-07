@@ -1,17 +1,18 @@
 """
 Parametric analysis
-================
+===================
 
-Sweep the conductive coupling parameter *k* and compare the computed
-steady-state temperature against the analytical solution
+Sweep the conductive coupling through a parameter and compare the computed
+steady-state temperature with the analytical solution
 :math:`T_1 = T_2 + q_i / k`.
 
-This example demonstrates the **Parameters** and **ParameterFormula** API.
+Uses :class:`~pycanha.parameters.Parameters` and
+:class:`~pycanha.parameters.ParameterFormula`.
 """
 
 # %%
-# Build model with a parametric coupling
-# ---------------------------------------
+# A model with a parametric coupling
+# ----------------------------------
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,13 +35,14 @@ tmm.add_node(node1)
 tmm.add_node(node2)
 tmm.conductive_couplings.add_coupling(1, 2, 1.0)
 
-# Link GL(1,2) to parameter "k"
+# Link the conductive coupling (1, 2) to the parameter "k". The "GL(1,2)" label
+# syntax is inherited from ESATAN-TMS and may change.
 tmm.parameters.add_parameter("k", 1.0)
 tmm.formulas.add_formula("GL(1,2)", "k")
 
 # %%
-# Sweep the coupling parameter
-# -------------
+# Sweep the parameter
+# -------------------
 
 solver = tm.solvers.sslu
 solver.initialize()
@@ -57,8 +59,8 @@ for i, k in enumerate(k_values):
 solver.deinitialize()
 
 # %%
-# Compare with analytical solution
-# ---------------------------------
+# Compare with the analytical solution
+# ------------------------------------
 
 T_analytical = 1.0 + 1.0 / k_values
 

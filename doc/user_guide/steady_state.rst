@@ -1,15 +1,14 @@
-Steady-State Solver
+Steady-state solving
 ====================
 
-Once the model is built, a steady-state solve finds the equilibrium
-temperatures for all diffusive nodes.
+A steady-state solver finds the equilibrium temperature of every diffusive
+node. Boundary node temperatures are inputs and do not change.
 
-Using SSLU
-----------
+Solving with SSLU
+-----------------
 
-:class:`~pycanha.solvers.SSLU` is a direct LU-decomposition solver suitable
-for models of any size.  Usage follows the **initialize → solve →
-deinitialize** lifecycle:
+:class:`~pycanha.solvers.SSLU` is a direct solver based on LU decomposition. It
+is suitable for models of any size. Every solver follows the same lifecycle:
 
 .. code-block:: python
 
@@ -18,41 +17,46 @@ deinitialize** lifecycle:
    solver.solve()
    solver.deinitialize()
 
-Reading results
----------------
+``initialize()`` builds the solver from the current network, so the model must
+be complete before it is called.
 
-After solving, node temperatures are updated in-place:
+Reading the results
+-------------------
+
+Node temperatures are updated in place:
 
 .. code-block:: python
 
    T1 = tmm.nodes.get_T(1)
    print(f"Node 1: {T1:.2f} K")
 
-You can also access them through the node object:
+The node object gives the same value:
 
 .. code-block:: python
 
    node1 = tmm.nodes.get_node_from_node_num(1)
    print(f"Node 1: {node1.T:.2f} K")
 
-Solver tolerances
------------------
+Tolerances
+----------
 
-The solver exposes convergence tolerances that can be adjusted before
-calling ``initialize()``:
+Set the tolerances before calling ``initialize()``:
 
 .. code-block:: python
 
-   solver.abstol_temp  = 1e-4   # temperature convergence [K]
+   solver.abstol_temp = 1e-4    # temperature convergence [K]
    solver.abstol_enrgy = 1e-4   # energy balance convergence [W]
-   solver.max_iters    = 10     # max iterations per solve step
+   solver.max_iters = 10        # iterations per solve step
+
+Radiative couplings make the system non-linear, so the solver iterates until
+both tolerances are met or ``max_iters`` is reached.
 
 Re-using the solver
 -------------------
 
-After ``initialize()`` the solver can be called multiple times with
-``solve()`` — for example inside a parameter sweep — without
-re-initializing:
+After ``initialize()``, ``solve()`` can be called any number of times. Values
+changed between calls are picked up, so a sweep does not pay for a new
+initialization on every point:
 
 .. code-block:: python
 
@@ -62,6 +66,6 @@ re-initializing:
    for k in [0.5, 1.0, 2.0]:
        tmm.conductive_couplings.set_coupling_value(1, 2, k)
        solver.solve()
-       print(f"k={k:.1f}  →  T1 = {tmm.nodes.get_T(1):.2f} K")
+       print(f"k = {k:.1f} W/K, T1 = {tmm.nodes.get_T(1):.2f} K")
 
    solver.deinitialize()

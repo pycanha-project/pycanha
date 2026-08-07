@@ -1,18 +1,17 @@
 """
-Read transient result data (without building a model)
-=====================================================
+Read transient results without building a model
+===============================================
 
-The second TMD reader, ``read_tmd_transient``, does **not** build a model. It
-reads *time-dependent result data* - node temperatures and loads over time,
-plus the ESATAN user-defined **time-dependent constants** into a named data
-container attached to the model.
+``read_tmd_transient`` reads time dependent results into a named data model:
+node temperatures and heat loads over time, plus the ESATAN-TMS user-defined
+time dependent constants. It creates no nodes and no couplings.
 
-To make that clear we start from a **blank model** and only the result data is loaded.
+The model here stays blank to make that visible.
 """
 
 # %%
-# A blank model, then read the transient data
-# -------------------------------------------
+# Read into a blank model
+# -----------------------
 
 from pathlib import Path
 
@@ -34,11 +33,11 @@ _DATA = next(
 TRANSIENT = _DATA / "DISCTR_TRANSIENT.TMD"
 
 model = pc.ThermalModel("disc")
-print("nodes in blank model (before):", model.tmm.nodes.num_nodes)
+print("nodes before:", model.tmm.nodes.num_nodes)
 
 node_numbers = model.tmm.read_tmd_transient(str(TRANSIENT), "transient")
-print("nodes in blank model (after) :", model.tmm.nodes.num_nodes, "  <- still empty")
-print("temperature columns read     :", len(node_numbers))
+print("nodes after :", model.tmm.nodes.num_nodes, " (still empty)")
+print("temperature columns read:", len(node_numbers))
 
 data = model.tmm.thermal_data.models.get_model("transient")
 times = np.asarray(data.T.times)
@@ -46,11 +45,10 @@ temperatures = np.asarray(data.T.values)
 column_of = {node: i for i, node in enumerate(node_numbers)}
 
 # %%
-# The time-dependent constants
+# The time dependent constants
 # ----------------------------
 #
-# The reader imports the ESATAN user-defined constants of every type: real,
-# integer and character.
+# All three types are read: real, integer and character.
 
 constants = data.constants
 print("real constants:", list(constants.real_names))
@@ -59,10 +57,10 @@ print("char constants:", list(constants.char_names))
 print("timesteps      :", constants.num_timesteps)
 
 # %%
-# Retrieve a constant value at a given time
-# -----------------------------------------
+# A constant value at one timestep
+# ---------------------------------
 #
-# In this model the constants contains the current time.
+# In this model every constant holds the current time.
 
 t = 50
 print(f"time = {constants.times[t]} s\n")
@@ -79,11 +77,10 @@ char_value = constants.char_value(t, 0).strip()
 print(f"{constants.char_names[0]} = {char_value!r:>12}   type: {type(char_value).__name__}")
 
 # %%
-# Plot the disc node temperatures and one constant
-# ------------------------------------------------
+# Plot the disc nodes and one constant
+# ------------------------------------
 #
-# Only the disc nodes (``1000-1099``) are plotted,
-# together with ``TIME_REAL_CONST_1``.
+# Three of the disc nodes, 1000 to 1099, next to ``TIME_REAL_CONST_1``.
 
 disc_nodes = [n for n in node_numbers if 1000 <= n <= 1099]
 final = {n: temperatures[-1, column_of[n]] for n in disc_nodes}

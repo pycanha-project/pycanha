@@ -1,12 +1,12 @@
 """
-Boolean operations
-==================
+Cutting geometry
+================
 
-The boolean operation is **cutting a surface with one or more closed surface
-cutters**, written with the ``-`` operator (``target - cutter``); chaining ``-``
-adds more cutters. The ``+`` operator simply **groups** geometries (aggregation,
-not a CSG union). Valid cutters are the closed solids: ``Cylinder``, ``Sphere``,
-``Cone``, ``Cube``.
+The ``-`` operator cuts a surface with a closed solid, written
+``target - cutter``. Chaining ``-`` adds more cutters. The valid cutters are
+``Cylinder``, ``Sphere``, ``Cone`` and ``Cube``.
+
+The ``+`` operator groups geometries. It is aggregation, not a union.
 
 Each face is drawn in its own color.
 """
@@ -44,8 +44,8 @@ def show(model_name, geometry):
 
 
 # %%
-# A plate cut by a cylinder (a round hole)
-# ----------------------------------------
+# A plate cut by a cylinder, giving a round hole
+# ----------------------------------------------
 hole = gmm.GeometryItem(
     "hole", gmm.Cylinder((0, 0, -1), (0, 0, 1), (0.3, 0, -1), 0.3, 0.0, TAU), gmm.ThermalMesh()
 )
@@ -68,8 +68,8 @@ box = gmm.GeometryItem("box", gmm.Cube((0, 0, 0), (0.6, 0.6, 2.0)), gmm.ThermalM
 show("plate_minus_cube", plate("panel") - box)
 
 # %%
-# Chained cut: a plate cut by two cylinders
-# -----------------------------------------
+# A plate cut by two cylinders
+# ----------------------------
 left = gmm.GeometryItem(
     "hole_left",
     gmm.Cylinder((-0.5, 0, -1), (-0.5, 0, 1), (-0.2, 0, -1), 0.3, 0.0, TAU),
@@ -83,8 +83,8 @@ right = gmm.GeometryItem(
 show("plate_minus_two_cylinders", plate("panel") - left - right)
 
 # %%
-# For contrast: ``+`` groups geometries (no cutting)
-# --------------------------------------------------
+# The ``+`` operator, which groups without cutting
+# ------------------------------------------------
 #
 # ``a + b`` builds a group holding both, side by side - nothing is subtracted.
 

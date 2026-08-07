@@ -10,22 +10,23 @@ This example reproduces the PHI-ELE example from
     "Correlation of spacecraft thermal mathematical models to reference data",
     *Acta Astronautica* **144** (2018).
 
-The PHI-ELE (Polarimetric Helioseismic Imager - Electronics Unit) reduced
-thermal model has 7 diffusive nodes: four sidewalls (1-4), the top shell
-(5), the baseplate (6), and the electronics boards (7). Two boundary nodes
-carry the spacecraft interface: a radiative I/F (``90000``) and a conductive
-I/F (``90001``). Six free conductive parameters ``x1..x6`` group the model's
-17 conductive couplings (Table 6). The five radiative couplings to the
-spacecraft are fixed and are NOT part of the correlation.
+The PHI-ELE reduced model, for the electronics unit of the Polarimetric
+Helioseismic Imager, has 7 diffusive nodes: four sidewalls, 1 to 4, the top
+shell, 5, the baseplate, 6, and the electronics boards, 7. Two boundary nodes
+carry the spacecraft interface, one radiative, 90000, and one conductive,
+90001.
 
-The correlation uses both load cases jointly (C1 hot + C2 cold). The
-Jacobian is built by **forward finite differences** around the SSLU
-steady-state solver.
+Six free parameters, x1 to x6, group the 17 conductive couplings of Table 6.
+The five radiative couplings to the spacecraft are fixed and are not
+correlated.
+
+Both load cases are correlated together, C1 hot and C2 cold. The Jacobian comes
+from forward finite differences around the SSLU solver.
 """
 
 # %%
-# Build the model and generate the reference data
-# -----------------------------------------------
+# The reference data
+# ------------------
 #
 # We build the 7-node RTMM, drive every conductance group with a parameter
 # formula, set the parameters to their **reference** values (Table 7), run
@@ -189,8 +190,8 @@ plt.tight_layout()
 plt.show()
 
 # %%
-# Base model: simulate and compare with the reference
-# ---------------------------------------------------
+# The base model
+# --------------
 #
 # Reusing the **same** model, we switch the parameters to the perturbed *base*
 # values (``c₀ = 0.5 · x_R``), solve both load cases again, and plot the node error against
@@ -224,8 +225,8 @@ plt.tight_layout()
 plt.show()
 
 # %%
-# Steady-state sensitivities and the observability problem
-# --------------------------------------------------------
+# Steady-state sensitivities and observability
+# --------------------------------------------
 #
 # We build the Jacobian ``dT/dx`` at the base values by **forward finite
 # differences** against the SSLU solver: for each parameter ``x_i``, perturb it
@@ -233,16 +234,16 @@ plt.show()
 # changes by ``h_i``. The resulting matrix has 14 rows (7 nodes × 2 load cases)
 # and 6 columns (one per parameter).
 #
-# The heatmap and the column norms below show that the **column of ``x1`` is
-# essentially zero**: the sidewall-sidewall couplings ``k12, k13, k34`` produce
-# no temperature change because load symmetry makes ``T1 = T2 = T3 = T4`` and
-# no heat flows through them. This is the observability problem discussed in
-# the paper — and the reason the correlation in the next cell uses only
-# ``Np = 5`` free parameters (``x2..x6``).
+# The heatmap and the column norms below show that the column of ``x1`` is
+# essentially zero. The sidewall to sidewall couplings ``k12, k13, k34``
+# produce no temperature change, because the load symmetry makes
+# ``T1 = T2 = T3 = T4`` and no heat flows through them. This is the
+# observability problem of the paper. It is why the correlation below uses only
+# 5 free parameters, ``x2`` to ``x6``.
 
 
-# Compute the forward FD Jacobian at the BASE values for ALL 6 parameters,
-# just for visualization (the actual correlation in the next cell uses Np=5).
+# Forward finite difference Jacobian at the base values, for all 6 parameters.
+# This one is only for the plot. The correlation below uses 5.
 def model_temperatures(x_full):
     for name, value in zip(PARAM_NAMES, x_full):
         model.parameters.set_parameter(name, float(value))
@@ -289,14 +290,14 @@ plt.tight_layout()
 plt.show()
 
 # %%
-# Correlation: recover the reference parameters
-# ---------------------------------------------
+# Recovering the reference parameters
+# -----------------------------------
 #
-# We define the residual vector (concatenated ``T_model − T_ref`` over the 7
-# diffusive nodes and the 2 load cases — 14 entries) and a forward FD
-# Jacobian against the SSLU solver, and pass them to
-# ``scipy.optimize.least_squares`` (trust-region reflective with non-negative
-# bounds). Only ``x2..x6`` are correlated; ``x1`` is kept at its base value
+# The residual vector is ``T_model - T_ref`` over the 7 diffusive nodes and the
+# 2 load cases, so 14 entries. It goes to ``scipy.optimize.least_squares``,
+# trust-region reflective with non-negative bounds, with a forward finite
+# difference Jacobian around the SSLU solver. Only ``x2`` to ``x6`` are
+# correlated. ``x1`` stays at its base value
 # because it is unobservable from the temperature data.
 #
 # Starting from ``c₀ = 0.5``, the optimizer recovers the reference values. The

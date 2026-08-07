@@ -1,14 +1,14 @@
-:mod:`pycanha.parameters` — Parameters and Formulas
+:mod:`pycanha.parameters` — Parameters and formulas
 ====================================================
 
 .. currentmodule:: pycanha.parameters
 
-The ``parameters`` subpackage provides the parametric study infrastructure:
-named parameters, entities (references to model scalars), and formulas
-(rules linking parameters to entities).
+Named parameters, entities that point at one scalar of the model, and formulas
+that write a parameter into an entity. See
+:doc:`/user_guide/parameters_formulas`.
 
-The following base classes are re-exported from :mod:`pycanha_core.parameters`
-— see the :doc:`pycanha_core.parameters` page for their full documentation:
+These base classes are re-exported from :mod:`pycanha_core.parameters` and are
+documented on the :doc:`pycanha_core.parameters` page:
 
 * :class:`~pycanha_core.parameters.Entity`
 * :class:`~pycanha_core.parameters.EntityType`

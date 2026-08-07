@@ -5,48 +5,40 @@ Requirements
 ------------
 
 * Python 3.13 or later
-* Windows, Linux or macOS (Apple Silicon)
+* Windows, Linux or macOS on Apple Silicon
 
 Install from PyPI
 -----------------
-
-The recommended way to install **pycanha** is with ``pip``:
 
 .. code-block:: bash
 
    pip install pycanha
 
-This will automatically install ``pycanha-core`` (the compiled C++ backend)
-and ``matplotlib`` as dependencies.
+This pulls in ``pycanha-core``, the compiled backend, and the runtime
+dependencies.
 
-Optional: Intel MKL acceleration
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Intel MKL
+^^^^^^^^^
 
-By default, **pycanha** uses MKL in Windows and Linux versions. 
-If you don't want to use MKL, the option is available, but you will need to build pycanha-core from source.
-MacOS version is shipped without MKL.
+The Windows and Linux wheels use MKL. The macOS wheels do not. Building without
+MKL is possible and requires building ``pycanha-core`` from source.
 
 Development install
 -------------------
-
-To install for development (editable mode with dev tools):
 
 .. code-block:: bash
 
    git clone https://github.com/pycanha-project/pycanha.git
    cd pycanha
-   pip install -e .                 # Install pycanha in editable mode
-   pip install -e ".[doc]"          # For documentation dependencies
-   pip install -e ".[dev]"          # For development dependencies
+   pip install -e ".[dev]"          # development tools
+   pip install -e ".[doc]"          # documentation tools
 
-
-Verifying the installation
---------------------------
+Checking the installation
+-------------------------
 
 .. code-block:: python
 
    import pycanha as pc
-   import pycanha.tmm as pm
    import pycanha_core
 
    pycanha_core.print_package_info()

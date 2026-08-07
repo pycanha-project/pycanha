@@ -1,12 +1,12 @@
 """
-Transient Two-Node Model
+Transient two-node model
 ========================
 
-A diffusive node with internal dissipation heats up against a cold
-boundary, exchanging heat through conductive and radiative couplings.
+A diffusive node with an internal heat load heats up against a cold boundary,
+through a conductive and a radiative coupling.
 
-The example also demonstrates a simple manual sensitivity comparison by
-re-running with a doubled conductive coupling.
+The run is then repeated with the conductive coupling doubled, which is the
+simplest form of a sensitivity check.
 """
 
 # %%
@@ -52,10 +52,10 @@ idx1 = tmm.nodes.get_idx_from_node_num(1)
 T1 = output_model.T.values[:, idx1]
 
 # %%
-# Sensitivity run — doubled conductance
-# --------------------------------------
+# Second run, conductive coupling doubled
+# ---------------------------------------
 
-tm2 = pc.ThermalModel("HighGL")
+tm2 = pc.ThermalModel("HighConductance")
 tmm2 = tm2.tmm
 n1b = pm.Node(1)
 n1b.T = 273.0
@@ -83,8 +83,8 @@ T1b = output_model2.T.values[:, tmm2.nodes.get_idx_from_node_num(1)]
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 4))
 
-axes[0].plot(times / 3600, T1, label="GL = 0.5 W/K")
-axes[0].plot(times / 3600, T1b, label="GL = 1.0 W/K")
+axes[0].plot(times / 3600, T1, label="$K_{L_{12}}$ = 0.5 W/K")
+axes[0].plot(times / 3600, T1b, label="$K_{L_{12}}$ = 1.0 W/K")
 axes[0].set_xlabel("Time [h]")
 axes[0].set_ylabel("Temperature of node 1 [K]")
 axes[0].set_title("Transient response")
@@ -93,8 +93,8 @@ axes[0].legend()
 axes[1].plot(times / 3600, T1 - T1b)
 axes[1].axhline(0, color="gray", linewidth=0.8, linestyle="--")
 axes[1].set_xlabel("Time [h]")
-axes[1].set_ylabel("ΔT [K]")
-axes[1].set_title("ΔT = T(GL=0.5) − T(GL=1.0)")
+axes[1].set_ylabel("$\Delta T$ [K]")
+axes[1].set_title("$\Delta T = T(K_{L_{12}}=0.5) - T(K_{L_{12}}=1.0)$")
 
 plt.tight_layout()
 plt.show()

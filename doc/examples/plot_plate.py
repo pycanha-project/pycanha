@@ -1,21 +1,21 @@
 """
-Steady-State 2D Plate
-======================
+Steady state of a 2D plate
+==========================
 
-Solve the temperature distribution of a 2D aluminium plate with fixed
-boundary conditions on two edges.
+Temperature distribution of an aluminium plate held at two fixed temperatures.
 
-* **Left edge** (i = 1): T = 300 K (hot)
-* **Bottom edge** (j = 1): T = 100 K (cold)
-* **Right and top edges**: adiabatic (no heat flow)
-* Interior and remaining edges: diffusive
+* Left edge, i = 1: boundary at 300 K
+* Bottom edge, j = 1: boundary at 100 K
+* Right and top edges: adiabatic
+* Everything else: diffusive
 """
 
 # %%
-# Model setup
-# -----------
-# We use a 10 × 10 grid of thermal nodes connected by conductive couplings
-# derived from the aluminium thermal conductivity.
+# Building the model
+# ------------------
+#
+# A 10 by 10 grid of nodes. The conductive couplings come from the thermal
+# conductivity of aluminium.
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -96,6 +96,6 @@ plt.imshow(
 plt.colorbar(label="Temperature (K)")
 plt.xlabel("x (m)")
 plt.ylabel("y (m)")
-plt.title("2-D Aluminium Plate — Steady-state Temperature")
+plt.title("Aluminium plate, steady-state temperature")
 plt.tight_layout()
 plt.show()

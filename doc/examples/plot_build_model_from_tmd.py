@@ -1,27 +1,22 @@
 """
-Build a thermal model from an ESATAN TMD file
-=============================================
+Build a thermal model from an ESATAN-TMS TMD file
+=================================================
 
-There are **two different TMD readers** in pycanha:
+:meth:`~pycanha.ThermalModel.from_esatan_tmd` builds a complete TMM from a
+``.TMD`` file: the nodes with their heat loads, and the conductive and
+radiative couplings. The result is solvable.
 
-1. :meth:`~pycanha.ThermalModel.from_esatan_tmd` (this example) *builds a full
-   thermal model* from the file: it creates the **nodes** and **loads**,
-   and both the **conductive (GL)** and **radiative (GR)** couplings.
-   The result is a solvable model.
-2. ``read_tmd_transient`` (next example) only *reads time-dependent result data*
-   into a data container; it does **not** build a model.
+The model is a disc in a spherical enclosure. The disc is Delrin, 100 nodes,
+numbered 1000 to 1099. An internal heat load of 10 W is applied on a middle
+ring, and the disc radiates to a boundary at -10 degC.
 
-Here we build the *disc in a spherical enclosure* model from its steady-state
-.TMD results file, retrieve some couplings, solve the steady state, and run a transient
-analysis. The disc is a 100 nodes Delrin disc (nodes ``1000-1099``). 10 W is
-dissipated in a middle ring and radiated to a boundary at -10 degC.
+The other TMD reader, ``read_tmd_transient``, reads results without building a
+model. It is the next example.
 """
 
 # %%
-# Locate the model file and build the model
-# -----------------------------------------
-#
-# ``from_esatan_tmd`` returns a :class:`~pycanha.ThermalModel` object.
+# Build the model
+# ---------------
 
 from pathlib import Path
 
@@ -31,7 +26,7 @@ import pycanha_core as pcc
 
 import pycanha as pc
 
-# The C++ core logs solver progress at INFO, quiet it for cleaner output.
+# The core logs solver progress at INFO. Quiet it for a readable output.
 pcc.set_logger_level(pcc.LogLevel.WARN)
 
 # Resolve the test data path.
@@ -49,39 +44,37 @@ node_numbers = [nodes.get_node_num_from_idx(i) for i in range(nodes.num_nodes)]
 print(f"{nodes.num_nodes} nodes built (disc 1000-1099 + boundary 2000, 99999)")
 
 # %%
-# Retrieve the couplings (GL / GR)
-# --------------------------------
+# The couplings
+# -------------
 #
-# Conductive (``GL``) and radiative (``GR``) couplings are queried by
-# node number pair with ``get_coupling_value``. We also enumerate them all.
+# ``get_coupling_value`` takes a node number pair. Conductive couplings are in
+# W/K, radiative couplings in m^2.
 
 cc = model.tmm.conductive_couplings
 rc = model.tmm.radiative_couplings
 
-print("GL(1000, 1001) =", cc.get_coupling_value(1000, 1001), "W/K")
-print("GR(1000, 1002) =", rc.get_coupling_value(1000, 1002))
+print("conductive (1000, 1001) =", cc.get_coupling_value(1000, 1001), "W/K")
+print("radiative  (1000, 1002) =", rc.get_coupling_value(1000, 1002), "m^2")
 
-gl_couplings, gr_couplings = [], []
+conductive, radiative = [], []
 for a, i in enumerate(node_numbers):
     for j in node_numbers[a + 1 :]:
         g = cc.get_coupling_value(i, j)
         if g:
-            gl_couplings.append((i, j, g))
+            conductive.append((i, j, g))
         r = rc.get_coupling_value(i, j)
         if r:
-            gr_couplings.append((i, j, r))
+            radiative.append((i, j, r))
 
-print(
-    f"{len(gl_couplings)} conductive (GL) couplings, {len(gr_couplings)} radiative (GR) couplings"
-)
+print(f"{len(conductive)} conductive couplings, {len(radiative)} radiative couplings")
 
 # %%
-# Solve the steady-state and recover the temperatures
-# ---------------------------------------------------
+# Solve the steady state
+# ----------------------
 #
-# The file already stores ESATAN's converged temperatures. We overwrite every
-# non boundary node with a wrong value, solve the steady state ourselves, and
-# check the original temperatures come back.
+# The file holds the converged ESATAN-TMS temperatures. Overwriting every
+# diffusive node with a wrong value and solving again recovers them, which
+# checks the network was read correctly.
 
 
 def disc_temperatures_celsius():
@@ -91,9 +84,9 @@ def disc_temperatures_celsius():
     }
 
 
-reference = disc_temperatures_celsius()  # ESATAN's stored solution
+reference = disc_temperatures_celsius()  # the stored solution
 
-# Perturb: force every non-boundary node to 0 degC.
+# Force every non-boundary node to 0 degC.
 for i in range(nodes.num_nodes):
     if nodes.get_node_num_from_idx(i) not in (2000, 99999):
         nodes.get_node_from_idx(i).T = 273.15
@@ -110,11 +103,11 @@ print(f"max |recovered - reference| = {max_diff:.2e} degC")
 print(f"peak disc temperature = {max(reference.values()):.2f} degC")
 
 # %%
-# Run a transient analysis
-# ------------------------
+# Solve the transient
+# -------------------
 #
-# Start everything at -10 degC and integrate for 10 000 s with the
-# Crank-Nicolson solver. We then plot three disc nodes (no environment nodes).
+# Start every node at -10 degC and integrate for 10 000 s with the
+# Crank-Nicolson solver.
 
 for i in range(nodes.num_nodes):
     if nodes.get_node_num_from_idx(i) != 99999:
@@ -133,8 +126,10 @@ temperatures = np.asarray(output.T.values)
 column_of = {node: i for i, node in enumerate(output.node_numbers)}
 
 # %%
-# Plot the transient response
-# ---------------------------
+# Plot three disc nodes
+# ---------------------
+#
+# The hottest, the median and the coldest node at the end of the run.
 
 disc_nodes = [n for n in output.node_numbers if 1000 <= n <= 1099]
 final = {n: temperatures[-1, column_of[n]] for n in disc_nodes}
@@ -149,7 +144,7 @@ for node, label in picks:
     plt.plot(times, temperatures[:, column_of[node]] - 273.15, label=f"node {node} ({label})")
 plt.xlabel("Time [s]")
 plt.ylabel("Temperature [degC]")
-plt.title("Transient response - disc nodes")
+plt.title("Disc nodes, transient response")
 plt.legend()
 plt.grid(alpha=0.3)
 plt.tight_layout()

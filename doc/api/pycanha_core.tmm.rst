@@ -1,10 +1,9 @@
-:mod:`pycanha_core.tmm` — Core Thermal Model Classes
+:mod:`pycanha_core.tmm` — Core thermal model classes
 =====================================================
 
 .. currentmodule:: pycanha_core.tmm
 
-These are the C++ base classes exposed via the compiled bindings.  They are
-the foundation of the :mod:`pycanha.tmm` wrappers.
+The C++ base classes behind :mod:`pycanha.tmm`.
 
 Enumerations
 ------------
@@ -71,6 +70,12 @@ Network and model
    :members:
    :special-members: __init__
    :exclude-members: __dict__, __weakref__, __module__
+
+ESATAN-TMS reader
+-----------------
+
+The C++ TMD reader. It is what ``engine="cpp"`` uses. See
+:doc:`/import_export/esatan_results`.
 
 .. autoclass:: ESATANReader
    :members:

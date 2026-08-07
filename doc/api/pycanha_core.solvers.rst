@@ -1,9 +1,9 @@
-:mod:`pycanha_core.solvers` — Core Solver Classes
+:mod:`pycanha_core.solvers` — Core solver classes
 ==================================================
 
 .. currentmodule:: pycanha_core.solvers
 
-These are the C++ solver base classes.
+The C++ solver base classes.
 
 .. autoclass:: Solver
    :members:

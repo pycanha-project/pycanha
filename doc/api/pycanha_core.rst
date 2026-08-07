@@ -1,12 +1,14 @@
-:mod:`pycanha_core` — C++ Core Package
+:mod:`pycanha_core` — Compiled backend
 ======================================
 
 .. currentmodule:: pycanha_core
 
-The ``pycanha_core`` package is the compiled C++ backend. Its classes serve
-as base classes for the higher-level **pycanha** wrappers. This page
-documents the top-level utilities; see the submodule pages for the full
-class reference.
+The compiled C++ backend. Its classes are the base classes of the pycanha ones.
+This page covers the top-level utilities. The submodule pages hold the class
+reference.
+
+The logger is also re-exported from :mod:`pycanha`, so user code does not need
+to import this package directly.
 
 Logging
 -------

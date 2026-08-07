@@ -1,6 +1,5 @@
-GMM - Geometry examples
-=======================
+Geometry
+========
 
-Examples of the **Geometrical Mathematical Model (GMM)**: building geometry from
-primitives, boolean cutting, organising a scene into a hierarchy, and
-visualising mesh / node information. The 3D scenes are **interactive**.
+Building a GMM: primitives, cutting, groups and items, and drawing per-face
+information on the result. The 3D scenes are interactive.

@@ -241,7 +241,7 @@ def _write_esatan_coverage() -> None:
         msg = f"cannot generate the ESATAN coverage table: no feature models at {fixtures}"
         raise FileNotFoundError(msg)
 
-    target = here / "user_guide" / "esatan-coverage.csv"
+    target = here / "import_export" / "esatan-coverage.csv"
     target.write_text(coverage.to_csv(coverage.rows(fixtures)), encoding="utf-8")
 
 

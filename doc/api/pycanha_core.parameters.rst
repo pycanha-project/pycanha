@@ -1,9 +1,9 @@
-:mod:`pycanha_core.parameters` — Core Parameters Classes
-=========================================================
+:mod:`pycanha_core.parameters` — Core parameter classes
+========================================================
 
 .. currentmodule:: pycanha_core.parameters
 
-These are the C++ base classes for the parameter and formula system.
+The C++ base classes of the parameter and formula system.
 
 Parameters
 ----------

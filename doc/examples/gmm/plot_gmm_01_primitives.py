@@ -1,13 +1,13 @@
 """
-Primitive gallery
-=================
+The primitives
+==============
 
-Each geometric primitive rendered with a simple thermal mesh, one interactive
-plot per primitive (drag to rotate, scroll to zoom). Every **face** gets its own
-color, so the two sides of a surface (side 1 / side 2) are distinguishable.
+Every primitive with a simple thermal mesh, one interactive plot each. Drag to
+rotate, scroll to zoom. Each face has its own color, so side 1 and side 2 are
+distinguishable.
 
-Eight primitives are *meshable surfaces*. The ``Cube`` is a **closed solid**
-used only as a boolean cutter (next example), so it has no thermal mesh.
+Eight of them are surfaces and can be meshed. The ``Cube`` is a closed solid
+used only as a cutter, so it has no thermal mesh.
 """
 
 # %%
@@ -58,8 +58,8 @@ show_primitive("Rectangle", gmm.Rectangle((0, 0, 0), (1, 0, 0), (0, 1, 0)))
 show_primitive("Quadrilateral", gmm.Quadrilateral((0, 0, 0), (1, 0, 0), (1.2, 1, 0), (0, 1, 0)))
 
 # %%
-# Disc (annular sector)
-# ---------------------
+# Disc, an annular sector
+# -----------------------
 show_primitive("Disc", gmm.Disc((0, 0, 0), (0, 0, 1), (1, 0, 0), 0.3, 1.0, 0.0, TAU))
 
 # %%
@@ -68,8 +68,8 @@ show_primitive("Disc", gmm.Disc((0, 0, 0), (0, 0, 1), (1, 0, 0), 0.3, 1.0, 0.0, 
 show_primitive("Cylinder", gmm.Cylinder((0, 0, 0), (0, 0, 1), (1, 0, 0), 1.0, 0.0, TAU))
 
 # %%
-# Cone (frustum)
-# --------------
+# Cone, a frustum
+# ---------------
 show_primitive("Cone", gmm.Cone((0, 0, 0), (0, 0, 1), (1, 0, 0), 1.0, 0.4, 0.0, TAU))
 
 # %%
@@ -83,8 +83,8 @@ show_primitive("Sphere", gmm.Sphere((0, 0, 0), (0, 0, 1), (1, 0, 0), 1.0, -1.0, 
 show_primitive("Paraboloid", gmm.Paraboloid((0, 0, 0), (0, 0, 1), (1, 0, 0), 1.0, 0.0, TAU))
 
 # %%
-# Cube (closed solid, no thermal mesh)
-# ------------------------------------
+# Cube, a closed solid with no thermal mesh
+# -----------------------------------------
 #
 # A ``Cube`` cannot carry a thermal mesh, so we visualise its solid shape
 # directly with pyvista using its ``center`` and ``extent``.

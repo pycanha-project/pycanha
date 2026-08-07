@@ -1,33 +1,31 @@
-Parameters and Formulas
+Parameters and formulas
 =======================
 
-The parameter–formula system lets you link model quantities to named
-parameters, making parametric sweeps and sensitivity studies straightforward.
+The parameter and formula system links model quantities to named values, so a
+sweep or a sensitivity study changes one number instead of many.
 
 .. important::
 
-   The parameter–formula system is in active development and subject to change.  
-   The API described here is not stable and will likely change in future releases.
-
+   This system is in active development. The API described here is not stable
+   and will change.
 
 Concepts
 --------
 
-**Parameters**
-   A named key–value store. Values can be changed between solver calls.
+**Parameter**
+   A named value. It can be changed between solver calls.
 
-**Entities**
-   A handle that points to one scalar quantity in the model — a node
-   attribute or a coupling value.
+**Entity**
+   A handle to one scalar quantity in the model, a node attribute or a coupling
+   value.
 
-**Formulas**
-   A rule that writes a parameter's value into an entity when
-   ``apply_formulas()`` is called.
+**Formula**
+   A rule that writes into an entity when ``apply_formulas()`` is called.
 
 .. important::
 
-   Formulas are **not** auto-applied.  You must call
-   ``tmm.formulas.apply_formulas()`` to propagate parameter changes to the
+   Formulas are not applied automatically. Call
+   ``tmm.formulas.apply_formulas()`` to propagate a parameter change into the
    model before solving.
 
 Creating entities
@@ -35,32 +33,36 @@ Creating entities
 
 .. code-block:: python
 
-   # Node 1's internal dissipation
-   qi_entity = tmm.entity("QI1")
+   qi_entity = tmm.entities.internal_heat(1)          # internal heat load of node 1
+   g_entity = tmm.entities.conductive_coupling(1, 2)
+   r_entity = tmm.entities.radiative_coupling(2, 3)
 
-   # Conductive coupling GL(1, 2)
-   gl_entity = tmm.entities.conductive_coupling(1, 2)
+:class:`~pycanha_core.tmm.EntitiesHelper` covers every node attribute:
+``temperature``, ``capacity``, ``internal_heat``, ``solar_heat``,
+``albedo_heat``, ``earth_ir`` and ``other_heat``, all taking a node number.
+``attribute(token, node_num)`` takes the attribute token directly.
 
-   # Radiative coupling GR(2, 3)
-   gr_entity = tmm.entities.radiative_coupling(2, 3)
+Each entity has ``get_value()`` and ``set_value()`` to read and write the model
+quantity directly, and ``string_representation()`` for its label.
 
-Each entity exposes ``get_value()`` / ``set_value()`` to read or write the
-underlying model quantity directly, and ``string_representation()`` for a
-human-readable label (e.g. ``"QI1"``, ``"GL(1, 2)"``).
+.. note::
+
+   Entities also have a text form, ``"QI1"`` for the internal heat load of node
+   1 and ``"GL(1, 2)"`` for a conductive coupling. That spelling is inherited
+   from ESATAN-TMS. It may change, and other input languages may be added, so
+   prefer the typed accessors above. ``add_formula`` currently takes the text
+   form.
 
 Linking parameters to entities
 ------------------------------
 
 .. code-block:: python
 
-   # Register a parameter
    tmm.parameters.add_parameter("k", 1.0)
-
-   # Create the formula: GL(1,2) = k
    tmm.formulas.add_formula("GL(1,2)", "k")
 
-Running a parameter analysis
--------------------------
+Sweeping a parameter
+--------------------
 
 .. code-block:: python
 
@@ -74,18 +76,18 @@ Running a parameter analysis
 
    for k in k_values:
        tmm.parameters.set_parameter("k", k)
-       tmm.formulas.apply_formulas()      # propagate k → GL(1,2)
+       tmm.formulas.apply_formulas()
        solver.solve()
        temperatures.append(tmm.nodes.get_T(1))
 
    solver.deinitialize()
 
-ValueFormula
+Fixed values
 ------------
 
-:class:`~pycanha.parameters.ValueFormula` stores a fixed value inside the
-formula object.  It is useful for freezing an entity at a constant that can
-be changed programmatically:
+:class:`~pycanha.parameters.ValueFormula` keeps a value inside the formula
+object instead of taking it from a parameter. Use it to hold an entity at a
+constant that is changed from code:
 
 .. code-block:: python
 
@@ -95,4 +97,3 @@ be changed programmatically:
    vf.set_value(42.0)
    tmm.formulas.add_formula(vf)
    tmm.formulas.apply_formulas()
-   # QI1 is now 42.0

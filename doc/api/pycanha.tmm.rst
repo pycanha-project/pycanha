@@ -3,12 +3,12 @@
 
 .. currentmodule:: pycanha.tmm
 
-The ``tmm`` subpackage provides the high-level classes for building and
-inspecting thermal models.
+Nodes, couplings and the containers that hold them. See
+:doc:`/user_guide/model_construction`.
 
-The :class:`~pycanha_core.tmm.CouplingMatrices` class is re-exported from
-:mod:`pycanha_core.tmm` — see the :doc:`pycanha_core.tmm` page for its
-full documentation.
+:class:`~pycanha_core.tmm.CouplingMatrices` is re-exported from
+:mod:`pycanha_core.tmm` unchanged and is documented on the
+:doc:`pycanha_core.tmm` page.
 
 Model container
 ---------------
