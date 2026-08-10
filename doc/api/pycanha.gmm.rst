@@ -3,8 +3,9 @@
 
 .. currentmodule:: pycanha.gmm
 
-Primitives, the model that holds them, their thermal mesh and the plotting
-helpers. See :doc:`/user_guide/geometry` for how these fit together.
+Primitives, the model that holds them and their thermal mesh. See
+:doc:`/user_guide/geometry` for how these fit together, and :doc:`pycanha.plot`
+for the visualization helpers.
 
 Several names here are re-exported from :mod:`pycanha_core.gmm` unchanged:
 :class:`~pycanha_core.gmm.ThermalMesh`, :class:`~pycanha_core.gmm.ActiveSide`,
@@ -130,10 +131,9 @@ Reached as ``model.io``. Documented on the :doc:`pycanha.io` page.
 Plotting
 --------
 
-.. autofunction:: plot
+The ``plot*`` methods of :class:`GeometryModel` above are the usual way to look
+at a model. Everything they build on - the pyvista conversion, the value-mapping
+helpers, picking and the interactive viewer - lives in :doc:`pycanha.plot`.
 
-.. autofunction:: to_polydata
-
-The :mod:`pycanha.gmm.viz`, :mod:`pycanha.gmm.ops`, :mod:`pycanha.gmm.mesh` and
-:mod:`pycanha.gmm.picking` submodules hold the rest of the plotting, geometry
-operation, meshing and picking helpers.
+The :mod:`pycanha.gmm.ops` and :mod:`pycanha.gmm.mesh` submodules hold the
+geometry-operation and meshing helpers.

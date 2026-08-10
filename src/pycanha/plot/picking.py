@@ -1,22 +1,29 @@
-"""Interactive face inspection in the pyvista plots.
+"""Resolve the model entity behind a rendered triangle.
 
 Right-clicking (or pressing ``P``) over the geometry casts a single ray from the
 cursor with VTK's ``vtkCellPicker``, resolves the triangle it hits back to the
-model, and prints the face's properties to the console.
+model, and reports the face's properties.
 
 ``face_info`` does the resolution and is free of any pyvista state, so it can be
-exercised without a render window; ``enable_face_picking`` wires it to a
-:class:`pyvista.Plotter`.
+exercised without a render window - it is also what the interactive viewer uses
+to fill its property table. ``enable_face_picking`` wires it to a
+:class:`pyvista.Plotter` for the one-shot plotting path.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pycanha_core as pcc
-import pyvista as pv
+
+from .polydata import polydata_from_triangles
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import pyvista as pv
 
 #: Actor name of the highlight overlay, so each pick replaces the previous one.
 _HIGHLIGHT_NAME = "_picked_face"
@@ -56,7 +63,7 @@ def item_map(model: Any) -> dict[int, Any]:
     }
 
 
-def _owning_item(mesh: Any, face_id: int, items: dict[int, Any]) -> Any:
+def owning_item(mesh: Any, face_id: int, items: dict[int, Any]) -> Any:
     """Return the item whose primitive range contains ``face_id`` (side-1 slot).
 
     Ranges are scanned back-to-front because they may overlap: an item cut away
@@ -80,7 +87,7 @@ def face_info(
 
     ``both_sides`` must match how the polydata was built: with it the cells are
     doubled, ``[0, nt)`` being side 1 and ``[nt, 2*nt)`` the side-2 copies (see
-    :func:`pycanha.gmm.viz.to_polydata`).
+    :func:`pycanha.plot.polydata.to_polydata`).
 
     ``items`` is the ``{geometry id: GeometryItem}`` map of the owning model (see
     :func:`item_map`); without it only the mesh-level fields are filled in.
@@ -99,7 +106,7 @@ def face_info(
     node_numbers = np.asarray(mesh.node_numbers)
     node_number = int(node_numbers[face_id]) if face_id < node_numbers.size else -1
 
-    item = _owning_item(mesh, base_face_id, items) if items else None
+    item = owning_item(mesh, base_face_id, items) if items else None
     if item is None:
         return FaceInfo(face_id=face_id, side=side, node_number=node_number)
 
@@ -140,7 +147,7 @@ def format_face_info(info: FaceInfo) -> str:
     return f"{head}\n{detail}"
 
 
-def _camera_facing_cell(
+def camera_facing_cell(
     cell_index: int,
     *,
     n_tri: int,
@@ -161,7 +168,7 @@ def _camera_facing_cell(
     return cell_index - n_tri if cell_index >= n_tri else cell_index + n_tri
 
 
-def _highlight_face(
+def highlight_face(
     plotter: pv.Plotter,
     poly: pv.PolyData,
     face_id: int,
@@ -170,6 +177,7 @@ def _highlight_face(
     triangles: np.ndarray,
     color: str,
     backface_culling: bool,
+    name: str = _HIGHLIGHT_NAME,
 ) -> None:
     """Draw every triangle of face slot ``face_id`` in ``color``.
 
@@ -180,33 +188,56 @@ def _highlight_face(
     cells = np.flatnonzero(np.asarray(poly.cell_data["face_id"]) == face_id)
     if cells.size == 0:
         return
-    selected = triangles[cells]
-    faces = np.empty((selected.shape[0], 4), dtype=np.int64)
-    faces[:, 0] = 3
-    faces[:, 1:] = selected
+    highlight_cells(
+        plotter,
+        points=points,
+        triangles=triangles[cells],
+        color=color,
+        backface_culling=backface_culling,
+        name=name,
+    )
+
+
+def highlight_cells(
+    plotter: pv.Plotter,
+    *,
+    points: np.ndarray,
+    triangles: np.ndarray,
+    color: str,
+    backface_culling: bool,
+    name: str = _HIGHLIGHT_NAME,
+) -> None:
+    """Draw an arbitrary set of triangles as a coincident overlay actor.
+
+    The polygon-offset dance is the same as :func:`highlight_face`; this form
+    takes the triangles directly so a caller can highlight a whole item or a
+    node's faces rather than one slot.
+    """
+    if triangles.shape[0] == 0:
+        return
     actor = plotter.add_mesh(
-        pv.PolyData(points, faces.ravel()),
+        polydata_from_triangles(points, triangles),
         color=color,
         lighting=False,
         pickable=False,
         reset_camera=False,
         backface_culling=backface_culling,
         show_scalar_bar=False,
-        name=_HIGHLIGHT_NAME,
+        name=name,
     )
     mapper = actor.mapper
     mapper.SetResolveCoincidentTopologyToPolygonOffset()
     mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(-4.0, -4.0)
 
 
-def _clear_highlight(plotter: pv.Plotter) -> None:
+def clear_highlight(plotter: pv.Plotter, name: str = _HIGHLIGHT_NAME) -> None:
     """Drop the highlight overlay, if one is currently shown.
 
     Goes through the renderer rather than the Plotter method of the same name:
     that one is a functools.wraps forwarder that loses its bound signature, and
     it sweeps every renderer, while the overlay only ever lives on the active one.
     """
-    plotter.renderer.remove_actor(_HIGHLIGHT_NAME, render=True)
+    plotter.renderer.remove_actor(name, render=True)
 
 
 def enable_face_picking(
@@ -217,8 +248,9 @@ def enable_face_picking(
     model: Any = None,
     tolerance: float = 1e-6,
     highlight_color: str | None = "yellow",
+    on_pick: Callable[[FaceInfo | None], None] | None = None,
 ) -> None:
-    """Print the properties of the face under the cursor when it is picked.
+    """Report the properties of the face under the cursor when it is picked.
 
     Must be called before :meth:`pyvista.Plotter.show`. Picking is bound to the
     right mouse button (and the ``P`` key), leaving left-drag as plain camera
@@ -234,9 +266,14 @@ def enable_face_picking(
     neighboring face whenever the click is off-center. (pyvista defaults it to
     0.025 - about 25 px on a 1000 px window - which is far too coarse here.)
 
-    ``highlight_color`` paints the whole picked face, so the console output can
-    be matched to what was clicked; picking past the geometry clears it again.
+    ``highlight_color`` paints the whole picked face, so the report can be
+    matched to what was clicked; picking past the geometry clears it again.
     Pass ``None`` for no visual feedback.
+
+    ``on_pick`` receives the resolved :class:`FaceInfo`, or ``None`` when the
+    click missed the geometry. It replaces the default console report, which is
+    what the interactive viewer uses to drive its property table. Without it the
+    face is printed to stdout as before.
 
     Does nothing for an off-screen plotter: there is no mouse to pick with, and
     the usage hint would end up baked into the rendered image.
@@ -249,6 +286,7 @@ def enable_face_picking(
     items = item_map(model) if model is not None else None
     points = np.asarray(poly.points)
     triangles = poly.faces.reshape(-1, 4)[:, 1:]
+    report = on_pick if on_pick is not None else _print_face_info
 
     def _report(point: Any, picker: Any) -> None:
         cell_index = int(picker.GetCellId())
@@ -257,7 +295,8 @@ def enable_face_picking(
         if not 0 <= cell_index < poly.n_cells:
             # Clicking past the geometry clears the selection.
             if highlight_color is not None:
-                _clear_highlight(plotter)
+                clear_highlight(plotter)
+            report(None)
             return
         if both_sides:
             camera = plotter.camera
@@ -268,7 +307,7 @@ def enable_face_picking(
                 view_direction = np.asarray(camera.focal_point, dtype=np.float64) - origin
             else:
                 view_direction = np.asarray(point, dtype=np.float64) - origin
-            cell_index = _camera_facing_cell(
+            cell_index = camera_facing_cell(
                 cell_index,
                 n_tri=n_tri,
                 triangles=triangles,
@@ -277,7 +316,7 @@ def enable_face_picking(
             )
         info = face_info(mesh, cell_index, both_sides=both_sides, items=items)
         if highlight_color is not None:
-            _highlight_face(
+            highlight_face(
                 plotter,
                 poly,
                 info.face_id,
@@ -286,7 +325,7 @@ def enable_face_picking(
                 color=highlight_color,
                 backface_culling=both_sides,
             )
-        print(format_face_info(info))
+        report(info)
 
     # Go through the picking component rather than the Plotter shim of the same
     # name: the shim is a functools.wraps forwarder, which loses the bound-method
@@ -302,3 +341,9 @@ def enable_face_picking(
         pickable_window=True,
         show_message="Right-click or press P to inspect a face",
     )
+
+
+def _print_face_info(info: FaceInfo | None) -> None:
+    """Default ``on_pick``: print the face to stdout, or nothing on a miss."""
+    if info is not None:
+        print(format_face_info(info))

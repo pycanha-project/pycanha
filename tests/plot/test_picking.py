@@ -5,9 +5,9 @@ import pytest
 
 import pycanha as pc
 from pycanha import gmm
-from pycanha.gmm.picking import (
+from pycanha.plot.picking import (
     FaceInfo,
-    _camera_facing_cell,
+    camera_facing_cell,
     face_info,
     format_face_info,
     item_map,
@@ -122,12 +122,12 @@ def test_camera_facing_cell_picks_the_visible_copy() -> None:
     from_front = np.array([0.0, 0.0, -1.0])  # camera at +z looking down
     from_behind = np.array([0.0, 0.0, 1.0])  # camera at -z looking up
 
-    assert _camera_facing_cell(0, view_direction=from_front, **kwargs) == 0
-    assert _camera_facing_cell(1, view_direction=from_front, **kwargs) == 0
+    assert camera_facing_cell(0, view_direction=from_front, **kwargs) == 0
+    assert camera_facing_cell(1, view_direction=from_front, **kwargs) == 0
     # The cell picker ignores backface culling, so it may hand back the hidden
     # side-1 copy even when side 2 is the one being looked at.
-    assert _camera_facing_cell(0, view_direction=from_behind, **kwargs) == 1
-    assert _camera_facing_cell(1, view_direction=from_behind, **kwargs) == 1
+    assert camera_facing_cell(0, view_direction=from_behind, **kwargs) == 1
+    assert camera_facing_cell(1, view_direction=from_behind, **kwargs) == 1
 
 
 def test_format_face_info_full() -> None:

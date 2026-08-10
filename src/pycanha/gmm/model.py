@@ -8,7 +8,8 @@ import numpy as np
 import pycanha_core as pcc
 import pyvista as pv
 
-from . import picking, viz
+from ..plot import picking, polydata
+from ..plot.render import render
 from .io import GeometryIo
 
 #: Actor name of the time readout, so each frame replaces the previous one.
@@ -98,10 +99,10 @@ class GeometryModel(pcc.gmm.GeometryModel):
         ``nan`` where unknown).
 
         With ``both_sides=True`` each triangle is emitted once per ThermalMesh
-        side (see :func:`pycanha.gmm.viz.to_polydata`), so side-2 slots get their
+        side (see :func:`pycanha.plot.polydata.to_polydata`), so side-2 slots get their
         own cells instead of the geometry describing side 1 alone.
         """
-        poly = viz.to_polydata(self, both_sides=both_sides)
+        poly = polydata.to_polydata(self, both_sides=both_sides)
         if emissivity:
             poly.cell_data["emissivity"] = self._face_emissivity(poly)
         return poly
@@ -152,8 +153,8 @@ class GeometryModel(pcc.gmm.GeometryModel):
                 ids = np.asarray(poly.cell_data["node_number"])
             # Node numbers are sparse (100, 200, 300...) and would collide modulo
             # the palette size, so rank them densely before picking colors.
-            name = viz.colorize_categorical(poly, ids, rank=scalars == "node_number")
-            return viz.render(
+            name = polydata.colorize_categorical(poly, ids, rank=scalars == "node_number")
+            return render(
                 poly,
                 scalars=name,
                 rgb=True,
@@ -163,7 +164,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
                 pick_source=self,
                 **kwargs,
             )
-        return viz.render(
+        return render(
             poly,
             scalars=scalars,
             show_edges=show_edges,
@@ -195,7 +196,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
         ``pick`` (default) makes right-clicking a face print its properties to
         the console; pass ``pick=False`` to leave the mouse buttons alone.
         """
-        poly = viz.to_polydata(self, both_sides=both_sides)
+        poly = polydata.to_polydata(self, both_sides=both_sides)
         if both_sides:
             kwargs.setdefault("backface_culling", True)
         node_numbers = np.asarray(poly.cell_data["node_number"])
@@ -238,7 +239,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
         and friends work as usual.
         """
         return self._plot_mapped(
-            viz.map_node_data,
+            polydata.map_node_data,
             data,
             name=name,
             show_edges=show_edges,
@@ -267,7 +268,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
         what a pick reports.
         """
         return self._plot_mapped(
-            viz.map_face_data,
+            polydata.map_face_data,
             data,
             name=name,
             show_edges=show_edges,
@@ -290,11 +291,11 @@ class GeometryModel(pcc.gmm.GeometryModel):
         **kwargs: Any,
     ) -> pv.Plotter:
         """Attach a mapped value array as cell data and render it with a colorbar."""
-        poly = viz.to_polydata(self, both_sides=both_sides)
+        poly = polydata.to_polydata(self, both_sides=both_sides)
         poly.cell_data[name] = mapper(poly, data)
         if both_sides:
             kwargs.setdefault("backface_culling", True)
-        return viz.render(
+        return render(
             poly,
             scalars=name,
             show_edges=show_edges,
@@ -377,8 +378,8 @@ class GeometryModel(pcc.gmm.GeometryModel):
             )
             raise ValueError(msg)
 
-        poly = viz.to_polydata(self, both_sides=both_sides)
-        column, known = viz.cell_columns(poly, key_array, key)
+        poly = polydata.to_polydata(self, both_sides=both_sides)
+        column, known = polydata.cell_columns(poly, key_array, key)
 
         def frame(index: int) -> npt.NDArray[np.float64]:
             # Cells without a column index at whatever `column` holds for them,

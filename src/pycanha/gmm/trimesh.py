@@ -6,7 +6,7 @@ would not match the objects the core hands back and any method defined on it
 would be unreachable from ``GeometryModel.mesh`` and friends.
 
 For pyvista output use the free functions, which take any mesh:
-``pycanha.gmm.to_polydata(mesh)`` and ``pycanha.gmm.plot(mesh)``.
+``pycanha.plot.to_polydata(mesh)`` and ``pycanha.plot.plot(mesh)``.
 """
 
 from __future__ import annotations

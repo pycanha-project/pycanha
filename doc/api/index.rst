@@ -12,6 +12,7 @@ re-exported from it unchanged. Each page states which case applies.
    pycanha
    pycanha.tmm
    pycanha.gmm
+   pycanha.plot
    pycanha.conduction
    pycanha.parameters
    pycanha.solvers

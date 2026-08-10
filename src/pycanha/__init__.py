@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pycanha_core as pcc
 
-    from . import conduction, gmm, io, log, parameters, radiative, solvers, tmm
+    from . import conduction, gmm, io, log, parameters, plot, radiative, solvers, tmm
     from .thermalmodel import ThermalModel
     from .tmm.node import NodeType
 
@@ -23,6 +23,7 @@ __all__ = [
     "io",
     "log",
     "parameters",
+    "plot",
     "print_package_info",
     "radiative",
     "solvers",
@@ -39,6 +40,7 @@ def __getattr__(name: str) -> Any:
         "io": ".io",
         "log": ".log",
         "parameters": ".parameters",
+        "plot": ".plot",
         "radiative": ".radiative",
         "solvers": ".solvers",
         "tmm": ".tmm",
