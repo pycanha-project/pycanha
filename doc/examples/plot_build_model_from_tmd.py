@@ -22,12 +22,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pycanha_core as pcc
 
 import pycanha as pc
 
-# The core logs solver progress at INFO. Quiet it for a readable output.
-pcc.set_logger_level(pcc.LogLevel.WARN)
 
 # Resolve the test data path.
 _cwd = Path.cwd()

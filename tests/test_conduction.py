@@ -3,8 +3,8 @@
 The builder itself is the core's, and is tested there.  What is tested here is
 the layer pycanha puts on top of it: that the whole engine is reachable without
 importing ``pycanha_core``, that a build report reads in the same vocabulary as
-the file readers' diagnostics, and that the conductive activity -- not the
-radiative one -- is what decides which sides become nodes.
+the file readers' diagnostics, and that the two active-side selectors decide
+between them which sides become nodes and which of those also conduct.
 """
 
 from __future__ import annotations
@@ -71,25 +71,45 @@ def test_a_tmm_that_already_holds_nodes_is_refused() -> None:
         model.build_tmm_from_gmm()
 
 
-# -- the conductive activity is what counts ---------------------------------
+# -- either physics makes a node; only conduction makes a conductor ---------
 
 
-def test_only_conductively_active_sides_become_nodes() -> None:
+def test_a_side_active_in_either_physics_becomes_nodes() -> None:
+    """Conduction on one side only still leaves the other side's nodes standing.
+
+    A radiating surface has a temperature whether or not it conducts, so it
+    needs a node.  What the conductive selector decides is the conductors: the
+    four in-plane links of side 1, and none through the thickness, which would
+    need both sides conducting.
+    """
     mesh = plate()
     mesh.conductive_active_side = ActiveSide.SIDE1
     _, report = built(mesh)
-    assert report.nodes_created == 4
+    assert report.nodes_created == 8
+    assert report.conductors_created == 4
     assert "InactiveSideSkipped" in {note.code for note in pc.conduction.diagnostics(report)}
 
 
-def test_radiating_without_conducting_builds_nothing() -> None:
-    """The ESATAN "Radiative" surface: it is in the radiative model only.
+def test_radiating_without_conducting_builds_nodes_but_no_conductors() -> None:
+    """The ESATAN "Radiative" surface: capacitance and a temperature, no links.
 
-    Reading the radiative selector here instead would give this surface a full
-    conductive network it never asked for.
+    Dropping it entirely would lose a surface the radiative model still
+    exchanges with; giving it conductors would build a network it never asked
+    for.
     """
     mesh = plate()
     mesh.radiative_active_side = ActiveSide.BOTH
+    mesh.conductive_active_side = ActiveSide.NONE
+    model, report = built(mesh)
+    assert report.nodes_created == 8
+    assert report.conductors_created == 0
+    # Nodes with real capacitance, not placeholders.
+    assert all(model.tmm.nodes.get_C(number) > 0.0 for number in (100, 200))
+
+
+def test_a_side_active_in_neither_physics_is_dropped() -> None:
+    mesh = plate()
+    mesh.radiative_active_side = ActiveSide.NONE
     mesh.conductive_active_side = ActiveSide.NONE
     _, report = built(mesh)
     assert report.nodes_created == 0

@@ -18,13 +18,11 @@ used only as a cutter, so it has no thermal mesh.
 # the interactive vtk.js scene is still embedded below.
 
 import numpy as np
-import pycanha_core as pcc
 import pyvista as pv
 
 import pycanha as pc
 from pycanha import gmm
 
-pcc.set_logger_level(pcc.LogLevel.WARN)
 
 TAU = 2 * np.pi
 

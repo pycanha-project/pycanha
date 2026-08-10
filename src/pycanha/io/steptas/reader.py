@@ -696,8 +696,12 @@ def read_steptas_into(
     """Read the STEP-TAS geometry at *path* into *model*, in place."""
     source = Path(path)
     diagnostics = DiagnosticCollector(
-        source=source.name, strict=strict, on_diagnostic=on_diagnostic
+        source=source.name,
+        strict=strict,
+        operation="Read STEP-TAS geometry",
+        on_diagnostic=on_diagnostic,
     )
     parsed: Part21File = read_part21(source)
     _Reader(model, parsed, diagnostics).run()
+    diagnostics.report()
     return diagnostics

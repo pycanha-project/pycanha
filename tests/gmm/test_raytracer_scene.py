@@ -7,6 +7,7 @@ end-to-end run driven entirely through the pycanha surface.
 
 import numpy as np
 import pytest
+from scipy.sparse import csr_matrix
 
 import pycanha as pc
 from pycanha import gmm
@@ -68,12 +69,15 @@ def test_view_factor_end_to_end() -> None:
     scene.accumulate_vf(acc, rad.TraceSettings(rays_per_face=1024, seed=0))
     result = acc.result()
 
-    assert result.vf.rows == nf
-    # The trailing virtual columns account for energy that never reaches
-    # another face: to space, to an inactive face, or lost.
-    assert result.vf.cols == nf + rad.num_virtual_columns
-    # Row sums are view factors in [0, 1]; the deficit is the VF to space.
+    # The matrix arrives as a scipy csr_matrix, so it goes straight into the
+    # rest of the stack without a conversion step. The trailing virtual columns
+    # account for energy that never reaches another face: to space, to an
+    # inactive face, or lost.
+    assert isinstance(result.vf, csr_matrix)
+    assert result.vf.shape == (nf, nf + rad.num_virtual_columns)
+    # Row sums are taken over the raw estimate, before reciprocity and before
+    # only one triangle is kept, so every face that emitted closes at 1.
     row_sums = np.asarray(result.row_sums)
-    assert np.all(row_sums >= -1e-6)
-    assert np.all(row_sums <= 1.0 + 1e-6)
+    assert row_sums.shape == (nf,)
+    np.testing.assert_allclose(row_sums, 1.0, atol=1e-6)
     assert result.stats.total_rays > 0

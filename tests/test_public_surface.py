@@ -7,7 +7,6 @@ is added without a pycanha-level path to it.
 
 from __future__ import annotations
 
-import numpy as np
 import pycanha_core as pcc
 from scipy.sparse import csr_matrix
 
@@ -15,15 +14,6 @@ import pycanha as pc
 
 #: Core names deliberately not re-exported, with the reason.
 _INTENTIONALLY_NOT_REEXPORTED = {
-    # Enum *members* aliased at core module level; reachable through the enum
-    # type itself, which is re-exported (e.g. pc.LogLevel.DEBUG).
-    "CRITICAL": "pc.LogLevel.CRITICAL",
-    "DEBUG": "pc.LogLevel.DEBUG",
-    "ERROR": "pc.LogLevel.ERROR",
-    "INFO": "pc.LogLevel.INFO",
-    "OFF": "pc.LogLevel.OFF",
-    "TRACE": "pc.LogLevel.TRACE",
-    "WARN": "pc.LogLevel.WARN",
     # Enum types aliased at the core root; re-exported on the owning subpackage.
     "DataModelAttribute": "pc.tmm.DataModelAttribute",
     "EntityType": "pc.parameters.EntityType",
@@ -39,7 +29,7 @@ def _public(module: object) -> set[str]:
 
 
 def test_core_root_symbols_reachable() -> None:
-    subpackages = {"conduction", "gmm", "io", "parameters", "radiative", "solvers", "tmm"}
+    subpackages = {"conduction", "gmm", "io", "log", "parameters", "radiative", "solvers", "tmm"}
     missing = [
         name
         for name in _public(pcc)
@@ -87,6 +77,9 @@ def test_core_subpackage_symbols_reachable() -> None:
         "solvers": set(),
         "radiative": set(),
         "conduction": set(),
+        # pc.log.log(level, message) is the same entry point under the name the
+        # stdlib uses; a second spelling of it would be one knob too many.
+        "log": {"write"},
     }
     # gmm is checked by test_gmm_mesh_helpers_reachable: its free functions live
     # on the pc.gmm.mesh.ops / pc.gmm.ops submodules rather than on pc.gmm.
@@ -120,18 +113,17 @@ def test_radiative_reexports_engine() -> None:
     assert isinstance(pc.radiative.is_available(), bool)
 
 
-def test_radiative_to_scipy_roundtrip() -> None:
-    sparse = pcc.radiative.SparseF64(
-        np.array([0, 1, 2], dtype=np.int64),
-        np.array([1, 0], dtype=np.int32),
-        np.array([0.25, 0.5], dtype=np.float64),
-        2,
-        2,
-    )
-    converted = pc.radiative.to_scipy(sparse)
-    assert isinstance(converted, csr_matrix)
-    assert converted.shape == (2, 2)
-    np.testing.assert_allclose(converted.toarray(), [[0.0, 0.25], [0.5, 0.0]])
+def test_radiative_matrices_are_already_scipy() -> None:
+    """Since core 0.19 the engine hands back scipy directly.
+
+    The layer-3 ``to_scipy`` wrapper that used to bridge its own CSR container
+    is gone, and nothing should reintroduce a conversion step.
+    """
+    assert not hasattr(pc.radiative, "to_scipy")
+    assert not hasattr(pcc.radiative, "SparseF64")
+    # A sparse matrix crossing the boundary, checkable without a GPU. The
+    # radiative ones are covered end-to-end in tests/gmm/test_raytracer_scene.
+    assert isinstance(pc.tmm.CouplingMatrices().sparse_dd_copy(), csr_matrix)
 
 
 def test_conduction_reexports_engine() -> None:

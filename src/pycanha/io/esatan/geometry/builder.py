@@ -1265,7 +1265,12 @@ def read_erg_into(
     Returns the diagnostics produced, which is how a caller finds out what the
     source expressed that the model does not.
     """
-    collector = DiagnosticCollector(source=str(path), strict=strict, on_diagnostic=on_diagnostic)
+    collector = DiagnosticCollector(
+        source=str(path),
+        strict=strict,
+        operation="Read ESATAN geometry",
+        on_diagnostic=on_diagnostic,
+    )
     parsed = parse_file(path, collector=collector)
     if parsed.name and parsed.name != model.name:
         collector.info(
@@ -1273,4 +1278,5 @@ def read_erg_into(
             f"the file declares model '{parsed.name}'; it was read into '{model.name}'",
         )
     _Builder(model, collector).run(parsed)
+    collector.report()
     return collector

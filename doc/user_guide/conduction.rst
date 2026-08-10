@@ -31,10 +31,20 @@ flat approximation.
 **Through-thickness couplings** connect side 1 to side 2 of the same face,
 through the thickness and bulk material of that face.
 
-A face takes part when
-:attr:`~pycanha_core.gmm.ThermalMesh.conductive_active_side` selects its side.
-That selector is independent of the radiative one, so a surface can conduct
-without radiating.
+**Which sides become nodes, and which of those conduct**, are two different
+questions, answered by the two active-side selectors between them:
+
+* a side that either
+  :attr:`~pycanha_core.gmm.ThermalMesh.conductive_active_side` or
+  :attr:`~pycanha_core.gmm.ThermalMesh.radiative_active_side` selects becomes
+  nodes, with the capacitance of its material and thickness. A radiating
+  surface has a temperature whether or not it conducts, so it needs a node;
+* only a side that ``conductive_active_side`` selects gets couplings. A
+  through-thickness coupling needs both sides conducting.
+
+So the ESATAN "Radiative" surface -- radiative on both sides, conductive on
+neither -- comes out as nodes with capacitance and no conductors, and a side
+selected by neither is dropped entirely.
 
 Options
 -------

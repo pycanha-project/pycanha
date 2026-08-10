@@ -38,18 +38,18 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pycanha_core as pcc
 from scipy.optimize import least_squares
 
 import pycanha as pc
 import pycanha.tmm as pm
 
-# Silence the C++ info logger.
-pcc.set_logger_level(pcc.OFF)
+# Nothing below WARN reaches the console by default; this silences the rest,
+# since a correlation runs the solver hundreds of times.
+pc.log.set_display_level(pc.LogLevel.OFF)
 
 
-# The solver's separate "profiling" logger writes straight to OS stdout, so
-# it is not affected by set_logger_level. This small context manager
+# The solver's profiling output goes straight to OS stdout and is not a log
+# record at all, so no threshold reaches it. This small context manager
 # redirects the stdout file descriptor to null during a solve, keeping the
 # notebook output clean.
 @contextlib.contextmanager

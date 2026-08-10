@@ -13,9 +13,10 @@ import h5py
 import numpy as np
 import pycanha_core as pcc
 
+from pycanha import log
 from pycanha.io.esatan.attributes import ESATAN_NODE_ATTRS, FORMULA_ENTITY_ATTRS
 from pycanha.io.esatan.codegen import emit_script
-from pycanha.io.esatan.errors import EsatanParseError, get_parser_logger
+from pycanha.io.esatan.errors import EsatanParseError
 from pycanha.io.esatan.expressions import SafeEvalError, safe_arithmetic
 from pycanha.io.esatan.preprocessor import (
     esatan_float,
@@ -134,7 +135,6 @@ class ESATANReader:
     """
 
     def __init__(self, tm: ThermalModel | Any) -> None:
-        self._logger = get_parser_logger()
         # Accept either a pycanha ThermalModel (preferred) or a bare TMM.
         # Internally everything goes through ``self._tmm``.
         self._tm = tm
@@ -215,12 +215,12 @@ class ESATANReader:
         reader = pcc.tmm.ESATANReader(self._tmm)
         reader.verbose = verbose
         if verbose:
-            self._logger.info(f"Reading ESATAN TMD with C++ engine: {filepath}")
+            log.info(f"Reading ESATAN TMD with C++ engine: {filepath}")
         reader.read_tmd(str(filepath))
 
     def _read_tmd_python(self, filepath: Path, *, verbose: bool) -> None:
         if verbose:
-            self._logger.info(f"Reading ESATAN TMD with Python engine: {filepath}")
+            log.info(f"Reading ESATAN TMD with Python engine: {filepath}")
 
         with h5py.File(filepath, "r") as handle:
             analysis_group: Any = handle[_ANALYSIS_GROUP]
@@ -238,7 +238,7 @@ class ESATANReader:
 
             if verbose:
                 inactive_numbers = node_numbers_with_inactive[~active_node_mask]
-                self._logger.info(
+                log.info(
                     "Loaded ESATAN node table: "
                     f"{active_node_numbers.size} active, {inactive_numbers.size} inactive"
                 )
@@ -499,7 +499,7 @@ class ESATANReader:
         text = _apply_substitutions(text, substitutions)
 
         if _TABLE_KEYWORD_RE.search(text):
-            self._logger.error(
+            log.error(
                 "$TABLE blocks are not supported yet; skipping. "
                 "# TODO: support $TABLE multi-axis arrays."
             )
@@ -512,19 +512,17 @@ class ESATANReader:
             try:
                 values = _parse_array_values(body, cols * rows)
             except ValueError as exc:
-                self._logger.warning(f"$ARRAYS '{name}': could not parse values ({exc}); skipping")
+                log.warning(f"$ARRAYS '{name}': could not parse values ({exc}); skipping")
                 continue
             if cols < 2:
-                self._logger.warning(
+                log.warning(
                     f"$ARRAYS '{name}': only 2-D+ arrays are supported in this phase; skipping"
                 )
                 continue
             try:
                 table = np.array(values, dtype=float).reshape((rows, cols))
             except ValueError as exc:
-                self._logger.warning(
-                    f"$ARRAYS '{name}': shape {(rows, cols)} mismatch ({exc}); skipping"
-                )
+                log.warning(f"$ARRAYS '{name}': shape {(rows, cols)} mismatch ({exc}); skipping")
                 continue
             self._arrays[name] = table
             self._register_array_table(name, table)
@@ -532,7 +530,7 @@ class ESATANReader:
         # 1-D-only arrays: log and ignore (no snapshot use).
         for match in _ARRAY_1D_RE.finditer(text):
             name = match.group(1)
-            self._logger.warning(f"$ARRAYS '{name}': 1-D-only arrays are skipped in this phase")
+            log.warning(f"$ARRAYS '{name}': 1-D-only arrays are skipped in this phase")
 
     def _register_array_table(self, name: str, table: np.ndarray) -> None:
         """Register a 2-D array as a LookupTableVec1D in ThermalData."""
@@ -549,7 +547,7 @@ class ESATANReader:
             lookup = lookup_cls(x, y)
             tables_attr.add_table(name, lookup)
         except Exception as exc:
-            self._logger.warning(f"$ARRAYS '{name}': could not register LookupTableVec1D ({exc})")
+            log.warning(f"$ARRAYS '{name}': could not register LookupTableVec1D ({exc})")
 
     def parse_nodes(
         self,
@@ -593,7 +591,9 @@ class ESATANReader:
     def parse_events(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
         self._block_texts["$EVENTS"] = text
-        self._logger.info("$EVENTS parsing is not implemented yet")
+        # The block is kept but nothing is built from it, and the method
+        # returns None either way, so this record is the caller's only signal.
+        log.warning("$EVENTS parsing is not implemented yet; the block was stored, not applied")
 
     def parse_subroutines(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
@@ -623,7 +623,9 @@ class ESATANReader:
     def parse_outputs(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
         self._block_texts["$OUTPUTS"] = text
-        self._logger.info("$OUTPUTS parsing is not implemented yet")
+        # As for $EVENTS: stored, not applied, and nothing in the return value
+        # says so.
+        log.warning("$OUTPUTS parsing is not implemented yet; the block was stored, not applied")
 
     # -------------------------------------------------- internal helpers
 
@@ -639,7 +641,7 @@ class ESATANReader:
         try:
             return safe_arithmetic(expr, parameters=self._parameter_values())
         except SafeEvalError as exc:
-            self._logger.warning(
+            log.warning(
                 f"$CONSTANTS '{name}': expression {expr!r} cannot be evaluated as a "
                 f"plain constant ({exc}); skipping"
             )
@@ -685,11 +687,11 @@ class ESATANReader:
             return
         head_match = _NODE_HEAD_RE.match(text)
         if head_match is None:
-            self._logger.error(f"$NODES: cannot parse node head in {text!r}; skipping")
+            log.error(f"$NODES: cannot parse node head in {text!r}; skipping")
             return
         prefix = head_match.group(1).upper()
         if prefix == "X":
-            self._logger.error(
+            log.error(
                 f"$NODES: inactive (X) nodes not supported yet; skipping {head_match.group(0)!r}. "
                 "# TODO: support inactive nodes."
             )
@@ -699,7 +701,7 @@ class ESATANReader:
         rest = text[head_match.end() :]
         # Detect supernode merge syntax: "= A:5 + B:12" or any colon path.
         if ":" in text:
-            self._logger.error(
+            log.error(
                 f"$NODES: submodel/supernode references not supported yet in {text!r}; "
                 "skipping. # TODO: support submodels."
             )
@@ -754,7 +756,7 @@ class ESATANReader:
         if attr_name in FORMULA_ENTITY_ATTRS:
             self._pending_formulas.append(_PendingFormula(clean, attr_name, node_num))
         else:
-            self._logger.warning(
+            log.warning(
                 f"{attr_name}{node_num}: attribute {attr_name!r} cannot carry a "
                 f"formula ({clean!r}); no formula attached."
             )
@@ -776,7 +778,7 @@ class ESATANReader:
             if other is not None:
                 kind = other.group(1).upper()
                 if kind in wanted:
-                    self._logger.error(
+                    log.error(
                         f"$CONDUCTORS: unsupported syntax {text[:60]!r}; skipping. "
                         f"# TODO: support {kind} parallel-sequence form."
                     )
@@ -859,7 +861,7 @@ class ESATANReader:
             try:
                 entity = pending.entity(network)
             except Exception as exc:
-                self._logger.warning(
+                log.warning(
                     f"{pending.label}: could not build entity for "
                     f"{pending.expr!r} ({exc}); skipping"
                 )
@@ -867,7 +869,7 @@ class ESATANReader:
             try:
                 formula = formulas.create_formula(entity, pending.expr)
             except (ValueError, RuntimeError) as exc:
-                self._logger.warning(
+                log.warning(
                     f"{pending.label} = {pending.expr!r}: cannot create formula "
                     f"(likely an ESATAN intrinsic not yet supported: {exc}); "
                     "no formula attached. # TODO: GeneralFormula (Python backend)."
@@ -880,7 +882,7 @@ class ESATANReader:
             try:
                 formulas.apply_formulas()
             except Exception as exc:
-                self._logger.warning(
+                log.warning(
                     f"apply_formulas() failed after parsing ({exc}); call it "
                     "manually before solving."
                 )

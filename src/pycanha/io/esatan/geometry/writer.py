@@ -638,11 +638,15 @@ def write_erg_from(
     """Write *model* to *path* as an ESATAN geometry file."""
     target = Path(path)
     diagnostics = DiagnosticCollector(
-        source=target.name, strict=strict, on_diagnostic=on_diagnostic
+        source=target.name,
+        strict=strict,
+        operation="Wrote ESATAN geometry",
+        on_diagnostic=on_diagnostic,
     )
     writer = _Writer(model, diagnostics)
     lines = writer.run(name or model.name or "MODEL")
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    diagnostics.report()
     return diagnostics
 
 

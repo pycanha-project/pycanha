@@ -18,3 +18,4 @@ Reading and writing model files has its own section,
    transient
    parameters_formulas
    callbacks
+   logging

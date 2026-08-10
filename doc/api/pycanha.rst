@@ -7,8 +7,8 @@
 gives access to the solvers and the callbacks.
 
 The subpackages :mod:`pycanha.tmm`, :mod:`pycanha.gmm`,
-:mod:`pycanha.parameters`, :mod:`pycanha.solvers`, :mod:`pycanha.conduction`
-and :mod:`pycanha.io` are imported on first use.
+:mod:`pycanha.parameters`, :mod:`pycanha.solvers`, :mod:`pycanha.conduction`,
+:mod:`pycanha.io` and :mod:`pycanha.log` are imported on first use.
 
 Thermal model
 -------------
@@ -22,12 +22,16 @@ Thermal model
 Logging
 -------
 
-The logger of the compiled core is re-exported here, so user code does not have
-to import :mod:`pycanha_core` for it. See :doc:`pycanha_core` for the full
-reference.
+Logging lives in :doc:`pycanha.log`, which is the whole of it as seen from
+Python; user code never has to import :mod:`pycanha_core` for it.
+:class:`~pycanha_core.LogLevel` is also aliased at this level, since setting a
+threshold is the one thing everybody does::
 
-* :class:`~pycanha_core.LogLevel`, :class:`~pycanha_core.Logger`
-* :func:`~pycanha_core.get_logger`, :func:`~pycanha_core.set_logger_level`
-* :func:`~pycanha_core.get_python_logger`,
-  :func:`~pycanha_core.set_python_logger_level`
+    import pycanha as pc
+
+    pc.log.set_display_level(pc.LogLevel.OFF)
+
+Utilities
+---------
+
 * :func:`~pycanha_core.print_package_info`

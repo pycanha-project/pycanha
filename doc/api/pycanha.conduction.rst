@@ -4,16 +4,13 @@
 .. currentmodule:: pycanha.conduction
 
 Builds the conductive network of a TMM from the GMM. It creates one node per
-face that carries a node number on a conductive active side, and the in-plane
-and through-thickness couplings those faces imply. See
-:doc:`/user_guide/conduction`.
+face that carries a node number on a side either active-side selector picks,
+and the in-plane and through-thickness couplings the *conductively* active ones
+imply. See :doc:`/user_guide/conduction` for the split between the two.
 
-A face takes part when
-:attr:`~pycanha_core.gmm.ThermalMesh.conductive_active_side` selects its side.
-That selector is independent of the radiative one, so a surface can conduct
-without radiating. Radiative couplings, parameters, formulas and thermal data
-are left untouched. The build refuses to run on a TMM that already holds nodes
-or conductive couplings.
+Radiative couplings, parameters, formulas and thermal data are left untouched.
+The build refuses to run on a TMM that already holds nodes or conductive
+couplings.
 
 .. code-block:: python
 

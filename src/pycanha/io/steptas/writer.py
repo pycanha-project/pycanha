@@ -764,9 +764,13 @@ def write_steptas_from(
     """Write *model* to *path* as a STEP-TAS file."""
     target = Path(path)
     diagnostics = DiagnosticCollector(
-        source=target.name, strict=strict, on_diagnostic=on_diagnostic
+        source=target.name,
+        strict=strict,
+        operation="Wrote STEP-TAS geometry",
+        on_diagnostic=on_diagnostic,
     )
     model_name = name or model.name or target.stem or "MODEL"
     lines = _Writer(model, diagnostics, model_name).run()
     write_part21(target, header=_header(model_name), data=lines)
+    diagnostics.report()
     return diagnostics

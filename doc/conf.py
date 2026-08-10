@@ -13,7 +13,15 @@ from pathlib import Path
 import pyvista
 from pyvista.plotting.utilities.sphinx_gallery import DynamicScraper
 
+import pycanha as pc
 from pycanha.io.esatan.geometry import coverage
+
+# -- Logging during the build ------------------------------------------------
+# Gallery examples read models, and a read writes a log file and a diagnostics
+# file under the working directory. A docs build should leave the tree it was
+# run in exactly as it found it, so nothing goes to disk; the console still
+# shows anything at WARN or above, which is what a build wants to surface.
+pc.log.set_file_output(False)
 
 # -- Headless 3D rendering for the GMM examples ------------------------------
 # The GMM gallery examples render with pyvista. On a build server (Read the

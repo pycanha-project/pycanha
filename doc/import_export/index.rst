@@ -84,6 +84,35 @@ Severities
    The result is likely wrong rather than incomplete. An area or a node number
    differs from the source.
 
+The report file
+^^^^^^^^^^^^^^^
+
+Every read and every write also drops its full report in a file of its own,
+next to the log:
+
+.. code-block:: text
+
+   logs/DISC-20260810-114206-473931-p24220.diag.txt
+
+and the log itself carries one line pointing at it, at the severity of the
+worst entry in it -- ``info`` when the operation was clean, ``warning`` when
+something was dropped, ``error`` when the result is suspect:
+
+.. code-block:: text
+
+   Read ESATAN geometry DISC.erg -- 3 warnings, 1 unsupported construct;
+   diagnostics: logs/DISC-20260810-114206-473931-p24220.diag.txt
+
+Since only that line is displayed and only at ``warning`` and above, a clean
+read of a 100k-line model prints nothing at all, and a lossy one prints one
+line telling you where to read the rest. The file is written on every
+operation, clean ones included, so its presence is not itself a signal.
+
+Nothing is written if it cannot be: a read-only directory costs one warning,
+never the analysis. :func:`pycanha.log.set_file_output` turns the report files
+off together with the log file, leaving the report objects and the console
+untouched -- which is how a notebook runs without touching the filesystem.
+
 Options
 ^^^^^^^
 
@@ -92,7 +121,7 @@ Options
    # Raise on the first unsupported or error entry instead of collecting it.
    model.io.read_esatan_erg(path, strict=True)
 
-   # Receive each entry as it is produced, instead of having it logged.
+   # Receive each entry as it is produced, instead of recording it at DEBUG.
    model.io.read_esatan_erg(path, on_diagnostic=my_handler)
 
 With ``strict=True`` the first entry at ``unsupported`` or ``error`` raises the

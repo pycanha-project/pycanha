@@ -16,6 +16,7 @@ re-exported from it unchanged. Each page states which case applies.
    pycanha.parameters
    pycanha.solvers
    pycanha.io
+   pycanha.log
 
 .. toctree::
    :maxdepth: 2

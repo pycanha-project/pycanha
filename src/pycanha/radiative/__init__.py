@@ -9,13 +9,16 @@ to import ``pycanha_core`` directly::
         device = pc.radiative.Device.create()
         scene = pc.radiative.RadiativeScene(device, model.mesh_parts(), model.material_table())
 
-The engine types are re-exported verbatim (the bindings are a 1:1, policy-free
-exposure of the C++ core). :func:`to_scipy` is added on top so view-factor
-matrices reach user code as ``scipy.sparse.csr_matrix``, matching the rest of
-pycanha (e.g. :meth:`pycanha.tmm.CouplingMatrices.sparse_dd_copy`).
+The engine types are re-exported verbatim: the bindings are a 1:1, policy-free
+exposure of the C++ core, and since pycanha-core 0.19 its matrices already cross
+as ``scipy.sparse.csr_matrix``, matching the rest of pycanha (e.g.
+:meth:`pycanha.tmm.CouplingMatrices.sparse_dd_copy`).  Nothing has to be
+converted on arrival.
 
 Since pycanha-core 0.17 the engine covers geometric **view factors**, multi-bounce
-**exchange factors**, **solar** absorption and **Gebhart** factors.
+**exchange factors**, **solar** absorption and **Gebhart** factors.  Since 0.19 a
+:class:`TriangulationConfig` on :class:`AccumConfig` controls how mesh faces are
+subdivided before they are traced.
 
 :func:`is_available` reports whether this machine has a GPU the engine can use:
 Vulkan with ray queries on Windows and Linux, and since pycanha-core 0.18 Metal
@@ -27,6 +30,12 @@ set rather than reaching another face -- to space, to an inactive face, or lost
 to absorption -- at ``space_column_offset``, ``inactive_column_offset`` and
 ``lost_column_offset`` past the last real face. A caller slicing a matrix by
 face index has to stop before them.
+
+What is stored between real faces is the symmetric **extensive** quantity
+(``A_i F_ij`` for view factors), and only its **upper triangle**, matching the
+coupling convention -- so a caller recovers both view factors from the face
+areas rather than reading them off the matrix. ``row_sums`` is computed from the
+raw estimate before any of that and is the closure check.
 """
 
 from __future__ import annotations
@@ -34,13 +43,11 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-from scipy.sparse import csr_matrix
-
 if TYPE_CHECKING:
     from pycanha_core.radiative import (
         AccumConfig,
         AccumLayout,
+        AggregateResult,
         Band,
         Device,
         DeviceInfo,
@@ -54,9 +61,10 @@ if TYPE_CHECKING:
         SolarAccumulator,
         SolarResult,
         SolarState,
-        SparseF64,
         TraceSettings,
         TraceStats,
+        TriangulationConfig,
+        TriangulationMode,
         VfAccumulator,
         VfResult,
         aggregate_flux,
@@ -76,6 +84,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AccumConfig",
     "AccumLayout",
+    "AggregateResult",
     "Band",
     "Device",
     "DeviceInfo",
@@ -89,9 +98,10 @@ __all__ = [
     "SolarAccumulator",
     "SolarResult",
     "SolarState",
-    "SparseF64",
     "TraceSettings",
     "TraceStats",
+    "TriangulationConfig",
+    "TriangulationMode",
     "VfAccumulator",
     "VfResult",
     "aggregate_flux",
@@ -106,24 +116,10 @@ __all__ = [
     "lost_column_offset",
     "num_virtual_columns",
     "space_column_offset",
-    "to_scipy",
 ]
 
 # Engine types re-exported verbatim from the compiled pycanha_core.radiative module.
-_CORE_RADIATIVE_EXPORTS = frozenset(__all__) - {"to_scipy"}
-
-
-def to_scipy(matrix: SparseF64) -> csr_matrix:
-    """Wrap a :class:`SparseF64` as a :class:`scipy.sparse.csr_matrix`.
-
-    The engine hands back its own minimal CSR container; its ``indptr`` /
-    ``indices`` / ``values`` are zero-copy views, so the scipy matrix shares the
-    same buffers instead of duplicating them.
-    """
-    return csr_matrix(
-        (np.asarray(matrix.values), np.asarray(matrix.indices), np.asarray(matrix.indptr)),
-        shape=(matrix.rows, matrix.cols),
-    )
+_CORE_RADIATIVE_EXPORTS = frozenset(__all__)
 
 
 def __getattr__(name: str) -> Any:

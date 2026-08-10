@@ -23,12 +23,9 @@ off.
 # ------------------------------------------------------------
 
 import numpy as np
-import pycanha_core as pcc
 
 import pycanha as pc
 from pycanha import gmm
-
-pcc.set_logger_level(pcc.LogLevel.WARN)
 
 
 def simple_mesh(a=3, b=3):

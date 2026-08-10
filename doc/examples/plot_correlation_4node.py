@@ -33,19 +33,19 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pycanha_core as pcc
 from scipy.optimize import least_squares
 
 import pycanha as pc
 import pycanha.tmm as pm
 
-# Silence the C++ info logger.
-pcc.set_logger_level(pcc.OFF)
+# Nothing below WARN reaches the console by default; this silences the rest,
+# since a correlation runs the solver hundreds of times.
+pc.log.set_display_level(pc.LogLevel.OFF)
 
 
-# The solver profiling logger writes to the OS stdout and ignores
-# set_logger_level. This context manager sends that file descriptor to null
-# while a solver runs, to keep the example output readable.
+# The solver profiling output goes straight to the OS stdout and so is not a
+# log record at all -- no threshold reaches it. This context manager sends that
+# file descriptor to null while a solver runs, to keep the example readable.
 @contextlib.contextmanager
 def silence():
     devnull = os.open(os.devnull, os.O_WRONLY)
