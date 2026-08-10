@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pycanha_core as pcc
 import pyvista as pv
 
-from ..plot import picking, polydata
+from ..plot import picking, polydata, properties
 from ..plot.render import render
+from ..plot.scene import slot_items
 from .io import GeometryIo
 
 #: Actor name of the time readout, so each frame replaces the previous one.
@@ -145,15 +147,18 @@ class GeometryModel(pcc.gmm.GeometryModel):
         if both_sides:
             kwargs.setdefault("backface_culling", True)
         if scalars in ("face_id", "item", "node_number"):
+            face_ids = np.asarray(poly.cell_data["face_id"])
             if scalars == "face_id":
-                ids = np.asarray(poly.cell_data["face_id"])
+                ids = face_ids
             elif scalars == "item":
-                ids = self._face_item_index(poly)
+                # Geometry ids, resolved through the mesh's primitive ranges: two
+                # items that share node numbers are still two items.
+                ids = slot_items(self.mesh)[face_ids.astype(np.intp)]
             else:
                 ids = np.asarray(poly.cell_data["node_number"])
-            # Node numbers are sparse (100, 200, 300...) and would collide modulo
-            # the palette size, so rank them densely before picking colors.
-            name = polydata.colorize_categorical(poly, ids, rank=scalars == "node_number")
+            # Node numbers (100, 200, 300...) and geometry ids are sparse and would
+            # collide modulo the palette size, so rank them densely first.
+            name = polydata.colorize_categorical(poly, ids, rank=scalars != "face_id")
             return render(
                 poly,
                 scalars=name,
@@ -173,6 +178,18 @@ class GeometryModel(pcc.gmm.GeometryModel):
             pick_source=self,
             **kwargs,
         )
+
+    def explore(self) -> Any:
+        """Open the interactive viewer on this model and block until it closes.
+
+        A desktop window with the geometry tree, hide / show, switchable
+        colouring and a property pane - the same model :meth:`plot` renders in
+        one fixed way. Returns the window, so a script can read back what was
+        selected. See :func:`pycanha.plot.explore`.
+        """
+        # Imported here rather than at module scope: this module is what every
+        # `model.plot()` goes through, and the viewer pulls in the Qt widgets.
+        return import_module("pycanha.plot.window").explore(self)
 
     def plot_node_range(
         self,
@@ -444,40 +461,10 @@ class GeometryModel(pcc.gmm.GeometryModel):
         """
         return super().material_table()
 
-    def _emissivity_by_node(self) -> dict[int, float]:
-        """Map each tmm node number to the IR emissivity of its ThermalMesh side."""
-        mapping: dict[int, float] = {}
-        for item in self.children_recursive():
-            if not isinstance(item, pcc.gmm.GeometryItem):
-                continue
-            mesh = item.thermal_mesh
-            ni = len(mesh.dir1_mesh) - 1
-            nj = len(mesh.dir2_mesh) - 1
-            sides = ((1, mesh.side1_optical), (2, mesh.side2_optical))
-            for side, optical in sides:
-                if optical is None:
-                    continue
-                eps = float(optical.emissivity_ir)
-                for i in range(ni):
-                    for j in range(nj):
-                        mapping[int(mesh.node_of(i, j, side))] = eps
-        return mapping
-
     def _face_emissivity(self, poly: pv.PolyData) -> npt.NDArray[np.float64]:
         """Per-face IR emissivity aligned with ``poly`` cells (``nan`` if unknown)."""
-        node_numbers = np.asarray(poly.cell_data["node_number"])
-        mapping = self._emissivity_by_node()
-        return np.array([mapping.get(int(n), np.nan) for n in node_numbers], dtype=np.float64)
-
-    def _face_item_index(self, poly: pv.PolyData) -> npt.NDArray[np.int64]:
-        """Per-face index of the owning geometry item (``-1`` if unknown)."""
-        item_of_node: dict[int, int] = {}
-        items = (i for i in self.children_recursive() if isinstance(i, pcc.gmm.GeometryItem))
-        for index, item in enumerate(items):
-            for node in _item_node_numbers(item):
-                item_of_node.setdefault(node, index)
-        node_numbers = np.asarray(poly.cell_data["node_number"])
-        return np.array([item_of_node.get(int(n), -1) for n in node_numbers], dtype=np.int64)
+        emissivity = properties.optical_properties(self)[:, 0]
+        return emissivity[np.asarray(poly.cell_data["face_id"]).astype(np.intp)]
 
     # ── scene hierarchy ───────────────────────────────────────────────────
     def format_tree(self) -> str:

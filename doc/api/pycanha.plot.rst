@@ -51,5 +51,50 @@ behind it.
 
 .. autofunction:: format_face_info
 
-The :mod:`pycanha.plot.polydata` and :mod:`pycanha.plot.picking` submodules hold
-the rest of the helpers.
+The interactive viewer
+----------------------
+
+:func:`explore` opens a desktop window on a model — geometry tree, hide/show,
+switchable colouring, picking and a property pane — and returns when it is
+closed. It is also reachable as ``tm.explore()`` and ``tm.gmm.explore()``.
+
+.. autofunction:: explore
+
+.. autoclass:: ViewerWindow
+   :members: coloring, highlight, rebuild_geometry, current_property
+
+The viewer keeps everything except its widgets free of Qt, so what it shows can
+be inspected — and tested — without a display.
+:class:`~pycanha.plot.state.ViewState` holds what is currently shown,
+:class:`~pycanha.plot.scene.Scene` turns that into the cells VTK draws, and
+:func:`face_properties` supplies the values they are coloured by.
+
+.. autoclass:: ViewState
+   :members:
+
+.. autoclass:: Selection
+   :members:
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: ColorScale
+   :members:
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: PickerMode
+   :members:
+
+.. autoclass:: Change
+   :members:
+
+.. autoclass:: Scene
+   :members:
+
+.. autofunction:: face_properties
+
+.. autoclass:: FaceProperty
+   :members:
+   :exclude-members: __dict__, __weakref__, __module__
+
+The :mod:`pycanha.plot.polydata`, :mod:`pycanha.plot.picking`,
+:mod:`pycanha.plot.state`, :mod:`pycanha.plot.scene` and
+:mod:`pycanha.plot.properties` submodules hold the rest of the helpers.

@@ -63,6 +63,15 @@ def item_map(model: Any) -> dict[int, Any]:
     }
 
 
+def geometry_map(model: Any) -> dict[int, Any]:
+    """Map every geometry id in ``model`` to its geometry, groups included.
+
+    :func:`item_map` is the subset a face resolves to; this is what a *row* of
+    the tree resolves to, since a group can be selected as well as an item.
+    """
+    return {int(geometry.id): geometry for geometry in model.children_recursive()}
+
+
 def owning_item(mesh: Any, face_id: int, items: dict[int, Any]) -> Any:
     """Return the item whose primitive range contains ``face_id`` (side-1 slot).
 
