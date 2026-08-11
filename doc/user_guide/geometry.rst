@@ -164,6 +164,79 @@ array.
 The gallery has runnable versions of all of this. See
 :doc:`/auto_examples/index`.
 
+.. _the-interactive-viewer:
+
+The interactive viewer
+----------------------
+
+Each ``plot*`` call fixes what it shows before the window opens. To change the
+colouring, hide a bracket or read a second property, use the viewer instead:
+
+.. code-block:: python
+
+   tm.explore()        # geometry and results
+   tm.gmm.explore()    # geometry only
+
+:meth:`~pycanha.ThermalModel.explore` opens a desktop window and blocks until it
+is closed, like every ``plot*`` call. It returns the window, so a script can
+read back what was selected. The viewer never modifies the model.
+
+The window has a geometry tree on the left, the 3D view in the middle, the
+appearance controls on the right and the results and property panes along the
+bottom.
+
+**Tree.** One row per group, item and cutter, filtered by name from the box
+above it. Right-click a row for Hide, Show and Show only, which apply to the
+whole subtree. Hidden geometry is greyed in the tree, not drawn, and not
+pickable: clicks pass through it to whatever is behind.
+
+**3D view.** Left-click a face to select it; the property table below describes
+it and its row is selected in the tree. Left-drag orbits, so a click that moves
+does not select. Right-click opens Hide, Show only, Show all and, when a
+transient case is selected, *Plot time history*. The ``Pick`` box in the
+toolbar decides whether a click selects the triangle, the face or the whole
+item.
+
+**Colour by.** 19 geometry properties: the face slot, node number, side and
+owning item; the six thermo-optical degrees of freedom; thickness, bulk
+material properties and face area; and the material names and the active-side
+flags. Categorical properties get the legend list below the combo, where
+clicking a category isolates it and unchecking it hides everything sharing that
+value. Numeric ones get the colormap, the limits and the log toggle.
+
+**Results.** The case combo lists the ``DataModel``\ s already in
+``tm.tmm.thermal_data.models`` plus the live node state, and the attribute combo
+lists what that case holds — temperature, the heat loads, area, and the rest.
+The slider snaps to the instants the solver wrote; values are never
+interpolated. The colour limits are those of the whole series, so the frames of
+an animation are comparable. Read a result file before opening the window:
+
+.. code-block:: python
+
+   tm.tmm.read_tmd_transient("case.TMD", "hot case")
+   tm.explore()
+
+**Edges.** Three independent toolbar toggles: ``Mesh`` draws the triangulation,
+``Faces`` outlines every face of the thermal mesh, and ``Primitives`` outlines
+every primitive.
+
+.. note::
+
+   The mesher welds vertices by position, so the two sides of a full-revolution
+   seam are one set of vertices and the seam is not an edge of the
+   triangulation. ``Primitives`` therefore draws the two rims of a full
+   cylinder and nothing down its side, and nothing at all on a closed sphere.
+   The corner lines of a cube are creases rather than boundaries and are not
+   drawn either.
+
+**Node filter and find.** The ``Nodes`` boxes grey every face whose node falls
+outside the range; they never hide, so ``Show all`` keeps one meaning. ``Find
+node`` highlights one node's faces and leaves the camera where it is.
+
+**Bottom pane.** *Properties* describes the current selection, one row per
+colour-by property. *Log* carries everything the run records, from the C++ core
+as well as from pycanha.
+
 Next
 ----
 

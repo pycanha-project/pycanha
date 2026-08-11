@@ -1,4 +1,5 @@
-"""The viewer's toolbar: what a pick selects, and the global visibility reset."""
+"""The viewer's toolbar: what a pick selects, which edges are drawn, and the
+global visibility reset."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtGui import QAction, QIntValidator
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar
 
-from ..state import Change, PickerMode
+from ..state import Change, EdgeDisplay, PickerMode
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
@@ -26,12 +27,14 @@ _NUMBER_BOX_WIDTH = 72
 
 
 class ViewerToolBar(QToolBar):
-    """Picker granularity, ``Show all``, the node filter and find-node.
+    """Picker granularity, the edge toggles, ``Show all``, the node filter and
+    find-node.
 
-    The granularity changes what a pick selects, highlights and reports -
-    nothing else. Hiding from the 3D view always acts on the owning geometry
-    item whatever is chosen here, because a single face has no tree row of its
-    own to remember a hidden state in.
+    The granularity changes what a left-click in the 3D view selects,
+    highlights and reports - nothing else. Hiding from the 3D view's
+    right-click menu always acts on the owning geometry item whatever is chosen
+    here, because a single face has no tree row of its own to remember a hidden
+    state in.
 
     The node filter **greys** the faces outside its range rather than hiding
     them: it is a display overlay, independent of what Hide has done, so there
@@ -49,9 +52,24 @@ class ViewerToolBar(QToolBar):
         for mode, label in _PICKER_LABELS.items():
             self.picker_combo.addItem(label, mode)
         self.picker_combo.setCurrentIndex(list(_PICKER_LABELS).index(state.picker_mode))
-        self.picker_combo.setToolTip("What a pick selects and reports")
+        self.picker_combo.setToolTip("What a left-click in the 3D view selects and reports")
         self.picker_combo.currentIndexChanged.connect(self._on_picker_changed)
         self.addWidget(self.picker_combo)
+
+        self.addSeparator()
+        self.triangle_edges_action = self._edge_action(
+            "Mesh", "Draw the triangulation of every face"
+        )
+        self.face_edges_action = self._edge_action(
+            "Faces", "Outline every face of the thermal mesh"
+        )
+        self.primitive_edges_action = self._edge_action(
+            "Primitives",
+            "Outline every primitive.\n"
+            "The mesher welds the two sides of a full-revolution seam into one "
+            "set of vertices, so a closed primitive has no seam to draw: a full "
+            "cylinder shows its two rims only, and a sphere shows nothing.",
+        )
 
         self.addSeparator()
         self.show_all_action = QAction("Show all", self)
@@ -76,6 +94,15 @@ class ViewerToolBar(QToolBar):
         self.addWidget(self.find_edit)
 
         state.subscribe(self._on_state_change)
+
+    def _edge_action(self, text: str, tooltip: str) -> QAction:
+        """One checkable edge toggle, added to the bar in place."""
+        action = QAction(text, self)
+        action.setToolTip(tooltip)
+        action.setCheckable(True)
+        action.toggled.connect(self._on_edges_changed)
+        self.addAction(action)
+        return action
 
     def _number_box(self, placeholder: str, tooltip: str) -> QLineEdit:
         """A narrow integer entry box, empty meaning "not set"."""
@@ -106,6 +133,16 @@ class ViewerToolBar(QToolBar):
         del checked
         self._state.show_all()
 
+    def _on_edges_changed(self, checked: bool = False) -> None:
+        del checked
+        if self._syncing:
+            return
+        self._state.edges = EdgeDisplay(
+            triangles=self.triangle_edges_action.isChecked(),
+            faces=self.face_edges_action.isChecked(),
+            primitives=self.primitive_edges_action.isChecked(),
+        )
+
     def _on_node_range_changed(self) -> None:
         """Apply the filter, or clear it while either end is still blank."""
         if self._syncing:
@@ -125,6 +162,9 @@ class ViewerToolBar(QToolBar):
         if change is Change.FILTER:
             self._sync_filters()
             return
+        if change is Change.EDGES:
+            self._sync_edges()
+            return
         if change is not Change.PICKER:
             return
         # Guarded, or echoing the state back into the combo would come round
@@ -132,6 +172,17 @@ class ViewerToolBar(QToolBar):
         self._syncing = True
         try:
             self.picker_combo.setCurrentIndex(list(_PICKER_LABELS).index(self._state.picker_mode))
+        finally:
+            self._syncing = False
+
+    def _sync_edges(self) -> None:
+        """Echo the edge toggles back, without coming round as a user click."""
+        edges = self._state.edges
+        self._syncing = True
+        try:
+            self.triangle_edges_action.setChecked(edges.triangles)
+            self.face_edges_action.setChecked(edges.faces)
+            self.primitive_edges_action.setChecked(edges.primitives)
         finally:
             self._syncing = False
 

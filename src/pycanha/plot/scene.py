@@ -50,6 +50,21 @@ def slot_items(mesh: Any) -> npt.NDArray[np.int64]:
     return items
 
 
+def slot_nodes(mesh: Any) -> npt.NDArray[np.int64]:
+    """The tmm node number of every face slot of ``mesh``, ``-1`` where unset.
+
+    Indexed by slot, like every property array, rather than by cell: the two
+    sides of a face are two slots and carry two different nodes. A mesh that
+    has not been given node numbers reports ``-1`` throughout rather than a
+    short array.
+    """
+    numbers = np.asarray(mesh.node_numbers).astype(np.int64)
+    n_slots = int(mesh.nf())
+    if numbers.size != n_slots:
+        return np.full(n_slots, -1, dtype=np.int64)
+    return numbers
+
+
 def _same_mask(left: npt.NDArray[np.bool_] | None, right: npt.NDArray[np.bool_] | None) -> bool:
     """Whether two optional per-cell masks say the same thing."""
     if left is None or right is None:
@@ -111,6 +126,8 @@ class Scene:
 
         #: Geometry id owning each face slot (``-1`` when unclaimed).
         self.slot_items = slot_items(self.mesh)
+        #: Tmm node number of each face slot (``-1`` when unassigned).
+        self.slot_nodes = slot_nodes(self.mesh)
         #: Geometry id owning each cell (``-1`` when unclaimed).
         self.cell_items = self._resolve_cell_items()
         #: Master cell indices of each geometry id, for visibility and highlighting.

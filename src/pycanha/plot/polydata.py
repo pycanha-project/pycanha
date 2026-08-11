@@ -109,6 +109,22 @@ def polydata_from_triangles(
     return pv.PolyData(points, faces.ravel())
 
 
+def polydata_from_lines(
+    points: npt.NDArray[np.float64],
+    edges: npt.NDArray[Any],
+) -> pv.PolyData:
+    """Build a line-only :class:`pyvista.PolyData` from points and vertex pairs.
+
+    The counterpart of :func:`polydata_from_triangles` for the edge overlays:
+    VTK wants ``[2, i, j]`` runs, and the same tolerance of unreferenced points
+    lets the lines share the master point array.
+    """
+    lines = np.empty((edges.shape[0], 3), dtype=np.int64)
+    lines[:, 0] = 2
+    lines[:, 1:] = edges
+    return pv.PolyData(points, lines=lines.ravel())
+
+
 def _map_cell_data(
     poly: pv.PolyData,
     data: Mapping[int, float],
@@ -158,6 +174,29 @@ def map_face_data(
     return _map_cell_data(poly, data, "face_id", default)
 
 
+def key_columns(
+    wanted: npt.ArrayLike,
+    keys: npt.ArrayLike,
+) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.bool_]]:
+    """Match each entry of ``wanted`` to its position in ``keys``.
+
+    Returns the position of each one and a mask of the entries that have one at
+    all. Doing this once turns every later frame of a time series into a single
+    fancy-index instead of a lookup per entry.
+    """
+    wanted_array = np.asarray(wanted).astype(np.int64)
+    key_array = np.asarray(keys).astype(np.int64)
+    if key_array.size == 0:
+        return (
+            np.zeros(wanted_array.size, dtype=np.intp),
+            np.zeros(wanted_array.size, dtype=np.bool_),
+        )
+    order = np.argsort(key_array)
+    position = np.clip(np.searchsorted(key_array[order], wanted_array), 0, key_array.size - 1)
+    found = key_array[order][position] == wanted_array
+    return order[position], found
+
+
 def cell_columns(
     poly: pv.PolyData,
     keys: npt.ArrayLike,
@@ -165,21 +204,10 @@ def cell_columns(
 ) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.bool_]]:
     """Match each cell of ``poly`` to its column in a ``keys``-ordered series.
 
-    Returns the per-cell column index and a mask of the cells that have one at
-    all. Doing this once turns every later frame of a time series into a single
-    fancy-index instead of a per-cell dict lookup.
+    The cells are keyed by their ``key`` cell array - ``node_number`` for a
+    node-indexed series, ``face_id`` for a face-indexed one.
     """
-    cell_keys = np.asarray(poly.cell_data[key]).astype(np.int64)
-    key_array = np.asarray(keys).astype(np.int64)
-    if key_array.size == 0:
-        return (
-            np.zeros(cell_keys.size, dtype=np.intp),
-            np.zeros(cell_keys.size, dtype=np.bool_),
-        )
-    order = np.argsort(key_array)
-    position = np.clip(np.searchsorted(key_array[order], cell_keys), 0, key_array.size - 1)
-    found = key_array[order][position] == cell_keys
-    return order[position], found
+    return key_columns(np.asarray(poly.cell_data[key]), keys)
 
 
 def categorical_colors(

@@ -2,7 +2,8 @@
 
 Everything the interactive window lets you change - which geometry is hidden,
 what is selected, how the geometry is colored, which nodes are filtered or
-searched for - lives here as plain Python. **Nothing in this module imports
+searched for, which result and instant are being read - lives here as plain
+Python. **Nothing in this module imports
 Qt.** The widgets are a skin over a :class:`ViewState`: they call its mutators
 and repaint from its :meth:`~ViewState.subscribe` notifications, which is what
 lets the behaviour worth asserting on be tested without a display.
@@ -34,6 +35,8 @@ class Change(StrEnum):
     COLORING = "coloring"
     FILTER = "filter"
     PICKER = "picker"
+    RESULTS = "results"
+    EDGES = "edges"
 
 
 class PickerMode(StrEnum):
@@ -87,6 +90,37 @@ class ColorScale:
     limits: tuple[float, float] | None = None
 
 
+@dataclass(frozen=True)
+class EdgeDisplay:
+    """Which of the three sets of lines are drawn over the geometry.
+
+    Independent of each other and of everything else: ``triangles`` is the
+    actor's own ``show_edges``, while the other two are overlay actors built by
+    :mod:`pycanha.plot.edges`.
+    """
+
+    triangles: bool = False
+    faces: bool = False
+    primitives: bool = False
+
+
+@dataclass(frozen=True)
+class ResultSelection:
+    """Which result is being looked at: a case, an attribute, and an instant.
+
+    ``time_index`` is an index into the case's **stored** instants, never a
+    time: the slider snaps to what the solver wrote rather than interpolating
+    between two of them.
+
+    Immutable for the same reason as :class:`ColorScale`: a panel changes one
+    of the three and gets exactly one :attr:`Change.RESULTS` notification.
+    """
+
+    case: str
+    attribute: str
+    time_index: int = 0
+
+
 class ViewState:
     """Mutable view state, with a callback per changed topic.
 
@@ -107,6 +141,8 @@ class ViewState:
         self._hidden_categories: frozenset[int] = frozenset()
         self._node_range: tuple[int, int] | None = None
         self._found_node: int | None = None
+        self._result: ResultSelection | None = None
+        self._edges = EdgeDisplay()
         self._subscribers: list[Callable[[Change], None]] = []
 
     # ── notification ──────────────────────────────────────────────────────
@@ -223,6 +259,18 @@ class ViewState:
         self._notify(Change.VISIBILITY)
 
     @property
+    def edges(self) -> EdgeDisplay:
+        """Which sets of edge lines are drawn over the geometry."""
+        return self._edges
+
+    @edges.setter
+    def edges(self, edges: EdgeDisplay) -> None:
+        if edges == self._edges:
+            return
+        self._edges = edges
+        self._notify(Change.EDGES)
+
+    @property
     def scale(self) -> ColorScale:
         """Colormap and limits of the current coloring."""
         return self._scale
@@ -275,3 +323,21 @@ class ViewState:
             return
         self._found_node = node
         self._notify(Change.FILTER)
+
+    # ── results ───────────────────────────────────────────────────────────
+    @property
+    def result(self) -> ResultSelection | None:
+        """The case, attribute and instant currently read from the results.
+
+        ``None`` before anything has been chosen, and for a model with no
+        results at all - which is what lets a geometry-only viewer leave the
+        results panel out entirely.
+        """
+        return self._result
+
+    @result.setter
+    def result(self, result: ResultSelection | None) -> None:
+        if result == self._result:
+            return
+        self._result = result
+        self._notify(Change.RESULTS)

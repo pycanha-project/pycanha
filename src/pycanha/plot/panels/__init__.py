@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from .info_panel import InfoPanel
 from .legend_panel import LegendPanel
+from .time_panel import TimePanel
 from .toolbar import ViewerToolBar
 from .tree_panel import TreePanel
 
-__all__ = ["InfoPanel", "LegendPanel", "TreePanel", "ViewerToolBar"]
+__all__ = ["InfoPanel", "LegendPanel", "TimePanel", "TreePanel", "ViewerToolBar"]

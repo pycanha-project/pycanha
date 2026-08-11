@@ -27,7 +27,7 @@ import pycanha_core as pcc
 
 from .picking import item_map
 from .polydata import categorical_colors
-from .scene import slot_items
+from .scene import slot_items, slot_nodes
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -60,6 +60,12 @@ class FaceProperty:
     each, no color bar - and ``categories`` names them where the number itself
     is not the answer (an item id, an interned material name). Where it is
     ``None`` the legend shows the value.
+
+    ``clim`` is the range an automatic color scale should use in place of the
+    range of ``values``. Only a time-varying property sets it, and for the
+    reason that makes the difference visible: one frame of a series has to be
+    drawn on the scale of the whole series, or the same temperature comes out a
+    different color at every instant.
     """
 
     key: str
@@ -68,6 +74,7 @@ class FaceProperty:
     categorical: bool
     categories: dict[int, str] | None = None
     unit: str = ""
+    clim: tuple[float, float] | None = None
 
     def per_cell(self, face_ids: npt.ArrayLike) -> npt.NDArray[Any]:
         """Spread the property over cells, given their ``face_id`` cell array."""
@@ -224,10 +231,7 @@ def face_properties(model: Any) -> dict[str, FaceProperty]:
         for geometry_id, item in item_map(model).items()
     }
 
-    node_numbers = np.asarray(mesh.node_numbers).astype(np.int64)
-    if node_numbers.size != n_slots:
-        node_numbers = np.full(n_slots, -1, dtype=np.int64)
-
+    node_numbers = slot_nodes(mesh)
     optical = optical_properties(model)
 
     properties = [

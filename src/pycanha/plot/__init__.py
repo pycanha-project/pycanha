@@ -14,8 +14,9 @@ value-mapping helpers; :mod:`~pycanha.plot.picking` resolves a rendered triangle
 back to its face slot, node and geometry item. The viewer's own machinery is
 split so that everything except the widgets is testable without a display:
 :mod:`~pycanha.plot.state` holds what is being shown,
-:mod:`~pycanha.plot.scene` turns that into the cells VTK draws, and
-:mod:`~pycanha.plot.properties` supplies the values they are colored by.
+:mod:`~pycanha.plot.scene` turns that into the cells VTK draws,
+:mod:`~pycanha.plot.properties` supplies the values they are colored by, and
+:mod:`~pycanha.plot.results` supplies the solved and live ones.
 """
 
 from __future__ import annotations
@@ -23,20 +24,30 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from . import picking, polydata, properties, scene, state
+from . import edges, picking, polydata, properties, results, scene, state
 from .picking import FaceInfo, face_info, format_face_info
 from .polydata import (
     categorical_colors,
     cell_columns,
     colorize_categorical,
+    key_columns,
     map_face_data,
     map_node_data,
     to_polydata,
 )
 from .properties import FaceProperty, face_properties
 from .render import build_plotter, plot, render
+from .results import ResultCase, ResultSeries
 from .scene import Scene
-from .state import Change, ColorScale, PickerMode, Selection, ViewState
+from .state import (
+    Change,
+    ColorScale,
+    EdgeDisplay,
+    PickerMode,
+    ResultSelection,
+    Selection,
+    ViewState,
+)
 
 if TYPE_CHECKING:
     from .window import ViewerWindow, explore
@@ -60,9 +71,13 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "Change",
     "ColorScale",
+    "EdgeDisplay",
     "FaceInfo",
     "FaceProperty",
     "PickerMode",
+    "ResultCase",
+    "ResultSelection",
+    "ResultSeries",
     "Scene",
     "Selection",
     "ViewState",
@@ -71,10 +86,12 @@ __all__ = [
     "categorical_colors",
     "cell_columns",
     "colorize_categorical",
+    "edges",
     "explore",
     "face_info",
     "face_properties",
     "format_face_info",
+    "key_columns",
     "map_face_data",
     "map_node_data",
     "picking",
@@ -82,6 +99,7 @@ __all__ = [
     "polydata",
     "properties",
     "render",
+    "results",
     "scene",
     "state",
     "to_polydata",

@@ -205,6 +205,59 @@ def test_the_picker_combo_and_the_state_stay_in_step(window: ViewerWindow) -> No
     assert window.toolbar.current_mode() is PickerMode.TRIANGLE
 
 
+# ── the 3D context menu ───────────────────────────────────────────────────
+def test_the_context_menu_over_nothing_only_resets(window: ViewerWindow) -> None:
+    assert [label for label, _ in window.context_actions()] == ["Show all"]
+
+
+def test_the_context_menu_names_the_owning_geometry(
+    window: ViewerWindow, model: gmm.GeometryModel
+) -> None:
+    item = model.get_item("a").id
+    window.state.selection = Selection(item_id=item, face_id=0, node_number=100, cell=0)
+    assert [label for label, _ in window.context_actions()] == [
+        "Hide a",
+        "Show only a",
+        "Show all",
+    ]
+
+
+def test_hiding_from_the_context_menu_acts_on_the_item(
+    window: ViewerWindow, model: gmm.GeometryModel
+) -> None:
+    # Whatever the picker granularity, Hide acts on the whole owning item: a
+    # triangle has no tree row of its own to remember a hidden state in.
+    window.state.picker_mode = PickerMode.TRIANGLE
+    window.state.selection = Selection(item_id=model.get_item("b").id, face_id=4, cell=2)
+    actions = dict(window.context_actions())
+    actions["Hide b"]()
+
+    assert window.state.hidden == frozenset({model.get_item("b").id})
+    assert window.scene.visible_cells.size == 8
+
+
+def test_show_only_from_the_context_menu_hides_the_rest(
+    window: ViewerWindow, model: gmm.GeometryModel
+) -> None:
+    window.state.selection = Selection(item_id=model.get_item("a").id)
+    dict(window.context_actions())["Show only a"]()
+    assert window.state.hidden == frozenset({model.get_item("b").id})
+
+
+def test_selecting_a_group_offers_the_whole_subtree(
+    window: ViewerWindow, model: gmm.GeometryModel
+) -> None:
+    window.state.selection = Selection(item_id=model.get_group("wing").id)
+    dict(window.context_actions())["Hide wing"]()
+    assert window.state.hidden == frozenset(window.scene.item_ids)
+
+
+def test_picking_without_a_plotter_is_a_no_op(window: ViewerWindow) -> None:
+    window.state.selection = Selection(item_id=window.scene.item_ids[0])
+    window.pick_at(10, 10)
+    assert window.state.selection is not None
+
+
 # ── the property table ────────────────────────────────────────────────────
 def test_a_tree_selection_describes_the_geometry_alone(
     window: ViewerWindow, model: gmm.GeometryModel
