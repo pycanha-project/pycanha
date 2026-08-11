@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QLineEdit, QMenu, QTreeView, QVBoxLayout, QWidget
 
 from ..state import Change, Selection
 from ..tree_model import GeometryTreeModel
 
 if TYPE_CHECKING:
-    from PySide6.QtCore import QPoint
+    from PySide6.QtCore import QObject, QPoint
 
     from ..state import ViewState
     from ..tree_model import GeometryNode
@@ -50,7 +51,15 @@ class TreePanel(QWidget):
         self.view.setSelectionMode(QTreeView.SelectionMode.SingleSelection)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.customContextMenuRequested.connect(self._on_context_menu)
+        self.view.clicked.connect(self._on_clicked)
         self.view.expandAll()
+        # Clicking the empty space under the last row is how a selection is
+        # dropped from here, the way clicking past the geometry drops it in the
+        # 3D view. A QTreeView keeps its current row on such a click, so the
+        # blank space is watched for directly.
+        viewport = self.view.viewport()
+        if viewport is not None:
+            viewport.installEventFilter(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -74,6 +83,32 @@ class TreePanel(QWidget):
             self.view.expand(self.proxy.index(0, 0))
 
     # ── selection ─────────────────────────────────────────────────────────
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Drop the selection when the click landed on no row at all.
+
+        Qt leaves the current row where it was when the blank space below the
+        tree is clicked, so there is no signal to listen to: the press is
+        watched for on the viewport instead. The event is not consumed - the
+        view still gets it, and does nothing with it.
+        """
+        if event.type() is QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
+            position = event.position().toPoint()
+            if not self.view.indexAt(position).isValid():
+                self._state.selection = None
+        return super().eventFilter(watched, event)
+
+    def _on_clicked(self, index: QModelIndex) -> None:
+        """Select the row that was clicked, even if it was current already.
+
+        A 3D pick can move the selection while the tree's current row stays
+        where it is, and then clicking that row emits no ``currentChanged``.
+        """
+        if self._syncing:
+            return
+        node = self._node_at(index)
+        if node is not None:
+            self._state.selection = Selection(item_id=node.geometry_id)
+
     def _on_current_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
         del previous
         if self._syncing:
@@ -103,7 +138,11 @@ class TreePanel(QWidget):
                 )
                 self.view.scrollTo(index)
             else:
+                # The current row goes too, not just the highlight: a row that
+                # stayed current could not be clicked back into the selection,
+                # since clicking it would change nothing.
                 selection_model.clearSelection()
+                selection_model.clearCurrentIndex()
         finally:
             self._syncing = False
 

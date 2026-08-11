@@ -211,6 +211,22 @@ def test_visible_scalars_rejects_a_mismatched_length(scene: Scene) -> None:
         scene.visible_scalars(np.zeros(3))
 
 
+def test_visible_index_finds_a_cell_s_row_in_the_subset(scene: Scene) -> None:
+    scene.set_hidden([scene.model.get_item("a").id])
+    cells = scene.visible_cells[[0, 3]]
+    # The inverse of visible_cells: what a per-drawn-cell array is indexed with.
+    assert np.array_equal(scene.visible_index(cells), [0, 3])
+    everything = np.arange(scene.visible_cells.size)
+    assert np.array_equal(scene.visible_index(scene.visible_cells), everything)
+
+
+def test_visible_index_rejects_a_cell_that_is_not_drawn(scene: Scene) -> None:
+    hidden = scene.cells_of_item(scene.model.get_item("a").id)
+    scene.set_hidden([scene.model.get_item("a").id])
+    with pytest.raises(ValueError, match="currently drawn"):
+        scene.visible_index(hidden[:1])
+
+
 # ── lookups ───────────────────────────────────────────────────────────────
 def test_cells_of_face_are_the_triangles_of_one_side_of_one_face(scene: Scene) -> None:
     cells = scene.cells_of_face(0)

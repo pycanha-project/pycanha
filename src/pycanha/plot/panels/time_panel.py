@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QSlider, QWidget
 
-from ..results import ATTRIBUTES, LIVE_CASE, attributes, cases
+from ..results import ATTRIBUTES, attributes, cases
 from ..state import ResultSelection
 
 if TYPE_CHECKING:
@@ -37,8 +37,11 @@ _BUTTON_WIDTH = 32
 class TimePanel(QWidget):
     """Case, attribute, transport controls and the time slider.
 
-    Built only when the model has results to show: a geometry-only viewer
-    leaves the whole strip out rather than showing an empty one.
+    Always built, so the window keeps its shape whatever it was opened on, and
+    left **disabled** by the window until a result is what the geometry is
+    coloured by: what this strip controls is which instant of that colouring is
+    on screen, so with anything else drawn there is nothing for it to move. A
+    model with nothing solved simply offers no cases, and it never enables.
     """
 
     def __init__(
@@ -104,23 +107,47 @@ class TimePanel(QWidget):
 
     # ── what is selected ──────────────────────────────────────────────────
     def current_case(self) -> str:
-        """The case key the combo is showing, or the live case if it is empty."""
+        """The case key the combo is showing; empty when there are no cases.
+
+        Empty rather than the live case: a model with nothing solved offers no
+        cases at all, and answering with one that is not in the list would have
+        the panel publish a result nothing can read.
+        """
         data = self.case_combo.currentData()
-        return LIVE_CASE if data is None else str(data)
+        return "" if data is None else str(data)
+
+    def rewind(self) -> None:
+        """Go back to the first case, its first attribute and its first instant.
+
+        What a reset of the whole window does to this strip. The animation is
+        stopped as well: a reset that left it playing would immediately move
+        off the instant it just went back to.
+        """
+        self.stop()
+        self._syncing = True
+        try:
+            if self.case_combo.count():
+                self.case_combo.setCurrentIndex(0)
+            self.slider.setValue(0)
+        finally:
+            self._syncing = False
+        self._refresh_attributes(keep=False)
+        self.publish()
 
     def current_attribute(self) -> str:
         """The attribute name the combo is showing; empty if the case has none."""
         data = self.attribute_combo.currentData()
         return "" if data is None else str(data)
 
-    def _refresh_attributes(self) -> None:
+    def _refresh_attributes(self, *, keep: bool = True) -> None:
         """Repopulate the attribute combo for the case now selected.
 
         The attribute survives a case change when the new case also carries it:
         switching between two solved cases to compare the same temperature is
-        the normal thing to do with two cases.
+        the normal thing to do with two cases. ``keep`` off is what a rewind
+        asks for: the first attribute of the first case, whatever was showing.
         """
-        wanted = self.current_attribute()
+        wanted = self.current_attribute() if keep else ""
         names = attributes(self._thermal_model, self.current_case())
         self._syncing = True
         try:

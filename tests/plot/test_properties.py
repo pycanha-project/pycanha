@@ -5,8 +5,11 @@ import pytest
 
 import pycanha as pc
 from pycanha import gmm
+from pycanha.plot.polydata import MISSING_RGB
 from pycanha.plot.properties import (
+    MISSING,
     OPTICAL_KEYS,
+    categories,
     face_areas,
     face_properties,
     optical_properties,
@@ -30,6 +33,8 @@ def _two_item_model() -> pc.ThermalModel:
     left_mesh.side1_material = gmm.BulkMaterial("aluminium", 2700.0, 200.0, 900.0)
     left_mesh.side1_thick = 0.002
     left_mesh.side2_thick = 0.003
+    left_mesh.side1_color = gmm.Color(255, 0, 0)
+    left_mesh.side2_color = gmm.Color(0, 0, 255)
     tm.gmm.add(gmm.GeometryItem("left", gmm.Rectangle((0, 0, 0), (2, 0, 0), (0, 1, 0)), left_mesh))
 
     right_mesh = gmm.ThermalMesh([0.0, 0.5, 1.0], [0.0, 1.0])
@@ -43,6 +48,9 @@ def _two_item_model() -> pc.ThermalModel:
     right_mesh.side2_material = titanium
     right_mesh.radiative_active_side = gmm.ActiveSide.SIDE1
     right_mesh.conductive_active_side = gmm.ActiveSide.NONE
+    # Side 1 the same red as 'left', so the two share one category.
+    right_mesh.side1_color = gmm.Color(255, 0, 0)
+    right_mesh.side2_color = gmm.Color(0, 255, 0)
     tm.gmm.add(
         gmm.GeometryItem("right", gmm.Rectangle((0, 0, 1), (2, 0, 1), (0, 1, 1)), right_mesh)
     )
@@ -66,6 +74,47 @@ def _slots_of(model: gmm.GeometryModel, name: str) -> slice:
         if geometry_id == item_id:
             return slice(int(first), int(last) + 2)
     raise AssertionError(f"item {name!r} owns no faces")
+
+
+# ── colour ────────────────────────────────────────────────────────────────
+def test_each_side_carries_its_own_colour(model: gmm.GeometryModel, properties: dict) -> None:
+    color = properties["color"]
+    left, right = _slots_of(model, "left"), _slots_of(model, "right")
+
+    assert color.categorical
+    # Three distinct colours over four sides: both side 1s are the same red.
+    assert set(color.palette.values()) == {(255, 0, 0), (0, 0, 255), (0, 255, 0)}
+    assert color.values[left][0] == color.values[right][0]
+    assert color.values[left][1] != color.values[right][1]
+
+
+def test_a_colour_is_drawn_in_itself_rather_than_a_stand_in(properties: dict) -> None:
+    color = properties["color"]
+    colors = color.colors_of(color.values)
+    # The palette is pinned, so what reaches the actor is the stored channels.
+    assert set(map(tuple, colors.tolist())) == {(255, 0, 0), (0, 0, 255), (0, 255, 0)}
+    assert colors.dtype == np.uint8
+
+
+def test_a_slot_no_item_owns_is_grey(properties: dict) -> None:
+    color = properties["color"]
+    assert tuple(color.colors_of([-1])[0].tolist()) == MISSING_RGB
+    assert color.format(-1) == MISSING
+
+
+def test_a_colour_is_named_by_its_channels(properties: dict) -> None:
+    color = properties["color"]
+    assert set(color.categories.values()) == {"255, 0, 0", "0, 0, 255", "0, 255, 0"}
+    assert color.format(0) == "255, 0, 0"
+
+
+def test_the_legend_of_a_colouring_uses_the_colours_themselves(
+    model: gmm.GeometryModel, properties: dict
+) -> None:
+    color = properties["color"]
+    entries = categories(color, model.mesh.face_ids)
+    # Only side 1 is meshed into cells here, and both items are red there.
+    assert [(entry.label, entry.color) for entry in entries] == [("255, 0, 0", (255, 0, 0))]
 
 
 # ── topology ──────────────────────────────────────────────────────────────
@@ -205,11 +254,12 @@ def test_per_cell_spreads_a_property_over_the_polydata_cells(
     assert np.array_equal(values, properties["item"].values[face_ids])
 
 
-def test_the_four_families_are_offered_in_order(properties: dict) -> None:
+def test_the_five_families_are_offered_in_order(properties: dict) -> None:
     keys = list(properties)
-    assert keys[:4] == ["item", "node_number", "face_id", "side"]
-    assert keys[4:10] == [key for key, _ in OPTICAL_KEYS]
-    assert set(keys[10:]) == {
+    # The colour first: it is what a window opens on.
+    assert keys[:5] == ["color", "item", "node_number", "face_id", "side"]
+    assert keys[5:11] == [key for key, _ in OPTICAL_KEYS]
+    assert set(keys[11:]) == {
         "thickness",
         "density",
         "conductivity",

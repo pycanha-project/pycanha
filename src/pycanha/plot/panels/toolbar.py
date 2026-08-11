@@ -1,16 +1,18 @@
-"""The viewer's toolbar: what a pick selects, which edges are drawn, and the
-global visibility reset."""
+"""The viewer's toolbar: what a pick selects, how it is drawn, and the resets."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QAction, QIntValidator
 from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QToolBar
 
 from ..state import Change, EdgeDisplay, PickerMode
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from PySide6.QtWidgets import QWidget
 
     from ..state import ViewState
@@ -27,8 +29,8 @@ _NUMBER_BOX_WIDTH = 72
 
 
 class ViewerToolBar(QToolBar):
-    """Picker granularity, the edge toggles, ``Show all``, the node filter and
-    find-node.
+    """Picker granularity, the edge and lighting toggles, the node filter, and
+    the two resets.
 
     The granularity changes what a left-click in the 3D view selects,
     highlights and reports - nothing else. Hiding from the 3D view's
@@ -36,11 +38,21 @@ class ViewerToolBar(QToolBar):
     here, because a single face has no tree row of its own to remember a hidden
     state in.
 
-    The node filter **greys** the faces outside its range rather than hiding
-    them: it is a display overlay, independent of what Hide has done, so there
-    is one visibility mask and ``Show all`` means one thing. Find-node
-    highlights a node's faces and deliberately leaves the camera alone.
+    The node filter **greys** the faces it leaves out rather than hiding them:
+    it is a display overlay, independent of what Hide has done, so there is one
+    visibility mask and ``Show all`` means one thing. The range and the single
+    node are two ways of setting the same filter, so each empties the other and
+    ``Clear`` empties whichever is set.
+
+    Two resets, because they undo different things: ``Show all`` brings back
+    what is hidden, ``Reset`` puts the whole window - colouring, scale, filter,
+    selection, camera - back to how it opened.
     """
+
+    #: Emitted by ``Reset``. The state is only part of what a reset puts back,
+    #: so the window is left to do it rather than the bar reaching for a
+    #: plotter it has no business holding.
+    reset_requested = Signal()
 
     def __init__(self, state: ViewState, parent: QWidget | None = None) -> None:
         super().__init__("Viewer", parent)
@@ -72,10 +84,26 @@ class ViewerToolBar(QToolBar):
         )
 
         self.addSeparator()
-        self.show_all_action = QAction("Show all", self)
-        self.show_all_action.setToolTip("Show every hidden item and category again")
-        self.show_all_action.triggered.connect(self._on_show_all)
-        self.addAction(self.show_all_action)
+        self.lighting_action = self._action(
+            "Lighting",
+            "Shade the geometry.\n"
+            "Off, every face shows exactly the colour it stands for; on, the "
+            "shading shows the shape and the colours are read less exactly.",
+            self._on_lighting_changed,
+            checkable=True,
+        )
+        self.lighting_action.setChecked(state.lighting)
+
+        self.addSeparator()
+        self.show_all_action = self._action(
+            "Show all", "Show every hidden item and category again", self._on_show_all
+        )
+        self.reset_action = self._action(
+            "Reset",
+            "Put the whole view back to how it opened: colouring, scale, "
+            "filter, selection, hidden geometry and camera",
+            self._on_reset,
+        )
 
         self.addSeparator()
         self.addWidget(QLabel(" Nodes ", self))
@@ -87,22 +115,34 @@ class ViewerToolBar(QToolBar):
         for edit in (self.node_lo_edit, self.node_hi_edit):
             edit.editingFinished.connect(self._on_node_range_changed)
 
-        self.addSeparator()
-        self.addWidget(QLabel(" Find node ", self))
-        self.find_edit = self._number_box("node", "Highlight the faces of one node")
+        self.addWidget(QLabel(" or node ", self))
+        self.find_edit = self._number_box("node", "Grey every face except this node's")
         self.find_edit.editingFinished.connect(self._on_find_changed)
         self.addWidget(self.find_edit)
+        self.clear_filter_action = self._action(
+            "Clear", "Drop the node filter and un-grey everything", self._on_clear_filter
+        )
 
         state.subscribe(self._on_state_change)
+        self._sync_filters()
+
+    def _action(
+        self, text: str, tooltip: str, slot: Callable[..., None], *, checkable: bool = False
+    ) -> QAction:
+        """One button, added to the bar in place."""
+        action = QAction(text, self)
+        action.setToolTip(tooltip)
+        action.setCheckable(checkable)
+        if checkable:
+            action.toggled.connect(slot)
+        else:
+            action.triggered.connect(slot)
+        self.addAction(action)
+        return action
 
     def _edge_action(self, text: str, tooltip: str) -> QAction:
         """One checkable edge toggle, added to the bar in place."""
-        action = QAction(text, self)
-        action.setToolTip(tooltip)
-        action.setCheckable(True)
-        action.toggled.connect(self._on_edges_changed)
-        self.addAction(action)
-        return action
+        return self._action(text, tooltip, self._on_edges_changed, checkable=True)
 
     def _number_box(self, placeholder: str, tooltip: str) -> QLineEdit:
         """A narrow integer entry box, empty meaning "not set"."""
@@ -133,6 +173,21 @@ class ViewerToolBar(QToolBar):
         del checked
         self._state.show_all()
 
+    def _on_reset(self, checked: bool = False) -> None:
+        """Ask for the whole view back.
+
+        A signal rather than ``state.reset()`` because a reset is more than the
+        state: the camera and the results strip belong to the window, and the
+        window is what puts all three back together.
+        """
+        del checked
+        self.reset_requested.emit()
+
+    def _on_lighting_changed(self, checked: bool = False) -> None:
+        if self._syncing:
+            return
+        self._state.lighting = checked
+
     def _on_edges_changed(self, checked: bool = False) -> None:
         del checked
         if self._syncing:
@@ -149,29 +204,50 @@ class ViewerToolBar(QToolBar):
             return
         low, high = _number(self.node_lo_edit.text()), _number(self.node_hi_edit.text())
         if low is None or high is None:
-            self._state.clear_node_range()
-        else:
-            self._state.set_node_range(low, high)
+            # Half a range is not a range yet - but it is also not a request to
+            # drop a single node the other box is filtering on.
+            if self._state.node_range is not None:
+                self._state.clear_filter()
+            return
+        self._state.set_node_range(low, high)
 
     def _on_find_changed(self) -> None:
         if self._syncing:
             return
-        self._state.found_node = _number(self.find_edit.text())
+        node = _number(self.find_edit.text())
+        if node is None:
+            if self._state.found_node is not None:
+                self._state.clear_filter()
+            return
+        self._state.found_node = node
+
+    def _on_clear_filter(self, checked: bool = False) -> None:
+        del checked
+        self._state.clear_filter()
 
     def _on_state_change(self, change: Change) -> None:
         if change is Change.FILTER:
             self._sync_filters()
-            return
-        if change is Change.EDGES:
+        elif change is Change.EDGES:
             self._sync_edges()
-            return
-        if change is not Change.PICKER:
-            return
-        # Guarded, or echoing the state back into the combo would come round
-        # again as a user choice.
+        elif change is Change.COLORING:
+            self._sync_lighting()
+        elif change is Change.PICKER:
+            self._sync_picker()
+
+    def _sync_picker(self) -> None:
+        """Echo the granularity back, without coming round as a user choice."""
         self._syncing = True
         try:
             self.picker_combo.setCurrentIndex(list(_PICKER_LABELS).index(self._state.picker_mode))
+        finally:
+            self._syncing = False
+
+    def _sync_lighting(self) -> None:
+        """Echo the lighting toggle back, without coming round as a user click."""
+        self._syncing = True
+        try:
+            self.lighting_action.setChecked(self._state.lighting)
         finally:
             self._syncing = False
 
@@ -187,7 +263,11 @@ class ViewerToolBar(QToolBar):
             self._syncing = False
 
     def _sync_filters(self) -> None:
-        """Echo the filter state into the boxes, without coming back round."""
+        """Echo the filter into the boxes, without coming back round.
+
+        Both boxes are written every time: the two are one filter, so setting
+        either has to be seen to empty the other.
+        """
         node_range = self._state.node_range
         found = self._state.found_node
         self._syncing = True

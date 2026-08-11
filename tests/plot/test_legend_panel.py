@@ -71,7 +71,7 @@ def test_a_swatch_is_a_solid_square(qtbot: object) -> None:
 # ── colour-by ─────────────────────────────────────────────────────────────
 def test_the_combo_offers_every_property(window: ViewerWindow, panel: LegendPanel) -> None:
     assert panel.color_by_combo.count() == len(window.properties)
-    assert panel.color_by_combo.itemText(0) == window.properties["item"].label
+    assert panel.color_by_combo.itemText(0) == window.properties["color"].label
 
 
 def test_choosing_a_property_recolours_the_geometry(

@@ -8,6 +8,10 @@ would make that two screenshots.
 
 A vertical marker follows the time the viewer's slider is on, so the curve and
 the coloured geometry always say the same thing about the same instant.
+
+Closing the window ends the comparison: it reopens empty, and the next node
+picked starts a new one. Curves that survived a close would come back with no
+sign that they were ever asked for.
 """
 
 from __future__ import annotations
@@ -20,9 +24,12 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
+from .icons import apply_window_icon
+
 if TYPE_CHECKING:
     import numpy.typing as npt
     from matplotlib.lines import Line2D
+    from PySide6.QtGui import QCloseEvent
 
 #: Colour of the line marking the instant the viewer is showing.
 MARKER_COLOR = "0.4"
@@ -37,6 +44,7 @@ class TimeHistoryWindow(QWidget):
         # it too but it does not dock into anything.
         super().__init__(parent, Qt.WindowType.Window)
         self.setWindowTitle("pycanha - time history")
+        apply_window_icon(self)
         self.resize(640, 420)
 
         self.figure = Figure(figsize=(6.0, 3.6), layout="constrained")
@@ -87,11 +95,21 @@ class TimeHistoryWindow(QWidget):
         """Drop every curve and start again."""
         self.axes.clear()
         self._marker = None
+        self._axis_label = ""
         self.axes.set_xlabel("Time [s]")
-        if self._axis_label:
-            self.axes.set_ylabel(self._axis_label)
         self.axes.grid(visible=True, alpha=0.3)
         self.canvas.draw_idle()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Start again next time it is opened.
+
+        The window is kept and reshown rather than rebuilt, so without this the
+        curves from before the close would be back on screen the moment
+        another node is picked - beside a new one, with nothing to say which is
+        which.
+        """
+        self.clear()
+        super().closeEvent(event)
 
     def _on_clear(self, checked: bool = False) -> None:
         del checked

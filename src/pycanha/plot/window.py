@@ -18,8 +18,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import matplotlib as mpl
 import numpy as np
 import pycanha_core as pcc
+from matplotlib.colors import LogNorm, Normalize
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
@@ -27,20 +29,20 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QMainWindow,
     QMenu,
-    QVBoxLayout,
     QWidget,
 )
 from pyvistaqt import QtInteractor
 
 from .. import log
 from . import edges, results
+from .icons import apply_window_icon
 from .panels.info_panel import InfoPanel
 from .panels.legend_panel import LegendPanel
 from .panels.time_panel import TimePanel
 from .panels.toolbar import ViewerToolBar
 from .panels.tree_panel import TreePanel
-from .picking import clear_highlight, face_info, highlight_cells, item_map
-from .polydata import categorical_colors, polydata_from_lines
+from .picking import clear_highlight, face_info, item_map
+from .polydata import polydata_from_lines, polydata_from_triangles
 from .properties import face_properties
 from .results import RESULT_KEY
 from .scene import Scene
@@ -62,17 +64,22 @@ MESH_ACTOR = "_geometry"
 #: Cell-data name the current colouring is written to on the visible subset.
 SCALARS_NAME = "_coloring"
 
-#: Actor name of the selection overlay.
+#: Actor names of the selection overlay: the brightened copy of what is
+#: selected, and the line around it.
 SELECTION_HIGHLIGHT = "_selection"
+SELECTION_OUTLINE = "_selection_outline"
 
-#: Colour of the selection overlay.
-SELECTION_COLOR = "yellow"
+#: How far the selection is brightened towards white, as a fraction. The
+#: highlight is the geometry's *own* colour made brighter rather than a colour
+#: of its own: a flat wash replaces the data with the fact that it is selected.
+BRIGHTEN = 0.45
 
-#: Actor name of the find-node overlay, drawn alongside the selection one.
-FOUND_HIGHLIGHT = "_found_node"
-
-#: Colour of the find-node overlay.
-FOUND_COLOR = "magenta"
+#: The line drawn around the selection, so a pale or already-bright face is
+#: still unmistakable. Magenta, and thinner than the primitive outlines: it is
+#: the one overlay that is not part of the technical drawing, so it does not
+#: share the drawing's black.
+SELECTION_OUTLINE_COLOR = "magenta"
+SELECTION_OUTLINE_WIDTH = 2.0
 
 #: Actor names of the two edge overlays.
 FACE_EDGES = "_face_edges"
@@ -86,6 +93,14 @@ EDGE_COLOR = "black"
 #: Line width of the face and the primitive outlines.
 FACE_EDGE_WIDTH = 1.0
 PRIMITIVE_EDGE_WIDTH = 3.0
+
+#: How far towards the camera a coincident overlay is pushed, in the units
+#: VTK's polygon offset takes (negative is towards the camera). Lines are
+#: pushed further than surfaces, so a line is never swallowed by the selection
+#: overlay lying on the same geometry - and every line uses the same value, so
+#: the mesh, the outlines and the selection ring cannot z-fight each other.
+SURFACE_OFFSET = -4.0
+LINE_OFFSET = -8.0
 
 #: What a face outside the node filter is drawn in - greyed, never hidden.
 FILTERED_COLOR = "lightgray"
@@ -118,6 +133,7 @@ class Coloring:
     cmap: str | None = None
     clim: tuple[float, float] | None = None
     log_scale: bool = False
+    lighting: bool = False
 
 
 def _plotter_of(view: QWidget | None) -> Any:
@@ -130,7 +146,8 @@ def _plotter_of(view: QWidget | None) -> Any:
 
 
 class ViewerWindow(QMainWindow):
-    """Toolbar, geometry tree, 3D view, and the property/log pane.
+    """Toolbar, the geometry tree and property table, the 3D view, and the
+    appearance and results panes.
 
     ``view`` is the 3D widget. Pass a ``pyvistaqt.QtInteractor`` for a real
     window; pass a plain ``QWidget`` (or nothing) and everything except the
@@ -170,38 +187,39 @@ class ViewerWindow(QMainWindow):
             self.properties[RESULT_KEY] = results.empty_property(int(self.scene.mesh.nf()))
 
         self.setWindowTitle(f"pycanha - {model.name or 'geometry'}")
+        apply_window_icon(self)
         self.toolbar = ViewerToolBar(self.state, self)
+        self.toolbar.reset_requested.connect(self.reset_view)
         self.addToolBar(self.toolbar)
         self.setCentralWidget(self.view)
 
+        # One left column: the tree, and under it what the selected row is.
+        # They are read together - you click a row to find out what it is - and
+        # the properties are a short table, so they take the bottom third.
         self.tree_panel = TreePanel(model, self.state, self)
-        self._add_dock("Geometry", self.tree_panel, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.info_panel = InfoPanel(self.scene, self.properties, self.state, self)
+        left = Qt.DockWidgetArea.LeftDockWidgetArea
+        tree_dock = self._add_dock("Geometry", self.tree_panel, left)
+        properties_dock = self._add_dock("Properties", self.info_panel, left)
+        self.splitDockWidget(tree_dock, properties_dock, Qt.Orientation.Vertical)
+        self.resizeDocks([tree_dock, properties_dock], [2, 1], Qt.Orientation.Vertical)
+
         self.legend_panel = LegendPanel(self.scene, self.properties, self.state, self)
         self._add_dock("Appearance", self.legend_panel, Qt.DockWidgetArea.RightDockWidgetArea)
 
-        # The results strip sits directly above the property tabs, in the same
-        # dock: they are one bottom pane, and a model with no results simply
-        # has no strip.
-        self.info_panel = InfoPanel(self.scene, self.properties, self.state, self)
-        self.time_panel = TimePanel(thermal_model, self.state, self) if self.has_results else None
-        bottom = QWidget(self)
-        layout = QVBoxLayout(bottom)
-        layout.setContentsMargins(0, 0, 0, 0)
-        if self.time_panel is not None:
-            layout.addWidget(self.time_panel)
-        layout.addWidget(self.info_panel)
-        self._add_dock("Info", bottom, Qt.DockWidgetArea.BottomDockWidgetArea)
+        # The results strip is always there so the window keeps its shape, and
+        # is live only while the geometry is coloured by a result: what it
+        # controls is which instant of that colouring is on screen.
+        self.time_panel = TimePanel(thermal_model, self.state, self)
+        self._add_dock("Results", self.time_panel, Qt.DockWidgetArea.BottomDockWidgetArea)
 
         self.state.subscribe(self._on_state_change)
         self._enable_picking()
-        if self.time_panel is not None:
-            # The panel published its default case while the window was still
-            # being built, before anything was subscribed to hear it. A model
-            # that has results opens showing them - that is what it was opened
-            # for - and the geometry colourings stay one combo click away.
-            self.refresh_result()
-            if self.state.result is not None:
-                self.state.color_by = RESULT_KEY
+        # The panel published its default case while the window was still being
+        # built, before anything was subscribed to hear it, so the result
+        # colouring is filled in here - ready for the moment it is chosen.
+        self.refresh_result()
+        self._sync_results_strip()
         self.rebuild_geometry()
 
     def _add_dock(self, title: str, widget: QWidget, area: Qt.DockWidgetArea) -> QDockWidget:
@@ -209,6 +227,10 @@ class ViewerWindow(QMainWindow):
         dock.setWidget(widget)
         self.addDockWidget(area, dock)
         return dock
+
+    def _sync_results_strip(self) -> None:
+        """Leave the strip live only while a result is what is being drawn."""
+        self.time_panel.setEnabled(self.has_results and self.state.color_by == RESULT_KEY)
 
     # ── colouring ─────────────────────────────────────────────────────────
     def current_property(self) -> FaceProperty:
@@ -225,16 +247,15 @@ class ViewerWindow(QMainWindow):
         prop = self.current_property()
         master = prop.per_cell(self.scene.face_ids)
         filtered = self.filtered_out()
+        lighting = self.state.lighting
         if prop.categorical:
-            # Ranked first: labels are sparse (node numbers run 100, 200, 300)
-            # and would otherwise collide modulo the palette size. Ranked over
-            # *every* cell rather than the visible ones, so hiding something
-            # does not recolour what is left.
-            colors = self.scene.visible_scalars(categorical_colors(master, rank=True))
+            # Colours resolved over *every* cell rather than the visible ones,
+            # so hiding something does not recolour what is left.
+            colors = self.scene.visible_scalars(prop.colors_of(master))
             if filtered is not None:
                 colors = colors.copy()
                 colors[filtered] = FILTERED_RGB
-            return Coloring(colors, rgb=True, title=prop.label)
+            return Coloring(colors, rgb=True, title=prop.label, lighting=lighting)
 
         scale = self.state.scale
         numbers = self.scene.visible_scalars(master).astype(np.float64)
@@ -244,7 +265,9 @@ class ViewerWindow(QMainWindow):
         title = f"{prop.label} [{prop.unit}]" if prop.unit else prop.label
         # A property that knows its own range says so - a frame of a time
         # series is drawn on the scale of the whole series, or the colours
-        # would mean something different at every instant.
+        # would mean something different at every instant. Either way the range
+        # covers only what is drawn: the property is rebuilt against the visible
+        # nodes, and the values here are the visible cells'.
         automatic = prop.clim if prop.clim is not None else _finite_range(numbers)
         return Coloring(
             numbers,
@@ -253,7 +276,30 @@ class ViewerWindow(QMainWindow):
             cmap=scale.colormap + ("_r" if scale.reverse else ""),
             clim=automatic if scale.auto else scale.limits,
             log_scale=scale.log,
+            lighting=lighting,
         )
+
+    def cell_colors(self) -> npt.NDArray[np.uint8]:
+        """The RGB every visible cell is actually drawn in, ``(n, 3)`` ``uint8``.
+
+        The categorical path already holds them. The numeric one is the same
+        colormap, limits and log setting the mapper was given, resolved here so
+        the highlight can brighten what is on screen rather than paint over it;
+        ``nan`` - a value the model does not have, or one the filter greyed -
+        keeps the grey the actor draws it in.
+        """
+        coloring = self.coloring()
+        if coloring.rgb:
+            return coloring.values.astype(np.uint8, copy=False)
+        values = np.asarray(coloring.values, dtype=np.float64)
+        colors = np.full((values.size, 3), FILTERED_RGB, dtype=np.uint8)
+        finite = np.isfinite(values)
+        if not finite.any():
+            return colors
+        colors[finite] = _colormap_colors(
+            values[finite], coloring.cmap, coloring.clim, log_scale=coloring.log_scale
+        )
+        return colors
 
     # ── results ───────────────────────────────────────────────────────────
     def current_series(self) -> ResultSeries | None:
@@ -274,6 +320,14 @@ class ViewerWindow(QMainWindow):
             self._series = results.series(self.thermal_model, selection.case, selection.attribute)
         return self._series
 
+    def visible_nodes(self) -> npt.NDArray[np.int64]:
+        """The tmm nodes of the geometry currently drawn, ascending and distinct.
+
+        What the automatic colour scale of a result is spent on: a node no
+        longer on screen has no say in the range its colours are spread over.
+        """
+        return np.unique(self.scene.node_numbers[self.scene.visible_cells])
+
     def refresh_result(self) -> None:
         """Rebuild the result colouring from the case, attribute and instant."""
         if not self.has_results:
@@ -285,7 +339,10 @@ class ViewerWindow(QMainWindow):
             self.properties[RESULT_KEY] = results.empty_property(n_slots)
         else:
             self.properties[RESULT_KEY] = results.result_property(
-                series, selection.time_index, self.scene.slot_nodes
+                series,
+                selection.time_index,
+                self.scene.slot_nodes,
+                visible_nodes=self.visible_nodes(),
             )
         if self.time_panel is not None:
             self.time_panel.set_series(series)
@@ -335,12 +392,14 @@ class ViewerWindow(QMainWindow):
 
         ``None`` when no filter is set. The filter never *hides*: it is a
         display overlay over whatever is drawn, which is what keeps one
-        visibility mask and one meaning for ``Show all``.
+        visibility mask and one meaning for ``Show all``. One node found and a
+        range typed in are the same filter set two ways, so both arrive here as
+        one pair of bounds.
         """
-        node_range = self.state.node_range
-        if node_range is None:
+        bounds = self.state.node_bounds()
+        if bounds is None:
             return None
-        return ~self.scene.visible_scalars(self.scene.node_range_mask(*node_range))
+        return ~self.scene.visible_scalars(self.scene.node_range_mask(*bounds))
 
     # ── the 3D view ───────────────────────────────────────────────────────
     def rebuild_geometry(self) -> None:
@@ -370,7 +429,7 @@ class ViewerWindow(QMainWindow):
             name=MESH_ACTOR,
             scalars=SCALARS_NAME,
             rgb=coloring.rgb,
-            lighting=not coloring.rgb,
+            lighting=coloring.lighting,
             cmap=coloring.cmap,
             clim=coloring.clim,
             log_scale=coloring.log_scale,
@@ -379,8 +438,15 @@ class ViewerWindow(QMainWindow):
             nan_color=FILTERED_COLOR,
             backface_culling=self.scene.both_sides,
             show_edges=self.state.edges.triangles,
+            edge_color=EDGE_COLOR,
             reset_camera=not self._camera_reset,
         )
+        if not self._camera_reset:
+            # The camera has been placed, and every later rebuild has to leave
+            # it alone: a renderer whose ``camera_set`` is still False resets
+            # itself whenever an actor is added or removed with no explicit
+            # instruction, and hiding one item would re-frame the whole model.
+            self.plotter.renderer.camera_set = True
         self._camera_reset = True
         self._drawn = coloring
         self._drawn_poly = poly
@@ -408,6 +474,7 @@ class ViewerWindow(QMainWindow):
             and coloring.cmap == drawn.cmap
             and coloring.clim == drawn.clim
             and coloring.log_scale == drawn.log_scale
+            and coloring.lighting == drawn.lighting
             and coloring.title == drawn.title
         )
 
@@ -442,19 +509,39 @@ class ViewerWindow(QMainWindow):
         node = self.tree_panel.tree_model.node_of(geometry_id)
         return node.item_ids if node is not None else frozenset({int(geometry_id)})
 
-    def found_cells(self) -> npt.NDArray[np.intp]:
-        """Master cells of the node typed into the find box.
+    def highlight_colors(self) -> npt.NDArray[np.uint8]:
+        """What the highlighted cells are drawn in: their own colour, brighter.
 
-        Answered by the model's own ``faces_of_node``, which returns face
-        slots. Only the cells are highlighted - the camera stays where the user
-        put it.
+        The selection keeps saying what it said - its material, its node, its
+        temperature - and adds only that it is selected. A wash of one colour
+        would take the answer away just as the answer is being asked for.
         """
-        node = self.state.found_node
-        if node is None:
-            return np.empty(0, dtype=np.intp)
-        slots = np.asarray(self.model.faces_of_node(int(node)), dtype=np.int64)
-        cells = np.flatnonzero(np.isin(self.scene.face_ids, slots)).astype(np.intp)
-        return self.scene.restrict_to_visible(cells)
+        cells = self.highlight()
+        if cells.size == 0:
+            return np.empty((0, 3), dtype=np.uint8)
+        return brighten(self.cell_colors()[self.scene.visible_index(cells)])
+
+    def highlight_outline(self) -> npt.NDArray[np.int64]:
+        """Point-index pairs ringing the highlighted cells.
+
+        Taken over the triangles rather than the cells: with ``both_sides``
+        every triangle is in the scene twice, and a patch made of both copies
+        has every edge used twice from the inside, so its own boundary would
+        come out empty.
+        """
+        cells = self.highlight()
+        if cells.size == 0:
+            return np.empty((0, 2), dtype=np.int64)
+        triangles = np.unique(cells % self._n_triangles()) if self.scene.both_sides else cells
+        return edges.group_boundary_edges(
+            self.scene.triangles[triangles],
+            np.zeros(triangles.size, dtype=np.int64),
+            n_points=int(self.scene.points.shape[0]),
+        )
+
+    def _n_triangles(self) -> int:
+        """How many triangles the master mesh holds, sides not counted twice."""
+        return self.scene.n_cells // 2 if self.scene.both_sides else self.scene.n_cells
 
     # ── edges ─────────────────────────────────────────────────────────────
     def visible_triangles(self) -> npt.NDArray[np.intp]:
@@ -464,7 +551,7 @@ class ViewerWindow(QMainWindow):
         and wound the other way, so a half-edge pass over all of them would see
         every edge four times. The side-1 copies are the triangulation.
         """
-        n_tri = self.scene.n_cells // 2 if self.scene.both_sides else self.scene.n_cells
+        n_tri = self._n_triangles()
         return self.scene.visible_cells[self.scene.visible_cells < n_tri]
 
     def edge_lines(self, kind: str) -> npt.NDArray[np.int64]:
@@ -500,12 +587,29 @@ class ViewerWindow(QMainWindow):
 
     def _draw_edge_overlay(self, name: str, kind: str, *, width: float, drawn: bool) -> None:
         lines = self.edge_lines(kind) if drawn else np.empty((0, 2), dtype=np.int64)
+        self._draw_lines(name, lines, color=EDGE_COLOR, width=width)
+
+    def _draw_lines(
+        self, name: str, lines: npt.NDArray[np.int64], *, color: str, width: float
+    ) -> None:
+        """Put one set of lines over the geometry, or take it away.
+
+        The lines lie exactly on the surface they outline, so they are pushed
+        towards the camera by more than any surface is (:data:`LINE_OFFSET`
+        against :data:`SURFACE_OFFSET`). Without that ordering the selection
+        overlay - itself a surface pushed forward - swallows whichever lines
+        happen to land behind it, which is a stripe of the mesh here and a
+        piece of a face outline there rather than anything that reads as a
+        rule.
+        """
+        if self.plotter is None:
+            return
         if lines.shape[0] == 0:
             clear_highlight(self.plotter, name)
             return
         actor = self.plotter.add_mesh(
             polydata_from_lines(self.scene.points, lines),
-            color=EDGE_COLOR,
+            color=color,
             line_width=width,
             lighting=False,
             pickable=False,
@@ -513,32 +617,44 @@ class ViewerWindow(QMainWindow):
             show_scalar_bar=False,
             name=name,
         )
-        # The lines lie exactly on the surface they outline, so the same
-        # polygon offset the highlight overlay uses keeps them from z-fighting.
         mapper = actor.mapper
         mapper.SetResolveCoincidentTopologyToPolygonOffset()
-        mapper.SetRelativeCoincidentTopologyLineOffsetParameters(-4.0, -4.0)
+        mapper.SetRelativeCoincidentTopologyLineOffsetParameters(LINE_OFFSET, LINE_OFFSET)
 
     def _draw_highlight(self) -> None:
-        self._draw_overlay(SELECTION_HIGHLIGHT, SELECTION_COLOR, self.highlight())
-
-    def _draw_found(self) -> None:
-        self._draw_overlay(FOUND_HIGHLIGHT, FOUND_COLOR, self.found_cells())
-
-    def _draw_overlay(self, name: str, color: str, cells: npt.NDArray[np.intp]) -> None:
-        """Put one coincident overlay actor over ``cells``, or take it away."""
+        """Draw the selection: the same cells, brighter, ringed in one line."""
         if self.plotter is None:
             return
+        cells = self.highlight()
         if cells.size == 0:
-            clear_highlight(self.plotter, name)
+            clear_highlight(self.plotter, SELECTION_HIGHLIGHT)
+            clear_highlight(self.plotter, SELECTION_OUTLINE)
             return
-        highlight_cells(
-            self.plotter,
-            points=self.scene.points,
-            triangles=self.scene.triangles[cells],
-            color=color,
+        poly = polydata_from_triangles(self.scene.points, self.scene.triangles[cells])
+        poly.cell_data[SCALARS_NAME] = self.highlight_colors()
+        actor = self.plotter.add_mesh(
+            poly,
+            scalars=SCALARS_NAME,
+            rgb=True,
+            lighting=self.state.lighting,
+            pickable=False,
+            reset_camera=False,
             backface_culling=self.scene.both_sides,
-            name=name,
+            show_scalar_bar=False,
+            show_edges=self.state.edges.triangles,
+            edge_color=EDGE_COLOR,
+            name=SELECTION_HIGHLIGHT,
+        )
+        # Coincident with the surface it covers, so it is pushed towards the
+        # camera - but by less than the lines, which have to stay on top of it.
+        mapper = actor.mapper
+        mapper.SetResolveCoincidentTopologyToPolygonOffset()
+        mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(SURFACE_OFFSET, SURFACE_OFFSET)
+        self._draw_lines(
+            SELECTION_OUTLINE,
+            self.highlight_outline(),
+            color=SELECTION_OUTLINE_COLOR,
+            width=SELECTION_OUTLINE_WIDTH,
         )
 
     # ── picking ───────────────────────────────────────────────────────────
@@ -552,6 +668,10 @@ class ViewerWindow(QMainWindow):
         and only when the cursor stayed put (:data:`CLICK_SLOP`). What that
         costs is the picking component's on-screen usage hint, which is no
         loss: the window has a toolbar to say the same thing.
+
+        The right button is taken away from the camera entirely (see
+        :meth:`_claim_the_right_button`): it selects and opens the menu, and
+        that is all it does.
         """
         if self.plotter is None or self.scene.n_cells == 0:
             return
@@ -564,9 +684,30 @@ class ViewerWindow(QMainWindow):
         interactor.picker = picker_name
         interactor.picker.SetTolerance(PICK_TOLERANCE)
         interactor.add_observer("LeftButtonPressEvent", self._on_button_press)
-        interactor.add_observer("RightButtonPressEvent", self._on_button_press)
         interactor.add_observer("LeftButtonReleaseEvent", self._on_left_release)
-        interactor.add_observer("RightButtonReleaseEvent", self._on_right_release)
+        self._claim_the_right_button()
+
+    def _claim_the_right_button(self) -> None:
+        """Take the right button off the camera, on the interactor *style*.
+
+        ``vtkInteractorStyle`` dispatches a button event to its own handler
+        only while nothing is observing that event **on the style**; with an
+        observer there it invokes the event instead. So an observer registered
+        on the style, which never calls ``OnRightButtonDown``, is how the dolly
+        is prevented rather than undone.
+
+        It also has to be both halves of the gesture. Registering the release
+        alone - which is what ``iren.add_observer`` does by itself, since
+        release events are the ones it has to route through the style - leaves
+        the press starting a dolly that the release then never ends, and the
+        camera goes on zooming with the button already up until some other
+        gesture resets the style.
+        """
+        style = self.plotter.iren.style
+        if style is None or not hasattr(style, "add_observer"):
+            return
+        style.add_observer("RightButtonPressEvent", self._on_button_press)
+        style.add_observer("RightButtonReleaseEvent", self._on_right_release)
 
     def _event_position(self) -> tuple[int, int]:
         """Where the mouse event being handled happened, in window coordinates.
@@ -648,6 +789,10 @@ class ViewerWindow(QMainWindow):
         Hide and Show only always act on the owning geometry item, whatever the
         picker granularity says (D73): a single triangle has no tree row to
         remember a hidden state in.
+
+        The node history is the exception the other way round: in Item mode the
+        selection is a whole item, so there is no one node the menu could mean
+        and it is not offered.
         """
         selection = self.state.selection
         item_id = None if selection is None else selection.item_id
@@ -658,7 +803,7 @@ class ViewerWindow(QMainWindow):
             item_ids = self._subtree_items(item_id)
             actions.append((f"Hide {name}", lambda: self.state.hide(item_ids)))
             actions.append((f"Show only {name}", lambda: self.state.show_only(item_ids)))
-        node_number = None if selection is None else selection.node_number
+        node_number = None if self.state.picker_mode is PickerMode.ITEM else self._selected_node()
         series = self.current_series()
         if node_number is not None and node_number >= 0 and series is not None and series.animated:
             number = int(node_number)
@@ -667,6 +812,11 @@ class ViewerWindow(QMainWindow):
             )
         actions.append(("Show all", self.state.show_all))
         return actions
+
+    def _selected_node(self) -> int | None:
+        """The tmm node of the current selection, if it names one."""
+        selection = self.state.selection
+        return None if selection is None else selection.node_number
 
     def show_context_menu(self) -> None:
         """Pop the right-click menu up under the cursor."""
@@ -706,9 +856,11 @@ class ViewerWindow(QMainWindow):
     def _on_state_change(self, change: Change) -> None:
         if change is Change.VISIBILITY:
             self.apply_visibility()
+            # An automatic scale is spread over the geometry that is drawn, so
+            # what is drawn changing is what changes it.
+            self.refresh_result()
             self.rebuild_geometry()
             self._draw_highlight()
-            self._draw_found()
             self._draw_edges()
             log.info(
                 f"viewer: {len(self.state.hidden)} geometry item(s) and "
@@ -718,36 +870,82 @@ class ViewerWindow(QMainWindow):
             # Switching the colouring resets the legend's hidden categories, so
             # what is drawn changes along with what colour it is drawn in.
             self.apply_visibility()
+            self._sync_results_strip()
             self.rebuild_geometry()
+            self._draw_highlight()
             self._draw_edges()
         elif change is Change.EDGES:
             # The triangle lines belong to the geometry actor, the other two
             # are overlays of their own.
             self.rebuild_geometry()
+            self._draw_highlight()
             self._draw_edges()
         elif change is Change.FILTER:
-            # The node range greys rather than hides, so it is a recolour; find
-            # is an overlay of its own.
+            # The filter greys rather than hides, so it is a recolour - and the
+            # highlight is drawn in the colours it just changed.
             self.rebuild_geometry()
-            self._draw_found()
+            self._draw_highlight()
         elif change is Change.RESULTS:
             self.refresh_result()
             if self.state.color_by == RESULT_KEY:
                 self.rebuild_geometry()
-            else:
-                # Choosing a case, or scrubbing, is a request to look at it.
-                # The setter notifies COLORING, which redraws.
-                self.state.color_by = RESULT_KEY
+                self._draw_highlight()
         elif change in (Change.SELECTION, Change.PICKER):
             self._draw_highlight()
         log.flush()
 
+    def reset_view(self) -> None:
+        """Put the whole window back to how it opened, camera included.
+
+        The one action that needs no explanation: whatever combination of
+        hidden items, isolated categories, filters and scales has been arrived
+        at, this is the way out of it.
+        """
+        self.time_panel.rewind()
+        self.state.reset()
+        if self.plotter is not None:
+            self.plotter.reset_camera()
+        log.info("viewer: the view was reset")
+        log.flush()
+
     def closeEvent(self, event: QCloseEvent) -> None:
-        """Let go of the log, and of the timer, before the widgets are gone."""
-        if self.time_panel is not None:
-            self.time_panel.stop()
-        self.info_panel.detach()
+        """Stop the animation timer before the widgets it drives are gone."""
+        self.time_panel.stop()
         super().closeEvent(event)
+
+
+def _colormap_colors(
+    values: npt.NDArray[np.float64],
+    cmap: str | None,
+    clim: tuple[float, float] | None,
+    *,
+    log_scale: bool,
+) -> npt.NDArray[np.uint8]:
+    """Put finite ``values`` through a colormap exactly as the mapper would.
+
+    A log scale with a non-positive lower limit falls back to a linear one:
+    that is a scale the mapper cannot draw either, and guessing a positive
+    floor here would put the highlight on a different scale from the geometry.
+    """
+    colormap = mpl.colormaps[cmap or "viridis"]
+    low, high = clim if clim is not None else (float(values.min()), float(values.max()))
+    if log_scale and low > 0.0:
+        norm: Normalize = LogNorm(vmin=low, vmax=high)
+    else:
+        norm = Normalize(vmin=low, vmax=high)
+    rgba = np.asarray(colormap(norm(values)), dtype=np.float64)
+    return (rgba[:, :3] * 255).astype(np.uint8)
+
+
+def brighten(colors: npt.ArrayLike, fraction: float = BRIGHTEN) -> npt.NDArray[np.uint8]:
+    """Move colours ``fraction`` of the way to white.
+
+    Towards white in both directions: a dark face lightens a lot and a pale one
+    a little, so the selection always reads as *more* of what it already was.
+    White itself cannot brighten, which is what the outline is there for.
+    """
+    values = np.asarray(colors, dtype=np.float64)
+    return np.clip(values + (255.0 - values) * float(fraction), 0.0, 255.0).astype(np.uint8)
 
 
 def _finite_range(values: npt.NDArray[np.float64]) -> tuple[float, float] | None:

@@ -252,6 +252,26 @@ class Scene:
         visible[self.visible_cells] = True
         return wanted[visible[wanted]]
 
+    def visible_index(self, cells: npt.ArrayLike) -> npt.NDArray[np.intp]:
+        """Where each of ``cells`` sits in the drawn subset.
+
+        The inverse of :attr:`visible_cells`, which is what turns a set of
+        master cells into rows of a per-visible-cell array - the colours a
+        highlight has to read to brighten what is on screen. Every cell must be
+        visible; :meth:`restrict_to_visible` is what drops the ones that are not.
+        """
+        wanted = np.asarray(cells, dtype=np.intp)
+        if self.visible_cells.size == self.n_cells:
+            return wanted
+        rows = np.searchsorted(self.visible_cells, wanted)
+        inside = rows < self.visible_cells.size
+        if not bool(np.all(inside)) or not bool(
+            np.all(self.visible_cells[np.where(inside, rows, 0)] == wanted)
+        ):
+            msg = "every cell must be one of the cells currently drawn"
+            raise ValueError(msg)
+        return rows.astype(np.intp)
+
     def visible_scalars(self, master: npt.ArrayLike) -> npt.NDArray[Any]:
         """Restrict a per-master-cell array to the cells currently drawn."""
         values = np.asarray(master)

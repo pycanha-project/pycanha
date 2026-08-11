@@ -172,6 +172,7 @@ ignore = [
 # Scoped to the two modules that subclass Qt, and to that one rule.
 "src/pycanha/plot/tree_model.py" = ["N802"]
 "src/pycanha/plot/window.py" = ["N802"]
+"src/pycanha/plot/timehistory.py" = ["N802"]
 "src/pycanha/plot/panels/*.py" = ["N802"]
 
 [tool.ruff.lint.isort]

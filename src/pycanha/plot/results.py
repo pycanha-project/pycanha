@@ -127,14 +127,25 @@ class ResultSeries:
         step = int(np.clip(index, 0, self.times.size - 1))
         return f"t = {float(self.times[step]):.6g} s"
 
-    def clim(self) -> tuple[float, float] | None:
+    def clim(self, nodes: npt.ArrayLike | None = None) -> tuple[float, float] | None:
         """Range over the **whole** series, so frames stay comparable.
 
         A colour scale recomputed per frame would repaint the same temperature
         a different colour at every instant, which makes an animation
         unreadable.
+
+        ``nodes`` restricts it to the nodes still on screen, which is the other
+        half of the same rule: hiding geometry is a discrete action and may
+        rescale, scrubbing may not. Nodes the series never carried are simply
+        not in the range.
         """
-        return _finite_range(self.values)
+        if nodes is None:
+            return _finite_range(self.values)
+        columns, found = key_columns(nodes, self.node_numbers)
+        kept = np.unique(columns[found])
+        if kept.size == 0:
+            return None
+        return _finite_range(self.values[:, kept])
 
     def history(self, node_number: int) -> npt.NDArray[np.float64] | None:
         """The whole time history of one node, or ``None`` if it has none."""
@@ -255,13 +266,23 @@ def slot_values(
     return np.where(found, frame[columns], np.nan)
 
 
-def result_property(result: ResultSeries, index: int, node_numbers: npt.ArrayLike) -> FaceProperty:
+def result_property(
+    result: ResultSeries,
+    index: int,
+    node_numbers: npt.ArrayLike,
+    *,
+    visible_nodes: npt.ArrayLike | None = None,
+) -> FaceProperty:
     """Turn one instant of a series into a colour-by option.
 
     The label names the attribute and the case but deliberately **not** the
     instant: it is the colour bar's title, and a title that changed on every
     frame would leave a trail of colour bars behind an animation. Which instant
     is on screen is the time panel's line to say.
+
+    ``visible_nodes`` narrows the automatic colour scale to the geometry still
+    drawn - hidden geometry is not what the scale should be spent on - while
+    keeping it spread over the whole series.
 
     The key is fixed, so the colour-by combo keeps one stable entry for
     "whatever result is selected".
@@ -272,7 +293,7 @@ def result_property(result: ResultSeries, index: int, node_numbers: npt.ArrayLik
         values=slot_values(result, index, node_numbers),
         categorical=False,
         unit=result.unit,
-        clim=result.clim(),
+        clim=result.clim(visible_nodes),
     )
 
 

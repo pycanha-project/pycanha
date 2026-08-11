@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QWidget
 
 import pycanha as pc
 from pycanha.plot.results import LIVE_CASE, RESULT_KEY
-from pycanha.plot.state import Selection
+from pycanha.plot.state import DEFAULT_COLOR_BY, PickerMode, Selection
 from pycanha.plot.window import ViewerWindow
 
 from .test_results import CASE_NODES, CASE_TIMES, add_case, add_nodes, two_panel_model
@@ -25,59 +25,84 @@ def solved() -> pc.ThermalModel:
 
 
 @pytest.fixture
-def window(solved: pc.ThermalModel, qtbot: object) -> Iterator[ViewerWindow]:
+def opened(solved: pc.ThermalModel, qtbot: object) -> Iterator[ViewerWindow]:
+    """A window on a solved model, exactly as it opens."""
     del qtbot
-    # Closed on the way out: the log tab holds a handler on the process-wide
-    # ``pycanha`` logger for as long as the window is open.
+    # Closed on the way out, so the animation timer never outlives the widgets
+    # it drives.
     viewer = ViewerWindow(solved.gmm, view=QWidget(), thermal_model=solved)
     yield viewer
     viewer.close()
 
 
+@pytest.fixture
+def window(opened: ViewerWindow) -> ViewerWindow:
+    """The same window, switched to the result colouring.
+
+    A window opens on the colour the model carries, and the results strip is
+    dead until a result is what is being drawn - so that is where nearly every
+    test here has to start.
+    """
+    opened.state.color_by = RESULT_KEY
+    return opened
+
+
 def select_case(window: ViewerWindow, key: str) -> None:
     """Pick a case by key, the way clicking the combo would."""
-    assert window.time_panel is not None
     window.time_panel.case_combo.setCurrentIndex(window.time_panel.case_combo.findData(key))
 
 
-# ── the panel is there, or is not ─────────────────────────────────────────
-def test_geometry_alone_has_no_results_strip(qtbot: object) -> None:
+# ── the strip is live, or it is not ───────────────────────────────────────
+def test_geometry_alone_has_nothing_to_show(qtbot: object) -> None:
     del qtbot
-    # D87: the geometry entry point opens the same window with the results
-    # panel simply absent.
+    # D87: the geometry entry point opens the same window; the strip is there
+    # so the layout does not change shape, and there is nothing in it.
     viewer = ViewerWindow(two_panel_model().gmm, view=QWidget())
     try:
-        assert viewer.time_panel is None
         assert not viewer.has_results
+        assert not viewer.time_panel.isEnabled()
+        assert viewer.time_panel.case_combo.count() == 0
         assert RESULT_KEY not in viewer.properties
         assert viewer.current_series() is None
     finally:
         viewer.close()
 
 
-def test_a_model_with_nothing_solved_has_no_results_strip(qtbot: object) -> None:
+def test_a_model_with_nothing_solved_has_nothing_to_show(qtbot: object) -> None:
     del qtbot
     model = two_panel_model()
     viewer = ViewerWindow(model.gmm, view=QWidget(), thermal_model=model)
     try:
-        assert viewer.time_panel is None
+        assert not viewer.has_results
+        assert not viewer.time_panel.isEnabled()
+        assert viewer.state.result is None
     finally:
         viewer.close()
 
 
-def test_a_solved_model_opens_showing_its_results(window: ViewerWindow) -> None:
-    assert window.has_results
-    assert window.state.color_by == RESULT_KEY
-    # The live state is the default case, since it is always there.
-    assert window.state.result is not None
-    assert window.state.result.case == LIVE_CASE
-    assert window.current_property().label == "Temperature (current)"
+def test_a_solved_model_opens_on_the_geometry_colours(opened: ViewerWindow) -> None:
+    assert opened.has_results
+    assert opened.state.color_by == DEFAULT_COLOR_BY
+    # Read and ready, so choosing it draws it - but not drawn, and not
+    # scrubbable while something else is.
+    assert opened.state.result is not None
+    assert opened.state.result.case == LIVE_CASE
+    assert opened.properties[RESULT_KEY].label == "Temperature (current)"
+    assert not opened.time_panel.isEnabled()
+
+
+def test_choosing_the_result_colouring_wakes_the_strip(opened: ViewerWindow) -> None:
+    opened.state.color_by = RESULT_KEY
+    assert opened.time_panel.isEnabled()
+    assert opened.current_property().label == "Temperature (current)"
+
+    opened.state.color_by = DEFAULT_COLOR_BY
+    assert not opened.time_panel.isEnabled()
 
 
 # ── choosing what to look at ──────────────────────────────────────────────
 def test_the_live_case_has_nothing_to_animate(window: ViewerWindow) -> None:
     panel = window.time_panel
-    assert panel is not None
     assert not panel.slider.isEnabled()
     assert not panel.play_button.isEnabled()
     assert panel.time_label.text() == "no time axis"
@@ -86,7 +111,6 @@ def test_the_live_case_has_nothing_to_animate(window: ViewerWindow) -> None:
 def test_choosing_a_stored_case_spans_its_instants(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     panel = window.time_panel
-    assert panel is not None
     assert panel.slider.maximum() == len(CASE_TIMES) - 1
     assert panel.slider.isEnabled()
     assert panel.time_label.text() == "t = 0 s"
@@ -96,7 +120,6 @@ def test_choosing_a_stored_case_spans_its_instants(window: ViewerWindow) -> None
 def test_the_attribute_survives_a_case_change_that_keeps_it(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     panel = window.time_panel
-    assert panel is not None
     panel.attribute_combo.setCurrentIndex(panel.attribute_combo.findData("QI"))
     assert window.current_property().label == "Internal heat load (hot case)"
 
@@ -124,11 +147,39 @@ def test_the_colouring_is_the_values_of_the_selected_node(window: ViewerWindow) 
             assert np.isnan(coloring.values[cell])
 
 
+def test_the_scale_is_spread_over_what_is_drawn(
+    window: ViewerWindow, solved: pc.ThermalModel
+) -> None:
+    select_case(window, "hot case")
+    # Node 100 is panel 'a' and runs 300 - 302 over the series; node 110 is
+    # panel 'b' and sits at 320 throughout.
+    assert window.coloring().clim == (300.0, 320.0)
+
+    window.state.hide([solved.gmm.get_item("b").id])
+    # Still the whole series, and now only the panel still on screen.
+    assert window.coloring().clim == (300.0, 302.0)
+
+    window.state.show_all()
+    assert window.coloring().clim == (300.0, 320.0)
+
+    # A single node that never moves leaves nothing to scale over.
+    window.state.hide([solved.gmm.get_item("a").id])
+    assert window.coloring().clim is None
+
+
+def test_scrubbing_does_not_move_the_scale(window: ViewerWindow) -> None:
+    select_case(window, "hot case")
+    before = window.coloring().clim
+    window.time_panel.go_next()
+    # The other half of the same rule: hiding may rescale, time may not, or the
+    # same temperature would be a different colour at every instant.
+    assert window.coloring().clim == before
+
+
 # ── moving through time ───────────────────────────────────────────────────
 def test_stepping_changes_the_values_and_nothing_else(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     panel = window.time_panel
-    assert panel is not None
     first = window.coloring()
 
     panel.go_next()
@@ -146,7 +197,6 @@ def test_stepping_changes_the_values_and_nothing_else(window: ViewerWindow) -> N
 def test_the_steps_wrap_at_both_ends(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     panel = window.time_panel
-    assert panel is not None
 
     panel.go_previous()
     assert panel.slider.value() == len(CASE_TIMES) - 1
@@ -157,7 +207,6 @@ def test_the_steps_wrap_at_both_ends(window: ViewerWindow) -> None:
 def test_play_runs_the_timer_until_it_is_stopped(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     panel = window.time_panel
-    assert panel is not None
 
     panel.play()
     assert panel.timer.isActive()
@@ -170,7 +219,6 @@ def test_play_runs_the_timer_until_it_is_stopped(window: ViewerWindow) -> None:
 
 def test_a_case_with_no_time_axis_cannot_be_played(window: ViewerWindow) -> None:
     panel = window.time_panel
-    assert panel is not None
     panel.play()
     assert not panel.timer.isActive()
 
@@ -178,7 +226,6 @@ def test_a_case_with_no_time_axis_cannot_be_played(window: ViewerWindow) -> None
 def test_closing_the_window_stops_the_animation(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     panel = window.time_panel
-    assert panel is not None
     panel.play()
 
     window.close()
@@ -198,11 +245,24 @@ def test_the_history_window_accumulates_a_curve_per_node(window: ViewerWindow) -
     assert history.curve_count() == 0
 
 
+def test_closing_the_history_window_empties_it(window: ViewerWindow) -> None:
+    select_case(window, "hot case")
+    window.plot_time_history(100)
+    history = window.time_history
+    assert history is not None
+    assert history.curve_count() == 1
+
+    history.close()
+    # Reopened, it starts a new comparison rather than continuing the old one.
+    assert history.curve_count() == 0
+    window.plot_time_history(100)
+    assert history.curve_count() == 1
+
+
 def test_the_history_marker_follows_the_slider(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     window.plot_time_history(100)
     panel = window.time_panel
-    assert panel is not None
     panel.go_next()
 
     history = window.time_history
@@ -236,3 +296,18 @@ def test_the_context_menu_offers_a_history_only_when_there_is_one(
 
     dict(window.context_actions())["Plot time history of node 100"]()
     assert window.time_history is not None
+
+
+def test_item_granularity_has_no_one_node_to_plot(
+    window: ViewerWindow, solved: pc.ThermalModel
+) -> None:
+    select_case(window, "hot case")
+    window.state.selection = Selection(
+        item_id=solved.gmm.get_item("a").id, face_id=0, node_number=100, cell=0
+    )
+    assert "Plot time history of node 100" in dict(window.context_actions())
+
+    # The whole item is selected, so the node under the cursor is not what the
+    # menu would be about.
+    window.state.picker_mode = PickerMode.ITEM
+    assert "Plot time history of node 100" not in dict(window.context_actions())

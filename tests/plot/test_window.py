@@ -7,7 +7,6 @@ argument, and these tests pass a plain widget: everything except the pixels
 still runs, including the arrays that would have been handed to VTK.
 """
 
-import logging
 from collections.abc import Iterator
 from dataclasses import replace
 
@@ -17,15 +16,15 @@ from PySide6.QtWidgets import QWidget
 
 import pycanha as pc
 from pycanha import gmm
-from pycanha.plot.panels.info_panel import LOGGER_NAME, selection_rows
+from pycanha.plot.panels.info_panel import selection_rows
 from pycanha.plot.picking import geometry_map
 from pycanha.plot.properties import MISSING
-from pycanha.plot.state import PickerMode, Selection
-from pycanha.plot.window import ViewerWindow
+from pycanha.plot.state import DEFAULT_COLOR_BY, PickerMode, Selection
+from pycanha.plot.window import ViewerWindow, brighten
 
 
 def _two_panel_model() -> pc.ThermalModel:
-    """A group of two 2x1 panels, 'a' painted white and 'b' bare."""
+    """A group of two 2x1 panels, 'a' painted white and red, and 'b' bare."""
     tm = pc.ThermalModel("viewer")
     panels = []
     for index, name in enumerate(("a", "b")):
@@ -34,6 +33,7 @@ def _two_panel_model() -> pc.ThermalModel:
         thermal_mesh.node2_start = 200 + 10 * index
         if name == "a":
             thermal_mesh.side1_optical = gmm.OpticalMaterial("white", 0.85, 0.2)
+            thermal_mesh.side1_color = gmm.Color(255, 0, 0)
         height = float(index)
         panels.append(
             gmm.GeometryItem(
@@ -54,8 +54,8 @@ def model() -> gmm.GeometryModel:
 @pytest.fixture
 def window(model: gmm.GeometryModel, qtbot: object) -> Iterator[ViewerWindow]:
     del qtbot
-    # Closed on the way out: the log tab holds a handler on the process-wide
-    # ``pycanha`` logger for as long as the window is open.
+    # Closed on the way out, so the animation timer never outlives the widgets
+    # it drives.
     viewer = ViewerWindow(model, view=QWidget())
     yield viewer
     viewer.close()
@@ -77,8 +77,24 @@ def test_a_placeholder_widget_is_not_mistaken_for_a_plotter(window: ViewerWindow
     assert window.plotter is None
     # Everything that does not need pixels is still wired up.
     assert window.tree_panel.tree_model.root.name == "viewer"
-    assert window.info_panel.count() == 2
+    assert window.info_panel.table.columnCount() == 2
     assert window.toolbar.picker_combo.count() == len(PickerMode)
+
+
+def test_the_window_opens_on_the_colour_the_model_carries(window: ViewerWindow) -> None:
+    assert window.state.color_by == DEFAULT_COLOR_BY
+    coloring = window.coloring()
+    assert coloring.rgb
+    # Side 1 of 'a' was painted red; every cell of it is drawn in exactly that.
+    red = np.all(coloring.values == (255, 0, 0), axis=1)
+    assert red.sum() == 4
+
+
+def test_the_results_strip_is_dead_without_results(window: ViewerWindow) -> None:
+    # It is there so the window keeps its shape, and offers nothing to move.
+    assert not window.has_results
+    assert not window.time_panel.isEnabled()
+    assert window.time_panel.case_combo.count() == 0
 
 
 def test_rebuilding_the_geometry_without_a_plotter_is_a_no_op(window: ViewerWindow) -> None:
@@ -183,6 +199,46 @@ def test_the_highlight_never_shows_hidden_geometry(
 
 def test_nothing_selected_highlights_nothing(window: ViewerWindow) -> None:
     assert window.highlight().size == 0
+    assert window.highlight_colors().shape == (0, 3)
+    assert window.highlight_outline().shape == (0, 2)
+
+
+def test_the_highlight_is_the_drawn_colour_made_brighter(window: ViewerWindow) -> None:
+    window.state.selection = Selection(item_id=window.model.get_item("a").id, face_id=0, cell=0)
+    window.state.picker_mode = PickerMode.FACE
+
+    cells = window.highlight()
+    drawn = window.cell_colors()[window.scene.visible_index(cells)]
+    # Side 1 of 'a' is red, and the highlight is that red, brighter.
+    assert np.all(drawn == (255, 0, 0))
+    assert np.array_equal(window.highlight_colors(), brighten(drawn))
+    assert np.all(window.highlight_colors() > drawn.astype(int) - 1)
+
+
+def test_a_numeric_colouring_is_brightened_from_its_colormap(window: ViewerWindow) -> None:
+    window.state.color_by = "emissivity_ir"
+    window.state.selection = Selection(item_id=window.model.get_item("a").id, face_id=0, cell=0)
+
+    colors = window.cell_colors()
+    assert colors.shape == (window.scene.n_cells, 3)
+    assert np.array_equal(
+        window.highlight_colors(), brighten(colors[window.scene.visible_index(window.highlight())])
+    )
+
+
+def test_the_outline_rings_the_selected_face_once(window: ViewerWindow) -> None:
+    window.state.selection = Selection(item_id=window.model.get_item("a").id, face_id=0, cell=0)
+    # One quad face, meshed as two triangles: four boundary edges, and the
+    # shared diagonal is not one of them.
+    assert window.highlight_outline().shape == (4, 2)
+
+
+def test_the_outline_of_a_two_sided_item_is_its_own_boundary(window: ViewerWindow) -> None:
+    # Both sides of every face are in the scene, coincident, so an outline
+    # taken over the cells would find no boundary at all.
+    window.state.picker_mode = PickerMode.ITEM
+    window.state.selection = Selection(item_id=window.model.get_item("a").id)
+    assert window.highlight_outline().shape[0] > 0
 
 
 # ── the toolbar ───────────────────────────────────────────────────────────
@@ -259,6 +315,31 @@ def test_picking_without_a_plotter_is_a_no_op(window: ViewerWindow) -> None:
 
 
 # ── the property table ────────────────────────────────────────────────────
+def test_item_granularity_reports_the_item_alone(
+    window: ViewerWindow, model: gmm.GeometryModel
+) -> None:
+    # The face under the cursor is how the item was reached, not what was
+    # selected, so none of its detail is reported.
+    window.state.picker_mode = PickerMode.ITEM
+    window.state.selection = Selection(
+        item_id=model.get_item("a").id, face_id=0, node_number=100, cell=0
+    )
+    rows = dict(window.info_panel.rows())
+
+    assert rows["Geometry"] == "a"
+    assert rows["Kind"] == "GeometryItem"
+    assert rows["Primitive"] == "Rectangle"
+    assert "Face slot" not in rows
+    assert "TMM node" not in rows
+
+
+def test_the_colour_is_one_of_the_reported_properties(
+    window: ViewerWindow, model: gmm.GeometryModel
+) -> None:
+    window.state.selection = Selection(item_id=model.get_item("a").id, face_id=0, cell=0)
+    assert dict(window.info_panel.rows())["Colour"] == "255, 0, 0"
+
+
 def test_a_tree_selection_describes_the_geometry_alone(
     window: ViewerWindow, model: gmm.GeometryModel
 ) -> None:
@@ -323,18 +404,33 @@ def test_formatting_a_slot_outside_the_property(window: ViewerWindow) -> None:
     assert window.properties["area"].format(-1) == MISSING
 
 
-# ── the log tab ───────────────────────────────────────────────────────────
-def test_the_log_tab_receives_pycanha_records(window: ViewerWindow) -> None:
-    logging.getLogger(LOGGER_NAME).warning("something to say")
-    assert "something to say" in window.info_panel.log_view.toPlainText()
+# ── lighting ──────────────────────────────────────────────────────────────
+def test_the_geometry_is_drawn_flat_until_lighting_is_asked_for(window: ViewerWindow) -> None:
+    assert not window.coloring().lighting
+
+    window.toolbar.lighting_action.setChecked(True)
+    assert window.state.lighting
+    assert window.coloring().lighting
 
 
-def test_closing_the_window_detaches_the_log_handler(window: ViewerWindow) -> None:
-    logger = logging.getLogger(LOGGER_NAME)
-    assert window.info_panel.handler in logger.handlers
+# ── reset ─────────────────────────────────────────────────────────────────
+def test_reset_puts_every_knob_back(window: ViewerWindow, model: gmm.GeometryModel) -> None:
+    window.state.hide([model.get_item("a").id])
+    window.state.color_by = "node_number"
+    window.state.set_node_range(100, 100)
+    window.state.picker_mode = PickerMode.TRIANGLE
+    window.state.lighting = True
+    window.state.selection = Selection(item_id=model.get_item("b").id)
 
-    window.close()
-    assert window.info_panel.handler not in logger.handlers
+    window.toolbar.reset_action.trigger()
+
+    assert window.state.hidden == frozenset()
+    assert window.state.color_by == DEFAULT_COLOR_BY
+    assert not window.state.filtered
+    assert window.state.picker_mode is PickerMode.FACE
+    assert not window.state.lighting
+    assert window.state.selection is None
+    assert window.scene.visible_cells.size == window.scene.n_cells
 
 
 # ── an empty model ────────────────────────────────────────────────────────

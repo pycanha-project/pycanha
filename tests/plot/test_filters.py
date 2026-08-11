@@ -1,4 +1,5 @@
-"""The node-range filter and find-node: both display overlays, never hiding."""
+"""The node filter: one filter, set as a range or as a single node, that greys
+what it leaves out and never hides it."""
 
 from collections.abc import Iterator
 
@@ -96,7 +97,7 @@ def test_the_filter_is_independent_of_hiding(
 
 def test_clearing_the_filter_ungreys_everything(window: ViewerWindow) -> None:
     window.state.set_node_range(100, 100)
-    window.state.clear_node_range()
+    window.state.clear_filter()
     assert window.filtered_out() is None
 
 
@@ -112,6 +113,21 @@ def test_the_toolbar_boxes_drive_the_filter(window: ViewerWindow, toolbar: Viewe
     assert window.state.node_range is None
 
 
+def test_the_clear_button_drops_whichever_filter_is_set(
+    window: ViewerWindow, toolbar: ViewerToolBar
+) -> None:
+    window.state.set_node_range(100, 110)
+    toolbar.clear_filter_action.trigger()
+    assert not window.state.filtered
+    assert toolbar.node_lo_edit.text() == ""
+    assert toolbar.node_hi_edit.text() == ""
+
+    window.state.found_node = 110
+    toolbar.clear_filter_action.trigger()
+    assert not window.state.filtered
+    assert toolbar.find_edit.text() == ""
+
+
 def test_the_boxes_echo_a_filter_set_elsewhere(
     window: ViewerWindow, toolbar: ViewerToolBar
 ) -> None:
@@ -121,40 +137,42 @@ def test_the_boxes_echo_a_filter_set_elsewhere(
     assert toolbar.node_hi_edit.text() == "210"
 
 
-# ── find node ─────────────────────────────────────────────────────────────
-def test_find_highlights_exactly_that_node_s_faces(window: ViewerWindow) -> None:
-    window.state.found_node = 110
-    cells = window.found_cells()
-
-    assert cells.size == 4
-    assert np.all(window.scene.node_numbers[cells] == 110)
-    # Answered through the model's own faces_of_node.
-    assert set(window.model.faces_of_node(110)) == set(window.scene.face_ids[cells].tolist())
-
-
-def test_find_leaves_visibility_and_colouring_alone(window: ViewerWindow) -> None:
+# ── one node ──────────────────────────────────────────────────────────────
+def test_one_node_greys_everything_else(window: ViewerWindow) -> None:
     window.state.color_by = "node_number"
-    before = window.coloring().values.copy()
     window.state.found_node = 110
+    colors = window.coloring().values
 
+    # Exactly the same rule the range follows: the node keeps the colour it is
+    # drawn in and the rest go grey. Nothing is hidden, and nothing is painted
+    # a colour of its own.
+    on_node = window.scene.node_numbers == 110
+    assert on_node.sum() == 4
     assert window.scene.visible_cells.size == window.scene.n_cells
-    assert np.array_equal(window.coloring().values, before)
+    assert np.all(colors[~on_node] == FILTERED_RGB)
+    assert not np.any(np.all(colors[on_node] == FILTERED_RGB, axis=1))
 
 
-def test_find_skips_hidden_geometry(window: ViewerWindow) -> None:
-    window.state.found_node = 100
-    assert window.found_cells().size == 4
+def test_a_node_and_a_range_are_the_same_filter(window: ViewerWindow) -> None:
+    window.state.set_node_range(100, 110)
+    window.state.found_node = 110
+    # Setting one drops the other; the bounds are what both come down to.
+    assert window.state.node_range is None
+    assert window.state.node_bounds() == (110, 110)
 
-    window.state.hide([window.model.get_item("a").id])
-    assert window.found_cells().size == 0
+    window.state.set_node_range(100, 110)
+    assert window.state.found_node is None
+    assert window.state.node_bounds() == (100, 110)
 
 
-def test_finding_a_node_that_is_not_there(window: ViewerWindow) -> None:
+def test_a_node_that_is_not_there_greys_everything(window: ViewerWindow) -> None:
     window.state.found_node = 9999
-    assert window.found_cells().size == 0
+    filtered = window.filtered_out()
+    assert filtered is not None
+    assert bool(np.all(filtered))
 
 
-def test_clearing_the_find_box_drops_the_highlight(
+def test_clearing_the_find_box_ungreys_everything(
     window: ViewerWindow, toolbar: ViewerToolBar
 ) -> None:
     toolbar.find_edit.setText("110")
@@ -164,11 +182,16 @@ def test_clearing_the_find_box_drops_the_highlight(
     toolbar.find_edit.setText("")
     toolbar.find_edit.editingFinished.emit()
     assert window.state.found_node is None
-    assert window.found_cells().size == 0
+    assert window.filtered_out() is None
 
 
-def test_the_find_box_echoes_a_node_set_elsewhere(
+def test_the_boxes_show_which_way_the_filter_was_set(
     window: ViewerWindow, toolbar: ViewerToolBar
 ) -> None:
     window.state.found_node = 210
     assert toolbar.find_edit.text() == "210"
+    assert toolbar.node_lo_edit.text() == ""
+
+    window.state.set_node_range(100, 110)
+    assert toolbar.find_edit.text() == ""
+    assert (toolbar.node_lo_edit.text(), toolbar.node_hi_edit.text()) == ("100", "110")

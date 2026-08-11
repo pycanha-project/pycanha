@@ -157,6 +157,20 @@ def test_the_colour_limits_span_the_whole_series(solved: pc.ThermalModel) -> Non
     assert series.clim() == (300.0, 330.0)
 
 
+def test_the_limits_can_be_narrowed_to_the_nodes_still_drawn(solved: pc.ThermalModel) -> None:
+    series = results.series(solved, "hot case", "T")
+    assert series is not None
+    # Still the whole series - both instants of node 100 - but only the nodes
+    # asked for. Hiding geometry may rescale; scrubbing may not.
+    assert series.clim([100, 101]) == (300.0, 312.0)
+    assert series.clim([110, 111]) == (320.0, 330.0)
+    # A node the case never carried simply is not in the range.
+    assert series.clim([100, 9999]) == (300.0, 302.0)
+    assert series.clim([9999]) is None
+    # A single node that never moves has no range to scale over, as ever.
+    assert series.clim([110]) is None
+
+
 def test_a_constant_series_has_no_range_to_scale(solved: pc.ThermalModel) -> None:
     for node in (100, 101, 110, 111, 200, 201, 210, 211):
         solved.tmm.nodes.set_T(node, 300.0)

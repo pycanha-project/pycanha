@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtCore import QModelIndex, QPoint, Qt
+from PySide6.QtTest import QTest
 
 import pycanha as pc
 from pycanha import gmm
@@ -263,3 +264,35 @@ def test_clearing_the_selection_clears_the_tree(panel: TreePanel, state: ViewSta
     selection_model = panel.view.selectionModel()
     assert selection_model is not None
     assert not selection_model.selectedIndexes()
+    # The current row goes with it, or clicking it again would change nothing
+    # and the geometry could never be selected back.
+    assert not selection_model.currentIndex().isValid()
+
+
+def test_clicking_below_the_last_row_deselects(
+    panel: TreePanel, state: ViewState, model: gmm.GeometryModel
+) -> None:
+    state.selection = Selection(item_id=model.get_item("B").id)
+    viewport = panel.view.viewport()
+    assert viewport is not None
+    # Far below anything the tree drew, which is where "no row" lives.
+    empty = QPoint(4, panel.view.height() + 500)
+    assert not panel.view.indexAt(empty).isValid()
+
+    QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, pos=empty)
+    assert state.selection is None
+
+
+def test_clicking_a_row_selects_it_even_when_it_is_already_current(
+    panel: TreePanel, state: ViewState, model: gmm.GeometryModel
+) -> None:
+    # A 3D pick can move the selection while the tree's current row stays put,
+    # and then a click on that row emits no currentChanged at all.
+    index = panel.proxy.mapFromSource(panel.tree_model.index_of(model.get_item("B").id))
+    selection_model = panel.view.selectionModel()
+    assert selection_model is not None
+    selection_model.setCurrentIndex(index, selection_model.SelectionFlag.ClearAndSelect)
+    state.selection = None
+
+    panel.view.clicked.emit(index)
+    assert state.selection == Selection(item_id=model.get_item("B").id)

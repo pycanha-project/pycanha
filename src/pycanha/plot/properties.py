@@ -6,7 +6,8 @@ cell reads its own value with :meth:`FaceProperty.per_cell`. Side 1 slots are
 even, side 2 odd, so the two sides of a face carry their own material,
 thickness and activity rather than repeating side 1's.
 
-Four families are offered (in this order): topology - which face, node, side
+Five families are offered (in this order): the colour each ThermalMesh side is
+painted, which is what a window opens on; topology - which face, node, side
 and item a cell belongs to; the six optical degrees of freedom; the bulk and
 geometric numbers; and the names and activity flags. Numeric properties use
 ``nan`` where the model has nothing to say, which pyvista draws in its
@@ -26,7 +27,7 @@ import numpy as np
 import pycanha_core as pcc
 
 from .picking import item_map
-from .polydata import categorical_colors
+from .polydata import MISSING_RGB, categorical_colors
 from .scene import slot_items, slot_nodes
 
 if TYPE_CHECKING:
@@ -47,6 +48,10 @@ OPTICAL_KEYS: tuple[tuple[str, str], ...] = (
 #: What the two activity flags mean, as legend entries.
 ACTIVITY_LABELS = {0: "inactive", 1: "active"}
 
+#: Key of the colouring a window opens on - the colour each ThermalMesh side
+#: carries, which is the model as it was drawn rather than as it was solved.
+COLOR_KEY = "color"
+
 #: Shown where the model has no value: a face slot with no material, an
 #: unassigned node, a numeric property that came out ``nan``.
 MISSING = "-"
@@ -59,7 +64,8 @@ class FaceProperty:
     ``categorical`` values are labels rather than magnitudes - a distinct color
     each, no color bar - and ``categories`` names them where the number itself
     is not the answer (an item id, an interned material name). Where it is
-    ``None`` the legend shows the value.
+    ``None`` the legend shows the value. ``palette`` pins what each category is
+    drawn in, for the one property whose value *is* a color.
 
     ``clim`` is the range an automatic color scale should use in place of the
     range of ``values``. Only a time-varying property sets it, and for the
@@ -75,10 +81,32 @@ class FaceProperty:
     categories: dict[int, str] | None = None
     unit: str = ""
     clim: tuple[float, float] | None = None
+    palette: dict[int, tuple[int, int, int]] | None = None
 
     def per_cell(self, face_ids: npt.ArrayLike) -> npt.NDArray[Any]:
         """Spread the property over cells, given their ``face_id`` cell array."""
         return self.values[np.asarray(face_ids).astype(np.intp)]
+
+    def colors_of(self, values: npt.ArrayLike) -> npt.NDArray[np.uint8]:
+        """The RGB every one of ``values`` is drawn in, as ``(n, 3)`` ``uint8``.
+
+        A property that carries its own :attr:`palette` is drawn in it - the
+        colour of the geometry *is* the value, and a qualitative palette over it
+        would replace the answer with an arbitrary stand-in. Everything else
+        gets the ranked palette, which spreads sparse labels such as node
+        numbers over adjacent entries instead of colliding modulo its size.
+        """
+        ids = np.asarray(values).astype(np.int64).reshape(-1)
+        if self.palette is None:
+            return categorical_colors(ids, rank=True)
+        size = 1 + max(self.palette) if self.palette else 1
+        lookup = np.full((size, 3), MISSING_RGB, dtype=np.uint8)
+        for value, color in self.palette.items():
+            lookup[value] = color
+        inside = (ids >= 0) & (ids < size)
+        colors = np.full((ids.size, 3), MISSING_RGB, dtype=np.uint8)
+        colors[inside] = lookup[ids[inside]]
+        return colors
 
     def category_label(self, value: int) -> str:
         """Name of one categorical value, for a legend entry or a table cell.
@@ -118,8 +146,8 @@ class Category:
 def categories(prop: FaceProperty, face_ids: npt.ArrayLike) -> list[Category]:
     """The distinct categories ``prop`` takes over ``face_ids``, with their colours.
 
-    The colours are taken from the same ranked palette the geometry is drawn
-    with, and the ranking is done over *every* cell rather than the visible
+    The colours are exactly the ones the geometry is drawn in, taken from
+    :meth:`FaceProperty.colors_of` over *every* cell rather than the visible
     ones - so switching a category off in the legend does not recolour the rest.
     """
     if not prop.categorical:
@@ -127,7 +155,7 @@ def categories(prop: FaceProperty, face_ids: npt.ArrayLike) -> list[Category]:
     values = prop.per_cell(face_ids).astype(np.int64)
     if values.size == 0:
         return []
-    colors = categorical_colors(values, rank=True)
+    colors = prop.colors_of(values)
     distinct, first = np.unique(values, return_index=True)
     return [
         Category(int(value), prop.category_label(int(value)), tuple(colors[index].tolist()))
@@ -152,6 +180,37 @@ class _Names:
         return self._index[name]
 
 
+class _Colors:
+    """Intern colours the same way, keeping what each index stands for.
+
+    A colour cannot be a categorical value on its own - a value is one integer -
+    so the distinct colours are numbered, and the numbering carries both the
+    label (the channels, as they are stored) and the colour itself, which is
+    what the geometry and the legend swatch are then drawn in.
+    """
+
+    def __init__(self) -> None:
+        self.labels: dict[int, str] = {}
+        self.palette: dict[int, tuple[int, int, int]] = {}
+        self._index: dict[tuple[int, int, int], int] = {}
+
+    def index(self, color: Any) -> int:
+        """Index of ``color``, assigning a new one on first sight; ``-1`` for ``None``."""
+        if color is None:
+            return -1
+        channels = tuple(int(channel) for channel in color.rgb)
+        if len(channels) != 3:
+            msg = f"a colour needs three channels, got {len(channels)}"
+            raise ValueError(msg)
+        rgb: tuple[int, int, int] = (channels[0], channels[1], channels[2])
+        if rgb not in self._index:
+            index = len(self._index)
+            self._index[rgb] = index
+            self.labels[index] = "{}, {}, {}".format(*rgb)
+            self.palette[index] = rgb
+        return self._index[rgb]
+
+
 def _item_slots(model: Any) -> Iterator[tuple[Any, slice, slice]]:
     """Yield each item with the slot ranges of its side-1 and side-2 faces.
 
@@ -168,6 +227,31 @@ def _item_slots(model: Any) -> Iterator[tuple[Any, slice, slice]]:
             continue
         first, stop = int(first_face_id), int(last_face_id) + 2
         yield item, slice(first, stop, 2), slice(first + 1, stop, 2)
+
+
+def face_colors(model: Any, n_slots: int) -> FaceProperty:
+    """The colour every face slot is painted, as a colour-by option.
+
+    Each ThermalMesh side carries its own colour, so the two slots of a face
+    can differ. The distinct colours are interned into categories - which is
+    what makes them legend rows that can be switched off and isolated like any
+    other - and pinned as the property's palette, so what is drawn is the
+    colour itself rather than a stand-in from a qualitative map.
+    """
+    values = np.full(int(n_slots), -1, dtype=np.int64)
+    colors = _Colors()
+    for item, side1, side2 in _item_slots(model):
+        thermal_mesh = item.thermal_mesh
+        values[side1] = colors.index(thermal_mesh.side1_color)
+        values[side2] = colors.index(thermal_mesh.side2_color)
+    return FaceProperty(
+        COLOR_KEY,
+        "Colour",
+        values,
+        categorical=True,
+        categories=colors.labels,
+        palette=colors.palette,
+    )
 
 
 def optical_properties(model: Any) -> npt.NDArray[np.float64]:
@@ -218,8 +302,9 @@ def face_areas(mesh: Any) -> npt.NDArray[np.float64]:
 def face_properties(model: Any) -> dict[str, FaceProperty]:
     """Build every color-by option of ``model``, keyed by :attr:`FaceProperty.key`.
 
-    Insertion order is the order the color-by combo offers them: topology
-    first, then the optical degrees of freedom, then the bulk and geometric
+    Insertion order is the order the color-by combo offers them: the colour the
+    model itself carries first, since that is what a window opens on, then
+    topology, then the optical degrees of freedom, then the bulk and geometric
     numbers, then the names and activity flags.
     """
     mesh = model.mesh
@@ -235,6 +320,8 @@ def face_properties(model: Any) -> dict[str, FaceProperty]:
     optical = optical_properties(model)
 
     properties = [
+        # First, because it is what the window opens on.
+        face_colors(model, n_slots),
         FaceProperty("item", "Geometry item", items, categorical=True, categories=item_names),
         FaceProperty("node_number", "TMM node", node_numbers, categorical=True),
         FaceProperty("face_id", "Face slot", slots, categorical=True),

@@ -30,6 +30,11 @@ _TriMesh = (pcc.gmm.TriMeshD, pcc.gmm.TriMeshF)
 #: Cell-data name used to stash the per-face RGB colors for categorical plots.
 RGB_NAME = "_rgb"
 
+#: What a category the model has nothing to assign is drawn in - a face slot
+#: with no material, no colour, no node. Grey, so it reads as "nothing here"
+#: rather than as one more value.
+MISSING_RGB: tuple[int, int, int] = (153, 153, 153)
+
 
 def resolve_mesh(obj: object) -> Any:
     """Return the TriMesh to render for a TriMesh or a GeometryModel."""
@@ -214,12 +219,13 @@ def categorical_colors(
     ids: npt.ArrayLike,
     *,
     palette: str = "tab20",
-    missing: tuple[float, float, float] = (0.6, 0.6, 0.6),
+    missing: tuple[int, int, int] = MISSING_RGB,
     rank: bool = False,
 ) -> npt.NDArray[np.uint8]:
     """Map integer category ids to distinct RGB colors from a qualitative palette.
 
-    Ids cycle through the palette; negative ids (unassigned) get ``missing``.
+    Ids cycle through the palette; negative ids (unassigned) get ``missing``,
+    as 0-255 channels.
     Returns an ``(n, 3)`` ``uint8`` array suitable for pyvista ``rgb=True``.
 
     With ``rank=True`` the ids are first replaced by their dense rank (the
@@ -237,7 +243,7 @@ def categorical_colors(
     cmap = mpl.colormaps[palette]
     lut = (np.array([cmap(k)[:3] for k in range(cmap.N)]) * 255).astype(np.uint8)
     colors = lut[np.mod(keys, cmap.N)]
-    colors[id_array < 0] = (np.array(missing) * 255).astype(np.uint8)
+    colors[id_array < 0] = np.array(missing, dtype=np.uint8)
     return colors
 
 

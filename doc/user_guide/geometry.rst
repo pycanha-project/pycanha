@@ -181,35 +181,51 @@ colouring, hide a bracket or read a second property, use the viewer instead:
 is closed, like every ``plot*`` call. It returns the window, so a script can
 read back what was selected. The viewer never modifies the model.
 
-The window has a geometry tree on the left, the 3D view in the middle, the
-appearance controls on the right and the results and property panes along the
-bottom.
+The window has the geometry tree and the properties of what is selected in the
+left column, the 3D view in the middle, the appearance controls on the right
+and the results strip along the bottom.
+
+It opens on the colour each ThermalMesh side carries — the model as it was
+built — whether or not results are loaded.
 
 **Tree.** One row per group, item and cutter, filtered by name from the box
 above it. Right-click a row for Hide, Show and Show only, which apply to the
 whole subtree. Hidden geometry is greyed in the tree, not drawn, and not
-pickable: clicks pass through it to whatever is behind.
+pickable: clicks pass through it to whatever is behind. Clicking the empty
+space below the last row deselects.
 
-**3D view.** Left-click a face to select it; the property table below describes
-it and its row is selected in the tree. Left-drag orbits, so a click that moves
-does not select. Right-click opens Hide, Show only, Show all and, when a
-transient case is selected, *Plot time history*. The ``Pick`` box in the
-toolbar decides whether a click selects the triangle, the face or the whole
-item.
+**3D view.** Left-click a face to select it; the property table describes it
+and its row is selected in the tree. Left-drag orbits, so a click that moves
+does not select. Right-click selects as well and opens Hide, Show only, Show
+all and, when a transient case is being shown, *Plot time history*; it never
+moves the camera. The ``Pick`` box in the toolbar decides whether a click
+selects the triangle, the face or the whole item — and with ``Item`` chosen the
+property table describes the item alone, since the face under the cursor is not
+what was selected. The selection is drawn in a brighter version of the colour
+it already has, ringed in one line.
 
-**Colour by.** 19 geometry properties: the face slot, node number, side and
-owning item; the six thermo-optical degrees of freedom; thickness, bulk
+**Colour by.** 20 geometry properties. The colour each side is painted comes
+first, and is what the window opens on; then the face slot, node number, side
+and owning item; the six thermo-optical degrees of freedom; thickness, bulk
 material properties and face area; and the material names and the active-side
 flags. Categorical properties get the legend list below the combo, where
 clicking a category isolates it and unchecking it hides everything sharing that
-value. Numeric ones get the colormap, the limits and the log toggle.
+value. Numeric ones get the colormap, the limits and the log toggle. An
+automatic scale is spread over the geometry that is **drawn**, so hiding
+something rescales it.
 
-**Results.** The case combo lists the ``DataModel``\ s already in
-``tm.tmm.thermal_data.models`` plus the live node state, and the attribute combo
-lists what that case holds — temperature, the heat loads, area, and the rest.
-The slider snaps to the instants the solver wrote; values are never
-interpolated. The colour limits are those of the whole series, so the frames of
-an animation are comparable. Read a result file before opening the window:
+**Lighting.** Off by default, so every face shows exactly the colour it stands
+for. The toolbar toggle shades the geometry instead, which is what makes a
+curved primitive read as a shape.
+
+**Results.** The strip along the bottom is live once ``Result`` is chosen in
+``Colour by``; until then there is nothing on screen for it to move. The case
+combo lists the ``DataModel``\ s already in ``tm.tmm.thermal_data.models`` plus
+the live node state, and the attribute combo lists what that case holds —
+temperature, the heat loads, area, and the rest. The slider snaps to the
+instants the solver wrote; values are never interpolated. The colour limits are
+those of the whole series, so the frames of an animation are comparable. Read a
+result file before opening the window:
 
 .. code-block:: python
 
@@ -229,13 +245,15 @@ every primitive.
    The corner lines of a cube are creases rather than boundaries and are not
    drawn either.
 
-**Node filter and find.** The ``Nodes`` boxes grey every face whose node falls
-outside the range; they never hide, so ``Show all`` keeps one meaning. ``Find
-node`` highlights one node's faces and leaves the camera where it is.
+**Node filter.** The ``Nodes`` boxes grey every face whose node falls outside
+the range, and the box beside them does the same for a single node; the two are
+one filter, so setting either empties the other, and ``Clear`` drops whichever
+is in force. The filter never hides, so ``Show all`` keeps one meaning, and it
+leaves the camera where it is.
 
-**Bottom pane.** *Properties* describes the current selection, one row per
-colour-by property. *Log* carries everything the run records, from the C++ core
-as well as from pycanha.
+**Resets.** ``Show all`` brings back every hidden item and category. ``Reset``
+puts the whole window back to how it opened — colouring, scale, filter,
+selection, granularity, edges, lighting, hidden geometry and camera.
 
 Next
 ----
