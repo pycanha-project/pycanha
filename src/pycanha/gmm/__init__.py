@@ -4,8 +4,11 @@ Object-centric scene graph mirroring ``pycanha-core`` 0.18: primitives,
 materials, thermal meshes, transformations, the scene tree
 (``GeometryItem`` / ``GeometryGroup`` / ``GeometryGroupCutted``), the
 ``GeometryModel`` (incl. ``mesh_parts`` / ``material_table`` raytracer scene
-assembly), ``ops`` / ``mesh.ops`` operations, and pyvista visualization with
-click-to-inspect face picking.
+assembly) and ``ops`` / ``mesh.ops`` operations.
+
+Visualization lives in :mod:`pycanha.plot` - ``pycanha.plot.to_polydata``,
+``pycanha.plot.plot``, the picking helpers and the interactive viewer. The
+``GeometryModel.plot*`` methods are the convenient way in.
 
 A thermal mesh states its activity once per calculation -- ``ActiveSide``
 selectors for the radiative and the conductive model separately -- so a surface
@@ -18,7 +21,7 @@ from __future__ import annotations
 
 import pycanha_core as pcc
 
-from . import mesh, ops, picking, viz
+from . import mesh, ops
 from .materials import BulkMaterial, Color, OpticalMaterial
 from .model import GeometryModel
 from .primitives import (
@@ -36,7 +39,6 @@ from .scene import Geometry, GeometryGroup, GeometryGroupCutted, GeometryItem
 from .thermalmesh import ActiveSide, ThermalMesh, active_side, active_sides, with_side
 from .transformations import CoordinateTransformation
 from .trimesh import TriMeshD, TriMeshF
-from .viz import plot, to_polydata
 
 # These add nothing on top of the pycanha-core versions, so they are
 # re-exported rather than subclassed: an empty subclass would not match the
@@ -79,9 +81,5 @@ __all__ = [
     "is_closed_solid",
     "mesh",
     "ops",
-    "picking",
-    "plot",
-    "to_polydata",
-    "viz",
     "with_side",
 ]

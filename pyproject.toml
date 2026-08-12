@@ -28,7 +28,15 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.0",
     "pycanha-core==0.19.0",
+    # Qt for the interactive viewer (``pycanha.plot``). Essentials rather than the
+    # ``PySide6`` meta-package: it carries QtCore/QtGui/QtWidgets - all that pyvistaqt,
+    # matplotlib's QtAgg backend and the viewer import - while the meta-package also
+    # pulls PySide6-Addons (QtWebEngine, Qt3D, Multimedia), hundreds of MB nothing here
+    # touches. The wheels are abi3 (``cp310-abi3``, requires-python <3.15), so one build
+    # covers 3.13 and 3.14 on linux/macos/windows alike.
+    "PySide6-Essentials>=6.8",
     "pyvista>=0.44",
+    "pyvistaqt>=0.11",
     "scipy>=1.17.1",
 ]
 
@@ -91,6 +99,7 @@ dev = [
     # Testing
     "pytest>=8.0",
     "pytest-cov>=5.0",
+    "pytest-qt>=4.4",
 ]
 
 [tool.pytest.ini_options]
@@ -157,6 +166,14 @@ ignore = [
     "PLR2004",  # magic numbers in tests are fine
     "ARG",      # fixtures often look unused
 ]
+# Qt's virtuals are camelCase (rowCount, columnCount, headerData, flags, setData...).
+# Overriding them is the only way to implement a model or a widget, and an override has
+# to keep the name it overrides - there is no code change that satisfies N802 here.
+# Scoped to the two modules that subclass Qt, and to that one rule.
+"src/pycanha/plot/tree_model.py" = ["N802"]
+"src/pycanha/plot/window.py" = ["N802"]
+"src/pycanha/plot/timehistory.py" = ["N802"]
+"src/pycanha/plot/panels/*.py" = ["N802"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["pycanha"]
@@ -184,6 +201,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "scipy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pyvistaqt.*"
 ignore_missing_imports = true
 
 [tool.pyright]

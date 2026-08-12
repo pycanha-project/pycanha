@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Self
+from importlib import import_module
+from typing import Any, Self
 
 import pycanha_core as pcc
 
@@ -46,6 +47,18 @@ class ThermalModel(pcc.tmm.ThermalModel):
     @property
     def gmm(self) -> GeometryModel:
         return self._gmm
+
+    def explore(self) -> Any:
+        """Open the interactive viewer on this model and block until it closes.
+
+        The primary entry point of :mod:`pycanha.plot`: the geometry comes from
+        :attr:`gmm` and the results panel from :attr:`tmm`, so this form is the
+        one that can show both. Returns the window. See
+        :func:`pycanha.plot.explore`.
+        """
+        # Imported on use, so a headless script that never opens a window does
+        # not pay for the Qt widgets.
+        return import_module("pycanha.plot.window").explore(self)
 
     def read_tmd(
         self,

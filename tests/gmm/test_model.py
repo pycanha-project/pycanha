@@ -5,6 +5,7 @@ import pytest
 
 import pycanha as pc
 from pycanha import gmm
+from pycanha.plot.scene import slot_items
 
 pv = pytest.importorskip("pyvista")
 
@@ -82,12 +83,16 @@ def test_emissivity_nan_when_side_has_no_optical() -> None:
     assert np.all(np.isnan(emissivity))
 
 
-def test_face_item_index_partitions_by_item() -> None:
-    poly = _nested_model().gmm.to_polydata()
-    index = _nested_model().gmm._face_item_index(poly)
-    # Three items (A, B, plate) reference faces; hole has no node numbers.
-    assert set(index.tolist()) >= {0, 1}
-    assert index.min() >= -1
+def test_item_coloring_partitions_by_item() -> None:
+    # The data path behind plot(scalars="item"): the mesh's primitive ranges say
+    # which item produced each face slot.
+    model = _nested_model().gmm
+    poly = model.to_polydata()
+    face_ids = np.asarray(poly.cell_data["face_id"]).astype(np.intp)
+    owners = slot_items(model.mesh)[face_ids]
+
+    expected = {model.get_item(name).id for name in ("A", "B", "plate")}
+    assert set(owners.tolist()) == expected
 
 
 def test_node_range_partition() -> None:

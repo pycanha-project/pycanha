@@ -32,3 +32,6 @@ Thumbs.db
 
 # Archives
 *.zip
+
+# Pycanha logs
+logs/

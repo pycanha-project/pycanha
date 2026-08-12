@@ -1,9 +1,14 @@
-"""pyvista visualization of gmm triangular meshes.
+"""Turn gmm triangular meshes into pyvista datasets.
 
 ``to_polydata`` converts a ``TriMeshF`` / ``TriMeshD`` (or a ``GeometryModel``)
 into a :class:`pyvista.PolyData`, attaching the per-triangle ``face_id`` and
-``node_number`` as cell data. ``plot`` renders it, coloring each face with a
-distinct (categorical) color by default.
+``node_number`` as cell data. The rest of this module maps model-keyed values
+onto those cells: :func:`map_node_data` / :func:`map_face_data` for a single
+mapping, :func:`cell_columns` for a whole time series, and
+:func:`categorical_colors` for labels that are names rather than magnitudes.
+
+Nothing here renders; see :mod:`pycanha.plot.render` for the free-function
+plotting path and :mod:`pycanha.plot.window` for the interactive viewer.
 """
 
 from __future__ import annotations
@@ -15,8 +20,6 @@ import numpy as np
 import pycanha_core as pcc
 import pyvista as pv
 
-from . import picking
-
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -25,10 +28,15 @@ if TYPE_CHECKING:
 _TriMesh = (pcc.gmm.TriMeshD, pcc.gmm.TriMeshF)
 
 #: Cell-data name used to stash the per-face RGB colors for categorical plots.
-_RGB_NAME = "_rgb"
+RGB_NAME = "_rgb"
+
+#: What a category the model has nothing to assign is drawn in - a face slot
+#: with no material, no colour, no node. Grey, so it reads as "nothing here"
+#: rather than as one more value.
+MISSING_RGB: tuple[int, int, int] = (153, 153, 153)
 
 
-def _resolve_mesh(obj: object) -> Any:
+def resolve_mesh(obj: object) -> Any:
     """Return the TriMesh to render for a TriMesh or a GeometryModel."""
     if isinstance(obj, _TriMesh):
         return obj
@@ -56,7 +64,7 @@ def to_polydata(obj: object, *, both_sides: bool = False) -> pv.PolyData:
     copies are coincident, so render them with ``backface_culling=True`` to see
     exactly the side that faces the camera.
     """
-    mesh = _resolve_mesh(obj)
+    mesh = resolve_mesh(obj)
     vertices = np.ascontiguousarray(mesh.vertices, dtype=np.float64)
     triangles = np.ascontiguousarray(mesh.triangles)
     n_tri = int(triangles.shape[0])
@@ -75,11 +83,7 @@ def to_polydata(obj: object, *, both_sides: bool = False) -> pv.PolyData:
     else:
         n_cells = n_tri
 
-    faces = np.empty((n_cells, 4), dtype=np.int64)
-    faces[:, 0] = 3
-    faces[:, 1:] = triangles
-    poly = pv.PolyData(vertices, faces.ravel())
-
+    poly = polydata_from_triangles(vertices, triangles)
     poly.cell_data["face_id"] = face_ids
 
     node_numbers = np.asarray(mesh.node_numbers)
@@ -91,6 +95,39 @@ def to_polydata(obj: object, *, both_sides: bool = False) -> pv.PolyData:
     if both_sides:
         poly.cell_data["side"] = np.repeat([1, 2], n_tri).astype(np.int32)
     return poly
+
+
+def polydata_from_triangles(
+    points: npt.NDArray[np.float64],
+    triangles: npt.NDArray[Any],
+) -> pv.PolyData:
+    """Build a triangle-only :class:`pyvista.PolyData` from points and indices.
+
+    VTK wants a flat connectivity array of ``[3, i, j, k]`` runs rather than an
+    ``(n, 3)`` index matrix, so build it once here. ``points`` may hold vertices
+    no triangle references - VTK tolerates that, which is what lets a subset of
+    the triangles be drawn without re-indexing the shared point array.
+    """
+    faces = np.empty((triangles.shape[0], 4), dtype=np.int64)
+    faces[:, 0] = 3
+    faces[:, 1:] = triangles
+    return pv.PolyData(points, faces.ravel())
+
+
+def polydata_from_lines(
+    points: npt.NDArray[np.float64],
+    edges: npt.NDArray[Any],
+) -> pv.PolyData:
+    """Build a line-only :class:`pyvista.PolyData` from points and vertex pairs.
+
+    The counterpart of :func:`polydata_from_triangles` for the edge overlays:
+    VTK wants ``[2, i, j]`` runs, and the same tolerance of unreferenced points
+    lets the lines share the master point array.
+    """
+    lines = np.empty((edges.shape[0], 3), dtype=np.int64)
+    lines[:, 0] = 2
+    lines[:, 1:] = edges
+    return pv.PolyData(points, lines=lines.ravel())
 
 
 def _map_cell_data(
@@ -142,6 +179,29 @@ def map_face_data(
     return _map_cell_data(poly, data, "face_id", default)
 
 
+def key_columns(
+    wanted: npt.ArrayLike,
+    keys: npt.ArrayLike,
+) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.bool_]]:
+    """Match each entry of ``wanted`` to its position in ``keys``.
+
+    Returns the position of each one and a mask of the entries that have one at
+    all. Doing this once turns every later frame of a time series into a single
+    fancy-index instead of a lookup per entry.
+    """
+    wanted_array = np.asarray(wanted).astype(np.int64)
+    key_array = np.asarray(keys).astype(np.int64)
+    if key_array.size == 0:
+        return (
+            np.zeros(wanted_array.size, dtype=np.intp),
+            np.zeros(wanted_array.size, dtype=np.bool_),
+        )
+    order = np.argsort(key_array)
+    position = np.clip(np.searchsorted(key_array[order], wanted_array), 0, key_array.size - 1)
+    found = key_array[order][position] == wanted_array
+    return order[position], found
+
+
 def cell_columns(
     poly: pv.PolyData,
     keys: npt.ArrayLike,
@@ -149,33 +209,23 @@ def cell_columns(
 ) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.bool_]]:
     """Match each cell of ``poly`` to its column in a ``keys``-ordered series.
 
-    Returns the per-cell column index and a mask of the cells that have one at
-    all. Doing this once turns every later frame of a time series into a single
-    fancy-index instead of a per-cell dict lookup.
+    The cells are keyed by their ``key`` cell array - ``node_number`` for a
+    node-indexed series, ``face_id`` for a face-indexed one.
     """
-    cell_keys = np.asarray(poly.cell_data[key]).astype(np.int64)
-    key_array = np.asarray(keys).astype(np.int64)
-    if key_array.size == 0:
-        return (
-            np.zeros(cell_keys.size, dtype=np.intp),
-            np.zeros(cell_keys.size, dtype=np.bool_),
-        )
-    order = np.argsort(key_array)
-    position = np.clip(np.searchsorted(key_array[order], cell_keys), 0, key_array.size - 1)
-    found = key_array[order][position] == cell_keys
-    return order[position], found
+    return key_columns(np.asarray(poly.cell_data[key]), keys)
 
 
 def categorical_colors(
     ids: npt.ArrayLike,
     *,
     palette: str = "tab20",
-    missing: tuple[float, float, float] = (0.6, 0.6, 0.6),
+    missing: tuple[int, int, int] = MISSING_RGB,
     rank: bool = False,
 ) -> npt.NDArray[np.uint8]:
     """Map integer category ids to distinct RGB colors from a qualitative palette.
 
-    Ids cycle through the palette; negative ids (unassigned) get ``missing``.
+    Ids cycle through the palette; negative ids (unassigned) get ``missing``,
+    as 0-255 channels.
     Returns an ``(n, 3)`` ``uint8`` array suitable for pyvista ``rgb=True``.
 
     With ``rank=True`` the ids are first replaced by their dense rank (the
@@ -193,121 +243,11 @@ def categorical_colors(
     cmap = mpl.colormaps[palette]
     lut = (np.array([cmap(k)[:3] for k in range(cmap.N)]) * 255).astype(np.uint8)
     colors = lut[np.mod(keys, cmap.N)]
-    colors[id_array < 0] = (np.array(missing) * 255).astype(np.uint8)
+    colors[id_array < 0] = np.array(missing, dtype=np.uint8)
     return colors
 
 
 def colorize_categorical(poly: pv.PolyData, ids: npt.ArrayLike, *, rank: bool = False) -> str:
     """Attach categorical RGB cell colors for ``ids`` and return the array name."""
-    poly.cell_data[_RGB_NAME] = categorical_colors(ids, rank=rank)
-    return _RGB_NAME
-
-
-def render(
-    poly: pv.PolyData,
-    *,
-    scalars: str | None = "face_id",
-    show_edges: bool = True,
-    off_screen: bool = False,
-    rgb: bool = False,
-    scalar_bar: bool = True,
-    lighting: bool | None = None,
-    pick: bool = True,
-    pick_source: object | None = None,
-    **kwargs: Any,
-) -> pv.Plotter:
-    """Render a prepared :class:`pyvista.PolyData` and show it.
-
-    With ``rgb=True`` the ``scalars`` array is interpreted as per-cell RGB colors
-    and no scalar bar is drawn. Otherwise ``scalars`` names a cell-data array to
-    color by (ignored if absent); pass ``None`` for a flat color. Returns the
-    :class:`pyvista.Plotter` (useful with ``off_screen=True`` for headless
-    rendering / testing).
-
-    ``lighting=False`` renders flat, unshaded faces. Categorical plots default to
-    that, because the default specular shading darkens faces by orientation and
-    makes two patches of the same category look like different colors.
-
-    ``pick_source`` is the TriMesh or GeometryModel ``poly`` was built from; when
-    given (and ``pick``), right-clicking a face prints its properties to the
-    console (see :func:`pycanha.gmm.picking.enable_face_picking`).
-    """
-    if lighting is None:
-        lighting = not rgb
-    plotter = pv.Plotter(off_screen=off_screen)
-    if rgb:
-        plotter.add_mesh(
-            poly,
-            scalars=scalars,
-            rgb=True,
-            show_edges=show_edges,
-            show_scalar_bar=False,
-            lighting=lighting,
-            **kwargs,
-        )
-    else:
-        active = scalars if (scalars is not None and scalars in poly.cell_data) else None
-        plotter.add_mesh(
-            poly,
-            scalars=active,
-            show_edges=show_edges,
-            show_scalar_bar=scalar_bar,
-            lighting=lighting,
-            **kwargs,
-        )
-    if pick and pick_source is not None:
-        model = pick_source if isinstance(pick_source, pcc.gmm.GeometryModel) else None
-        picking.enable_face_picking(plotter, poly, _resolve_mesh(pick_source), model=model)
-    plotter.show()
-    return plotter
-
-
-def plot(
-    obj: object,
-    *,
-    scalars: str | None = "face_id",
-    show_edges: bool = True,
-    off_screen: bool = False,
-    both_sides: bool = True,
-    pick: bool = True,
-    **kwargs: Any,
-) -> pv.Plotter:
-    """Render a TriMesh or GeometryModel with pyvista.
-
-    ``scalars="face_id"`` (the default) colors each face a distinct color;
-    ``"node_number"`` colors each tmm node distinctly; ``None`` is a flat color.
-    Returns the :class:`pyvista.Plotter` (useful with ``off_screen=True`` for
-    headless rendering / testing).
-
-    ``both_sides`` (default) draws each ThermalMesh side with its own data, so
-    the far side of a surface shows *its* face slot rather than the near side's.
-
-    ``pick`` (default) makes right-clicking a face print its properties to the
-    console; pass ``pick=False`` to leave the mouse buttons alone.
-    """
-    poly = to_polydata(obj, both_sides=both_sides)
-    if both_sides:
-        kwargs.setdefault("backface_culling", True)
-    if scalars in ("face_id", "node_number") and scalars in poly.cell_data:
-        name = colorize_categorical(
-            poly, np.asarray(poly.cell_data[scalars]), rank=scalars == "node_number"
-        )
-        return render(
-            poly,
-            scalars=name,
-            rgb=True,
-            show_edges=show_edges,
-            off_screen=off_screen,
-            pick=pick,
-            pick_source=obj,
-            **kwargs,
-        )
-    return render(
-        poly,
-        scalars=scalars,
-        show_edges=show_edges,
-        off_screen=off_screen,
-        pick=pick,
-        pick_source=obj,
-        **kwargs,
-    )
+    poly.cell_data[RGB_NAME] = categorical_colors(ids, rank=rank)
+    return RGB_NAME
