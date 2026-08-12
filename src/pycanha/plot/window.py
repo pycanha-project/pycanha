@@ -819,11 +819,20 @@ class ViewerWindow(QMainWindow):
         return None if selection is None else selection.node_number
 
     def show_context_menu(self) -> None:
-        """Pop the right-click menu up under the cursor."""
+        """Pop the right-click menu up under the cursor.
+
+        ``popup`` and not ``exec``: the menu goes up from inside a VTK
+        interactor observer, and ``exec`` would run a nested Qt event loop
+        there - re-entering the render window's event handling from within one
+        of its own callbacks, and holding the callback open until the user
+        picks something. ``popup`` returns at once and the action fires from
+        the normal event loop. The menu is parented, so it stays alive after
+        this returns; nothing here wants the triggered action back.
+        """
         menu = QMenu(self)
         for label, action in self.context_actions():
             menu.addAction(label, action)
-        menu.exec(QCursor.pos())
+        menu.popup(QCursor.pos())
 
     # ── reacting to the state ─────────────────────────────────────────────
     def apply_visibility(self) -> bool:

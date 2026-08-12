@@ -5,7 +5,11 @@ build:
   tools:
     python: "3.13"
   # Headless OpenGL + virtual framebuffer so the GMM examples can render with
-  # pyvista/VTK during the docs build (see doc/conf.py).
+  # pyvista/VTK during the docs build (see doc/conf.py). The libegl1 /
+  # libxkbcommon0 pair is what libQt6Gui inside the PySide6 wheels loads at
+  # import time: autodoc imports pycanha.plot.window to document the viewer,
+  # and without them that import fails with "libEGL.so.1: cannot open shared
+  # object file" and the viewer API page comes out empty.
   apt_packages:
     - xvfb
     - libgl1
@@ -13,6 +17,8 @@ build:
     - libgl1-mesa-dri
     - libxrender1
     - libxext6
+    - libegl1
+    - libxkbcommon0
 
 sphinx:
   configuration: doc/conf.py

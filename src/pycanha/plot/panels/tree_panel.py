@@ -157,7 +157,11 @@ class TreePanel(QWidget):
         menu.addAction("Show only", lambda: self._state.show_only(node.item_ids))
         viewport = self.view.viewport()
         if viewport is not None:
-            menu.exec(viewport.mapToGlobal(position))
+            # Shown, not run: ``popup`` leaves the action to the normal event
+            # loop instead of blocking this slot in a nested one, which is what
+            # the viewer's other context menu needs and keeps the two the same.
+            # The menu is parented to the view, so it outlives this call.
+            menu.popup(viewport.mapToGlobal(position))
 
     # ── helpers ───────────────────────────────────────────────────────────
     def _node_at(self, index: QModelIndex) -> GeometryNode | None:

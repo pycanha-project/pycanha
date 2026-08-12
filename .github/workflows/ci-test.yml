@@ -53,6 +53,19 @@ jobs:
         with:
           version: ${{ needs.setup.outputs.uv-version }}
           enable-cache: true
+      # The Qt libraries the PySide6 wheels link against are not part of the
+      # Linux runner image, and libQt6Gui needs them at *import* time: without
+      # them the pytest-qt plugin raises "libEGL.so.1: cannot open shared
+      # object file" while configuring, which aborts the whole session, not
+      # just the viewer tests. The windows and macos wheels are self-contained,
+      # so this is Linux-only. No X server is needed on top of these: the
+      # viewer tests run on Qt's offscreen platform.
+      - name: "Qt runtime libraries (Linux only)"
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
       - run: uv sync --locked
       - name: "pytest with coverage"
         env:
