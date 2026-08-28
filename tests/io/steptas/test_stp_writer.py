@@ -229,7 +229,7 @@ def test_optical_values_survive_the_specularity_conversion(
 
 
 def test_a_cut_survives_with_its_tools(tmp_path: Path) -> None:
-    """A plate cut by four tools, of which two have a solid to be written as.
+    """A plate cut by four tools, of which three have a solid to be written as.
 
     The format removes one solid per difference surface, so a shape cut by
     several becomes a chain of them -- and reading that chain back gives one
@@ -241,7 +241,7 @@ def test_a_cut_survives_with_its_tools(tmp_path: Path) -> None:
     cuts = [
         child for child in reread.children_recursive() if isinstance(child, GeometryGroupCutted)
     ]
-    assert len(cuts) == 2
+    assert len(cuts) == 3
     assert all(len(cut.cutters) == 1 for cut in cuts)
 
 

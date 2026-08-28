@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
 
-#: The colouring a window opens on: the geometry drawn in the colours the model
+#: The coloring a window opens on: the geometry drawn in the colors the model
 #: itself carries. It is the one option that describes the model as it was
 #: built rather than as it was solved, so it is what "the geometry" looks like -
 #: results included, since a loaded result is something to switch *to*.
@@ -56,7 +56,7 @@ class PickerMode(StrEnum):
 
     #: The whole owning ``GeometryItem``.
     ITEM = "item"
-    #: One face slot - both triangles of a quad face, one ThermalMesh side.
+    #: One face - both triangles of a quad face, one ThermalMesh side.
     FACE = "face"
     #: The single picked triangle.
     TRIANGLE = "triangle"
@@ -270,7 +270,7 @@ class ViewState:
         if name == self._color_by:
             return
         self._color_by = name
-        # Category numbers only mean something within one colouring: category 3
+        # Category numbers only mean something within one coloring: category 3
         # of "item" and category 3 of "optical material" are unrelated, so the
         # legend's hidden set cannot survive the switch.
         self._hidden_categories = frozenset()
@@ -278,7 +278,7 @@ class ViewState:
 
     @property
     def hidden_categories(self) -> frozenset[int]:
-        """Categories of the current colouring that the legend has switched off.
+        """Categories of the current coloring that the legend has switched off.
 
         A second source of invisibility beside :attr:`hidden`, and a different
         kind: that one hides *geometry*, this one hides everything sharing a
@@ -310,8 +310,8 @@ class ViewState:
     def lighting(self) -> bool:
         """Whether the geometry is shaded rather than drawn flat.
 
-        Off by default: the colouring is data, and a shaded face shows a
-        gradient of it that no colour bar and no legend swatch accounts for.
+        Off by default: the coloring is data, and a shaded face shows a
+        gradient of it that no color bar and no legend swatch accounts for.
         Turned on it is the surface normal that is being read instead, which is
         what makes a curved primitive legible.
         """

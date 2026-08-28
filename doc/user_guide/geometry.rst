@@ -38,8 +38,8 @@ used as a cutter.
 Thermal mesh
 ------------
 
-A :class:`~pycanha.gmm.ThermalMesh` divides a primitive into faces along the
-two parametric directions of the primitive. Each direction takes the
+A :class:`~pycanha.gmm.ThermalMesh` divides a primitive into **face pairs**
+along the two parametric directions of the primitive. Each direction takes the
 subdivision points, between 0 and 1:
 
 .. code-block:: python
@@ -48,14 +48,15 @@ subdivision points, between 0 and 1:
 
    mesh = gmm.ThermalMesh(list(np.linspace(0, 1, 5)), list(np.linspace(0, 1, 3)))
 
-This gives 4 by 2 faces. The subdivision does not have to be uniform, so a
+This gives 4 by 2 face pairs -- so 16 faces, since each pair has a face on
+side 1 and a face on side 2. The subdivision does not have to be uniform, so a
 region that needs resolution can get it without refining the whole primitive.
 
 Node numbers
 ^^^^^^^^^^^^
 
-Each face is assigned a node number, one per side. The numbering is a start
-value and a step in each direction:
+Each face is assigned **one** node number, so the two faces of a pair have
+their own. The numbering is a start value and a step in each direction:
 
 .. code-block:: python
 
@@ -64,15 +65,18 @@ value and a step in each direction:
    mesh.node2_start = 100
    mesh.node2_step = 1
 
-``mesh.node_of(i, j, side)`` returns the node number of one face, and
+``mesh.node_of(i, j, side)`` returns the node number of one face -- the face
+of pair ``(i, j)`` on that side -- and
 :meth:`~pycanha.gmm.GeometryModel.faces_of_node` goes the other way, from a
 node number to the faces assigned to it.
 
 Sides
 ^^^^^
 
-A face has two sides, side 1 and side 2, each with its own thermo-optical
-properties, color, thickness and bulk material:
+A **primitive** has two sides, side 1 and side 2. A face is one-sided: it is
+defined by its normal and carries its own node number, thermo-optical
+properties, color, thickness and bulk material. The properties set below
+therefore belong to the two **faces** of each pair, one each:
 
 .. code-block:: python
 
@@ -94,6 +98,25 @@ Which sides take part is set separately for radiation and for conduction:
 :class:`~pycanha.gmm.ActiveSide` is ``NONE``, ``SIDE1``, ``SIDE2`` or ``BOTH``.
 The two selectors are independent. A surface can conduct without radiating and
 the other way round.
+
+Which side is side 1
+^^^^^^^^^^^^^^^^^^^^
+
+The triangulation decides. A triangle always defines **both** faces of its
+pair: the face whose normal is the triangle's winding normal is **side 1** and
+takes the even face id, and the same triangle with its normal reversed is side
+2, the odd id. A triangle is therefore never tagged with an odd face id, and
+``face_id % 2`` *is* the side.
+
+Every primitive winds its triangulation to agree with its own
+``normal_at_uv``, so side 1 is the face that normal points out of. For a
+:class:`~pycanha.gmm.Disc` that normal is its axis, ``(p2 - p1)`` normalised,
+which makes side 1 the face the axis points away from.
+
+This matters because thermo-optical properties, node numbers and activity flags
+all follow the face id. A primitive whose winding disagreed with its
+``normal_at_uv`` would silently attach every side-1 property to its side-2
+geometry.
 
 Items and groups
 ----------------
@@ -170,7 +193,7 @@ The interactive viewer
 ----------------------
 
 Each ``plot*`` call fixes what it shows before the window opens. To change the
-colouring, hide a bracket or read a second property, use the viewer instead:
+coloring, hide a bracket or read a second property, use the viewer instead:
 
 .. code-block:: python
 
@@ -185,7 +208,7 @@ The window has the geometry tree and the properties of what is selected in the
 left column, the 3D view in the middle, the appearance controls on the right
 and the results strip along the bottom.
 
-It opens on the colour each ThermalMesh side carries — the model as it was
+It opens on the color each ThermalMesh side carries — the model as it was
 built — whether or not results are loaded.
 
 **Tree.** One row per group, item and cutter, filtered by name from the box
@@ -201,11 +224,11 @@ all and, when a transient case is being shown, *Plot time history*; it never
 moves the camera. The ``Pick`` box in the toolbar decides whether a click
 selects the triangle, the face or the whole item — and with ``Item`` chosen the
 property table describes the item alone, since the face under the cursor is not
-what was selected. The selection is drawn in a brighter version of the colour
+what was selected. The selection is drawn in a brighter version of the color
 it already has, ringed in one line.
 
-**Colour by.** 20 geometry properties. The colour each side is painted comes
-first, and is what the window opens on; then the face slot, node number, side
+**Color by.** 20 geometry properties. The color each side is painted comes
+first, and is what the window opens on; then the face, node number, side
 and owning item; the six thermo-optical degrees of freedom; thickness, bulk
 material properties and face area; and the material names and the active-side
 flags. Categorical properties get the legend list below the combo, where
@@ -214,16 +237,16 @@ value. Numeric ones get the colormap, the limits and the log toggle. An
 automatic scale is spread over the geometry that is **drawn**, so hiding
 something rescales it.
 
-**Lighting.** Off by default, so every face shows exactly the colour it stands
+**Lighting.** Off by default, so every face shows exactly the color it stands
 for. The toolbar toggle shades the geometry instead, which is what makes a
 curved primitive read as a shape.
 
 **Results.** The strip along the bottom is live once ``Result`` is chosen in
-``Colour by``; until then there is nothing on screen for it to move. The case
+``Color by``; until then there is nothing on screen for it to move. The case
 combo lists the ``DataModel``\ s already in ``tm.tmm.thermal_data.models`` plus
 the live node state, and the attribute combo lists what that case holds —
 temperature, the heat loads, area, and the rest. The slider snaps to the
-instants the solver wrote; values are never interpolated. The colour limits are
+instants the solver wrote; values are never interpolated. The color limits are
 those of the whole series, so the frames of an animation are comparable. Read a
 result file before opening the window:
 
@@ -252,7 +275,7 @@ is in force. The filter never hides, so ``Show all`` keeps one meaning, and it
 leaves the camera where it is.
 
 **Resets.** ``Show all`` brings back every hidden item and category. ``Reset``
-puts the whole window back to how it opened — colouring, scale, filter,
+puts the whole window back to how it opened — coloring, scale, filter,
 selection, granularity, edges, lighting, hidden geometry and camera.
 
 Next

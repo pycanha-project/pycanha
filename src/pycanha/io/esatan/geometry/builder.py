@@ -60,6 +60,8 @@ from .mappings import (
     bulk_from_triple,
     esatan_mesh_to_cuts,
     is_uninitialised_bulk,
+    prism_faces,
+    prism_solid,
     split_thickness,
 )
 from .palette import DEFAULT_COLOUR, colour_of
@@ -73,7 +75,7 @@ if TYPE_CHECKING:
     from pycanha.io.diagnostics import Diagnostic
 
     from ..lang.evaluate import Value
-    from .mappings import BoxAxes
+    from .mappings import BoxAxes, PrismCorners
 
 __all__ = ["read_erg_into"]
 
@@ -134,12 +136,15 @@ class _Builder:
         self.declared: dict[str, str] = {}
         self.senses: dict[str, int] = {}
         self.box_axes: dict[str, BoxAxes] = {}
+        self.prism_corners: dict[str, PrismCorners] = {}
         self.consumed: set[str] = set()
         self.unhandled: list[ast.Statement] = []
         self._order: list[str] = []
         self._unnumbered: list[str] = []
         self._boxes: dict[str, tuple[int, bool]] = {}
         """Boxes still read as geometry, as (definition line, is meshed)."""
+        self._prisms: dict[str, tuple[int, int, bool]] = {}
+        """Prisms still read as geometry, as (line, wall count, is meshed)."""
         self._skipped: dict[str, str] = {}
         """Names deliberately not built, and the construct that each one was."""
 
@@ -165,6 +170,22 @@ class _Builder:
                     "ERG_BOX_NODE_ORDER",
                     f"'{name}' is a meshed box: its faces are numbered in this reader's own "
                     "face order, so per-face node numbers are a permutation of the source's",
+                    line=line,
+                )
+        for name, (line, walls, meshed) in self._prisms.items():
+            # Deferred for the same reason as the box above: a prism used as a
+            # cutter is read as a closed solid, and never had these walls.
+            self.diagnostics.info(
+                "ERG_PRISM_DECOMPOSED",
+                f"'{name}' is a triangular prism; it becomes a group of {walls} side walls, "
+                "with no end caps -- the prism has none",
+                line=line,
+            )
+            if meshed:
+                self.diagnostics.error(
+                    "ERG_BOX_NODE_ORDER",
+                    f"'{name}' is a meshed prism: its walls are numbered in this reader's own "
+                    "order, so per-face node numbers are a permutation of the source's",
                     line=line,
                 )
         if self._unnumbered:
@@ -549,15 +570,19 @@ class _Builder:
         self.senses[name] = args.integer("sense", 1)
 
     def _build_prism(self, name: str, call: ast.Call, line: int) -> None:
-        """Build a triangular prism as its three side walls.
+        """Build a triangular prism as its three side walls, solid in reserve.
 
-        Unlike a box a prism has no closed-solid reading, so it cannot be used
-        as a cutting tool -- and it is not a closed shell either, because its
-        triangular ends are genuinely absent rather than merely undecomposed.
+        Like a box, which reading is right depends on where the prism is *used*
+        and the cut statement comes later in the file, so both are prepared
+        here: the group of walls is registered now and swapped for the closed
+        solid if the name turns up after a ``-``.  The triangular ends are
+        genuinely absent from the walls rather than merely undecomposed -- they
+        exist only in the solid.
         """
         args = self._arguments(call)
         try:
-            faces = PRISMS[call.name.upper()](args)
+            corners = PRISMS[call.name.upper()](args)
+            faces = prism_faces(corners)
         except EvaluationError as exc:
             self.diagnostics.error(
                 "ERG_BAD_PRIMITIVE",
@@ -565,20 +590,9 @@ class _Builder:
                 line=line,
             )
             return
+        self.prism_corners[name] = corners
         meshed = self._register_faces(name, faces, call, args, line)
-        self.diagnostics.info(
-            "ERG_PRISM_DECOMPOSED",
-            f"'{name}' is a triangular prism; it becomes a group of {len(faces)} side walls, "
-            "with no end caps -- the prism has none",
-            line=line,
-        )
-        if meshed:
-            self.diagnostics.error(
-                "ERG_BOX_NODE_ORDER",
-                f"'{name}' is a meshed prism: its walls are numbered in this reader's own "
-                "order, so per-face node numbers are a permutation of the source's",
-                line=line,
-            )
+        self._prisms[name] = (line, len(faces), meshed)
         self.senses[name] = args.integer("sense", 1)
 
     def _register_faces(
@@ -606,7 +620,7 @@ class _Builder:
             # numbers unique and the count right even though the order in which
             # ESATAN visits the faces is not reproduced.
             self._offset_nodes(item.thermal_mesh, offset)
-            offset += item.thermal_mesh.num_pair_faces
+            offset += item.thermal_mesh.num_face_pairs
             items.append(item)
         self._register(name, GeometryGroup(name, list(items)))
         return offset > len(faces)
@@ -984,8 +998,9 @@ class _Builder:
         cutters: list[GeometryItem] = []
         for candidate, term in zip(candidates, terms[1:], strict=True):
             cutter_name = term.name if isinstance(term, ast.Ref) else "<expression>"
-            # A box arrives here as its six faces; a group cannot cut, so it is
-            # re-read as the closed solid the same statement describes.
+            # A box arrives here as its six faces and a prism as its three walls;
+            # a group cannot cut, so it is re-read as the closed solid the same
+            # statement describes.
             cutter = (
                 candidate
                 if isinstance(candidate, GeometryItem)
@@ -1023,12 +1038,18 @@ class _Builder:
         self._register(name, GeometryGroupCutted(name, [target], cutters))
 
     def _solid_form(self, name: str, line: int) -> GeometryItem | None:
-        """Re-read a box as a closed solid, because a group cannot cut anything.
+        """Re-read a decomposed shape as a closed solid, since a group cannot cut.
 
         A cutting tool needs no mesh, optical properties or node numbers, so the
-        six faces built for the geometry reading are dropped and the registered
-        object is replaced -- the box was only ever going to be one of the two.
+        flat faces built for the geometry reading are dropped and the registered
+        object is replaced -- the shape was only ever going to be one of the two.
+        Boxes and prisms are the two that have a solid reading; anything else
+        has none, and ``None`` is what tells the caller to report that.
         """
+        return self._box_solid_form(name, line) or self._prism_solid_form(name, line)
+
+    def _box_solid_form(self, name: str, line: int) -> GeometryItem | None:
+        """The closed-solid reading of a box, if *name* is one."""
         axes = self.box_axes.get(name)
         if axes is None:
             return None
@@ -1052,6 +1073,31 @@ class _Builder:
             "ERG_BOX_CUTTER",
             f"'{name}' is a box used as a cutting tool, so it is read as a single closed "
             "solid rather than as its six faces",
+            line=line,
+        )
+        return item
+
+    def _prism_solid_form(self, name: str, line: int) -> GeometryItem | None:
+        """The closed-solid reading of a triangular prism, if *name* is one.
+
+        The prism's two triangular ends exist only in this reading, where they
+        close the volume being subtracted and are never meshed or radiated.
+        """
+        corners = self.prism_corners.get(name)
+        if corners is None:
+            return None
+        try:
+            solid = prism_solid(corners)
+        except EvaluationError as exc:
+            self.diagnostics.error("ERG_BAD_PRIMITIVE", f"'{name}': {exc}", line=line)
+            return None
+        item = GeometryItem(name, solid, ThermalMesh())
+        self.geometries[name] = item
+        self._prisms.pop(name, None)
+        self.diagnostics.info(
+            "ERG_PRISM_CUTTER",
+            f"'{name}' is a triangular prism used as a cutting tool, so it is read as a "
+            "single closed solid -- with the two triangular ends its shell form has not",
             line=line,
         )
         return item

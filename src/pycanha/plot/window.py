@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 #: Actor name of the geometry, so a rebuild replaces it instead of stacking.
 MESH_ACTOR = "_geometry"
 
-#: Cell-data name the current colouring is written to on the visible subset.
+#: Cell-data name the current coloring is written to on the visible subset.
 SCALARS_NAME = "_coloring"
 
 #: Actor names of the selection overlay: the brightened copy of what is
@@ -70,7 +70,7 @@ SELECTION_HIGHLIGHT = "_selection"
 SELECTION_OUTLINE = "_selection_outline"
 
 #: How far the selection is brightened towards white, as a fraction. The
-#: highlight is the geometry's *own* colour made brighter rather than a colour
+#: highlight is the geometry's *own* color made brighter rather than a color
 #: of its own: a flat wash replaces the data with the fact that it is selected.
 BRIGHTEN = 0.45
 
@@ -85,8 +85,8 @@ SELECTION_OUTLINE_WIDTH = 2.0
 FACE_EDGES = "_face_edges"
 PRIMITIVE_EDGES = "_primitive_edges"
 
-#: Colour of both edge overlays. The two are told apart by weight rather than
-#: by hue: they are a technical drawing over the colouring, and a second colour
+#: Color of both edge overlays. The two are told apart by weight rather than
+#: by hue: they are a technical drawing over the coloring, and a second color
 #: would read as a third piece of data.
 EDGE_COLOR = "black"
 
@@ -120,10 +120,10 @@ CLICK_SLOP = 4
 
 @dataclass(frozen=True)
 class Coloring:
-    """Everything the actor needs to draw one colour-by choice.
+    """Everything the actor needs to draw one color-by choice.
 
-    ``rgb`` distinguishes the two paths: categorical colourings are per-cell
-    RGB with no colour bar, because a node number is a label and a colormap
+    ``rgb`` distinguishes the two paths: categorical colorings are per-cell
+    RGB with no color bar, because a node number is a label and a colormap
     would suggest it is a magnitude; numeric ones go on a real colormap.
     """
 
@@ -180,7 +180,7 @@ class ViewerWindow(QMainWindow):
         self._drawn_edges = False
         self.time_history: TimeHistoryWindow | None = None
 
-        # Offered as one more colour-by option, so the legend, the colour scale
+        # Offered as one more color-by option, so the legend, the color scale
         # and the property table need to know nothing about results.
         self.has_results = bool(results.cases(thermal_model))
         if self.has_results:
@@ -208,8 +208,8 @@ class ViewerWindow(QMainWindow):
         self._add_dock("Appearance", self.legend_panel, Qt.DockWidgetArea.RightDockWidgetArea)
 
         # The results strip is always there so the window keeps its shape, and
-        # is live only while the geometry is coloured by a result: what it
-        # controls is which instant of that colouring is on screen.
+        # is live only while the geometry is colored by a result: what it
+        # controls is which instant of that coloring is on screen.
         self.time_panel = TimePanel(thermal_model, self.state, self)
         self._add_dock("Results", self.time_panel, Qt.DockWidgetArea.BottomDockWidgetArea)
 
@@ -217,7 +217,7 @@ class ViewerWindow(QMainWindow):
         self._enable_picking()
         # The panel published its default case while the window was still being
         # built, before anything was subscribed to hear it, so the result
-        # colouring is filled in here - ready for the moment it is chosen.
+        # coloring is filled in here - ready for the moment it is chosen.
         self.refresh_result()
         self._sync_results_strip()
         self.rebuild_geometry()
@@ -232,16 +232,16 @@ class ViewerWindow(QMainWindow):
         """Leave the strip live only while a result is what is being drawn."""
         self.time_panel.setEnabled(self.has_results and self.state.color_by == RESULT_KEY)
 
-    # ── colouring ─────────────────────────────────────────────────────────
+    # ── coloring ─────────────────────────────────────────────────────────
     def current_property(self) -> FaceProperty:
-        """The property the geometry is currently coloured by."""
+        """The property the geometry is currently colored by."""
         return self.properties[self.state.color_by]
 
     def coloring(self) -> Coloring:
-        """The colours of the currently visible cells, ready for the actor.
+        """The colors of the currently visible cells, ready for the actor.
 
         This is the array a headless test asserts on: it is what VTK would be
-        handed, and every colouring decision - categorical versus numeric,
+        handed, and every coloring decision - categorical versus numeric,
         the limits, the reversed colormap - has already been made in it.
         """
         prop = self.current_property()
@@ -249,8 +249,8 @@ class ViewerWindow(QMainWindow):
         filtered = self.filtered_out()
         lighting = self.state.lighting
         if prop.categorical:
-            # Colours resolved over *every* cell rather than the visible ones,
-            # so hiding something does not recolour what is left.
+            # Colors resolved over *every* cell rather than the visible ones,
+            # so hiding something does not recolor what is left.
             colors = self.scene.visible_scalars(prop.colors_of(master))
             if filtered is not None:
                 colors = colors.copy()
@@ -264,7 +264,7 @@ class ViewerWindow(QMainWindow):
             numbers = np.where(filtered, np.nan, numbers)
         title = f"{prop.label} [{prop.unit}]" if prop.unit else prop.label
         # A property that knows its own range says so - a frame of a time
-        # series is drawn on the scale of the whole series, or the colours
+        # series is drawn on the scale of the whole series, or the colors
         # would mean something different at every instant. Either way the range
         # covers only what is drawn: the property is rebuilt against the visible
         # nodes, and the values here are the visible cells'.
@@ -323,25 +323,25 @@ class ViewerWindow(QMainWindow):
     def visible_nodes(self) -> npt.NDArray[np.int64]:
         """The tmm nodes of the geometry currently drawn, ascending and distinct.
 
-        What the automatic colour scale of a result is spent on: a node no
-        longer on screen has no say in the range its colours are spread over.
+        What the automatic color scale of a result is spent on: a node no
+        longer on screen has no say in the range its colors are spread over.
         """
         return np.unique(self.scene.node_numbers[self.scene.visible_cells])
 
     def refresh_result(self) -> None:
-        """Rebuild the result colouring from the case, attribute and instant."""
+        """Rebuild the result coloring from the case, attribute and instant."""
         if not self.has_results:
             return
         selection = self.state.result
         series = self.current_series()
-        n_slots = int(self.scene.mesh.nf())
+        n_faces = int(self.scene.mesh.nf())
         if selection is None or series is None:
-            self.properties[RESULT_KEY] = results.empty_property(n_slots)
+            self.properties[RESULT_KEY] = results.empty_property(n_faces)
         else:
             self.properties[RESULT_KEY] = results.result_property(
                 series,
                 selection.time_index,
-                self.scene.slot_nodes,
+                self.scene.face_nodes,
                 visible_nodes=self.visible_nodes(),
             )
         if self.time_panel is not None:
@@ -365,7 +365,7 @@ class ViewerWindow(QMainWindow):
         Opens the window on first use and leaves it open in
         :attr:`time_history`: every node picked afterwards adds another curve,
         which is the whole point of plotting a history rather than reading one
-        number off the colour bar.
+        number off the color bar.
         """
         series = self.current_series()
         if series is None or not series.times.size:
@@ -510,10 +510,10 @@ class ViewerWindow(QMainWindow):
         return node.item_ids if node is not None else frozenset({int(geometry_id)})
 
     def highlight_colors(self) -> npt.NDArray[np.uint8]:
-        """What the highlighted cells are drawn in: their own colour, brighter.
+        """What the highlighted cells are drawn in: their own color, brighter.
 
         The selection keeps saying what it said - its material, its node, its
-        temperature - and adds only that it is selected. A wash of one colour
+        temperature - and adds only that it is selected. A wash of one color
         would take the answer away just as the answer is being asked for.
         """
         cells = self.highlight()
@@ -561,7 +561,7 @@ class ViewerWindow(QMainWindow):
         triangles rather than filtered afterwards, so hiding half a model
         outlines what is left rather than leaving the removed part's outline
         hanging in space. Cached, since the pass is the one O(n log n) step in
-        the viewer and neither hiding nor a colour change happens per frame.
+        the viewer and neither hiding nor a color change happens per frame.
         """
         cached = self._edge_cache.get(kind)
         if cached is not None:
@@ -852,7 +852,7 @@ class ViewerWindow(QMainWindow):
     def category_mask(self) -> npt.NDArray[np.bool_] | None:
         """Per-master-cell mask of the categories the legend leaves switched on.
 
-        ``None`` when nothing is switched off, or when the current colouring is
+        ``None`` when nothing is switched off, or when the current coloring is
         numeric and so has no categories to switch off.
         """
         hidden = self.state.hidden_categories
@@ -876,8 +876,8 @@ class ViewerWindow(QMainWindow):
                 f"{len(self.state.hidden_categories)} categor(ies) hidden"
             )
         elif change is Change.COLORING:
-            # Switching the colouring resets the legend's hidden categories, so
-            # what is drawn changes along with what colour it is drawn in.
+            # Switching the coloring resets the legend's hidden categories, so
+            # what is drawn changes along with what color it is drawn in.
             self.apply_visibility()
             self._sync_results_strip()
             self.rebuild_geometry()
@@ -890,8 +890,8 @@ class ViewerWindow(QMainWindow):
             self._draw_highlight()
             self._draw_edges()
         elif change is Change.FILTER:
-            # The filter greys rather than hides, so it is a recolour - and the
-            # highlight is drawn in the colours it just changed.
+            # The filter greys rather than hides, so it is a recolor - and the
+            # highlight is drawn in the colors it just changed.
             self.rebuild_geometry()
             self._draw_highlight()
         elif change is Change.RESULTS:
@@ -947,7 +947,7 @@ def _colormap_colors(
 
 
 def brighten(colors: npt.ArrayLike, fraction: float = BRIGHTEN) -> npt.NDArray[np.uint8]:
-    """Move colours ``fraction`` of the way to white.
+    """Move colors ``fraction`` of the way to white.
 
     Towards white in both directions: a dark face lightens a lot and a pale one
     a little, so the selection always reads as *more* of what it already was.

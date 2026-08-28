@@ -112,7 +112,7 @@ def test_the_same_primitives_are_written(
     """A box and a prism are several surfaces here, so they are named apart."""
     # A box or a prism *used as geometry* becomes several named faces.  The one
     # used as a cutting tool stays a single solid, so it keeps its own name.
-    decomposed = {"SCS_BOX", "PT_BOX", "PT_PRISM"}
+    decomposed = {"SCS_BOX", "PT_BOX", "PT_PRISM", "SCS_PRISM"}
     expected = set(reference) - decomposed
     faces = {name for name in written if re.search(r"_face\d$", name)}
     assert set(written) - faces == expected

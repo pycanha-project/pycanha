@@ -1238,6 +1238,50 @@ SCS_PARA = SHELL_SCS_PARABOLOID (
     conductance = 0.0,
     emittance = 0.0);
 
+GEOMETRY SCS_PRISM;
+SCS_PRISM = SHELL_SCS_TRIANGULAR_PRISM (
+    hmax = 0.4,
+    beta = 0.2,
+    hmin = 0.0,
+    gamma_min = 60.0,
+    gamma_max = 120.0,
+    sense = 1,
+    meshType1 = "regular",
+    nodes1 = 1,
+    ratio1 = 1.0,
+    meshType2 = "regular",
+    nodes2 = 1,
+    ratio2 = 1.0,
+    meshType3 = "regular",
+    nodes3 = 1,
+    ratio3 = 1.0,
+    meshType4 = "regular",
+    nodes4 = 1,
+    ratio4 = 1.0,
+    analysis_type = "Lumped Parameter",
+    side1 = "Active",
+    criticality1 = "NORMAL",
+    nbase1 = 1800,
+    ndelta1 = 1,
+    opt1 = Black,
+    colour1 = "BLUE_CYAN",
+    side2 = "Active",
+    criticality2 = "NORMAL",
+    nbase2 = 0,
+    ndelta2 = 1,
+    opt2 = Black,
+    colour2 = "BLUE_CYAN",
+    composition = "SINGLE",
+    bulk = [-10000.0, -10000.0, -10000.0],
+    thick = 0.0,
+    bulk1 = [-10000.0, -10000.0, -10000.0],
+    thick1 = 0.0,
+    bulk2 = [-10000.0, -10000.0, -10000.0],
+    thick2 = 0.0,
+    through_cond = "BULK",
+    conductance = 0.0,
+    emittance = 0.0);
+
 GEOMETRY SCS_RECT;
 SCS_RECT = SHELL_SCS_RECTANGLE (
     xmax = 0.2,
@@ -1333,6 +1377,44 @@ SCS_TORUS = SHELL_SCS_TORUS (
     side1 = "Active",
     criticality1 = "NORMAL",
     nbase1 = 10000,
+    ndelta1 = 1,
+    opt1 = Black,
+    colour1 = "BLUE_CYAN",
+    side2 = "Active",
+    criticality2 = "NORMAL",
+    nbase2 = 0,
+    ndelta2 = 1,
+    opt2 = Black,
+    colour2 = "BLUE_CYAN",
+    composition = "SINGLE",
+    bulk = [-10000.0, -10000.0, -10000.0],
+    thick = 0.0,
+    bulk1 = [-10000.0, -10000.0, -10000.0],
+    thick1 = 0.0,
+    bulk2 = [-10000.0, -10000.0, -10000.0],
+    thick2 = 0.0,
+    through_cond = "BULK",
+    conductance = 0.0,
+    emittance = 0.0);
+
+GEOMETRY SCS_TRAP;
+SCS_TRAP = SHELL_SCS_TRAPEZOID (
+    beta_min = 0.1,
+    beta_max = 0.3,
+    gamma_min = 60.0,
+    gamma_max = 120.0,
+    height = 0.05,
+    sense = 1,
+    meshType1 = "regular",
+    nodes1 = 3,
+    ratio1 = 1.0,
+    meshType2 = "regular",
+    nodes2 = 2,
+    ratio2 = 1.0,
+    analysis_type = "Lumped Parameter",
+    side1 = "Active",
+    criticality1 = "NORMAL",
+    nbase1 = 1700,
     ndelta1 = 1,
     opt1 = Black,
     colour1 = "BLUE_CYAN",
@@ -1474,7 +1556,8 @@ SPLIT_DELTA = SHELL_SCS_RECTANGLE (
 
 GEOMETRY SCS_SHAPES;
 SCS_SHAPES = SCS_DISC + SCS_CYL + SCS_CONE + 
-    SCS_SPHERE + SCS_RECT + SCS_PARA + SCS_BOX;
+    SCS_SPHERE + SCS_RECT + SCS_PARA + SCS_BOX + 
+    SCS_TRAP + SCS_PRISM;
 
 GEOMETRY PT_SHAPES;
 PT_SHAPES = PT_RECT + PT_QUAD + PT_DISC + 

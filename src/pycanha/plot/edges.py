@@ -40,7 +40,7 @@ def group_boundary_edges(
 ) -> npt.NDArray[np.int64]:
     """The edges of ``triangles`` across which ``groups`` changes.
 
-    ``groups`` is one label per triangle - a face slot, a geometry id - and
+    ``groups`` is one label per triangle - a face, a geometry id - and
     ``n_points`` the number of points the indices address. An edge is returned
     when the two triangles sharing it are labelled differently, and also when
     it is not shared by exactly two triangles at all: an edge only one triangle
@@ -82,7 +82,7 @@ def face_edges(
 ) -> npt.NDArray[np.int64]:
     """The outline of every face of the thermal mesh.
 
-    ``face_ids`` is the mesh's own per-triangle face slot, so this is the
+    ``face_ids`` is the mesh's own per-triangle face, so this is the
     boundary between two faces of the same primitive as much as between two
     primitives.
     """

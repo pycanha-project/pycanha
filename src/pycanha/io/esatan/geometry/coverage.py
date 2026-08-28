@@ -80,8 +80,12 @@ _INVENTORY: Mapping[str, _Entry] = {
     "SHELL_SCS_PARABOLOID": _Entry("primitive", "a lower truncation (hmin) is dropped"),
     "SHELL_SCS_BOX": _Entry("primitive", _BOX_NOTE),
     "SHELL_SCS_TRIANGLE": _Entry("primitive", "not yet mapped", status="unsupported"),
-    "SHELL_SCS_TRIANGULAR_PRISM": _Entry("primitive"),
-    "SHELL_SCS_TRAPEZOID": _Entry("primitive"),
+    "SHELL_SCS_TRIANGULAR_PRISM": _Entry(
+        "primitive", "three side walls; the triangular ends do not exist"
+    ),
+    "SHELL_SCS_TRAPEZOID": _Entry(
+        "primitive", "a bilinear quadrilateral; direction 1 is the gamma_min edge"
+    ),
     "SHELL_SCS_TORUS": _Entry("primitive", "no STEP-TAS equivalent either", steptas="no"),
     "SHELL_SCS_PIPE": _Entry("component", _PIPES),
     "SHELL_SCS_PIPE_BEND": _Entry("component", _PIPES),

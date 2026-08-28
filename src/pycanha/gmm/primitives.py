@@ -158,3 +158,21 @@ class Cube(pcc.gmm.Cube):
         orientation: npt.ArrayLike = (1.0, 0.0, 0.0, 0.0),
     ) -> None:
         super().__init__(as_point(center), as_point(extent), as_quaternion(orientation))
+
+
+class TriangularPrism(pcc.gmm.TriangularPrism):
+    """The base triangle p1-p2-p3 extruded along p4 - p1, a closed solid.
+
+    Cut-only, under the same restriction as :class:`Cube`: never meshed,
+    radiated or conducted.  The SHELL form of a prism is a different object --
+    three wall rectangles with no end caps -- which the readers build.
+    """
+
+    def __init__(
+        self,
+        p1: npt.ArrayLike,
+        p2: npt.ArrayLike,
+        p3: npt.ArrayLike,
+        p4: npt.ArrayLike,
+    ) -> None:
+        super().__init__(as_point(p1), as_point(p2), as_point(p3), as_point(p4))

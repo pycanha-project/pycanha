@@ -188,6 +188,34 @@ SCS_BOX = SHELL_SCS_BOX(
     opt1 = Black,
     opt2 = Black);
 
+GEOMETRY SCS_TRAP;
+SCS_TRAP = SHELL_SCS_TRAPEZOID(
+    beta_min = 0.10000000,
+    beta_max = 0.30000000,
+    gamma_min = 60.00000000,
+    gamma_max = 120.00000000,
+    height = 0.05000000,
+    nodes1 = 3,
+    nodes2 = 2,
+    nbase1 = 1700,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY SCS_PRISM;
+SCS_PRISM = SHELL_SCS_TRIANGULAR_PRISM(
+    hmin = 0.00000000,
+    hmax = 0.40000000,
+    beta = 0.20000000,
+    gamma_min = 60.00000000,
+    gamma_max = 120.00000000,
+    nodes1 = 1,
+    nodes4 = 1,
+    nbase1 = 1800,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
 /* ------------------------------------------------------------------ */
 /* The same shapes given by points.                                    */
 /* ------------------------------------------------------------------ */
@@ -490,7 +518,8 @@ GEOMETRY SOLO;
 SOLO = SINGLE_COMBINATION(geometry = PT_TRIANGLE);
 
 GEOMETRY SCS_SHAPES;
-SCS_SHAPES = SCS_DISC + SCS_CYL + SCS_CONE + SCS_SPHERE + SCS_RECT + SCS_PARA + SCS_BOX;
+SCS_SHAPES = SCS_DISC + SCS_CYL + SCS_CONE + SCS_SPHERE + SCS_RECT + SCS_PARA + SCS_BOX +
+    SCS_TRAP + SCS_PRISM;
 
 GEOMETRY PT_SHAPES;
 PT_SHAPES = PT_RECT + PT_QUAD + PT_DISC + PT_CYL + PT_CONE + PT_SPHERE + PT_PARA +

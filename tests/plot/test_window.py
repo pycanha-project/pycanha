@@ -81,7 +81,7 @@ def test_a_placeholder_widget_is_not_mistaken_for_a_plotter(window: ViewerWindow
     assert window.toolbar.picker_combo.count() == len(PickerMode)
 
 
-def test_the_window_opens_on_the_colour_the_model_carries(window: ViewerWindow) -> None:
+def test_the_window_opens_on_the_color_the_model_carries(window: ViewerWindow) -> None:
     assert window.state.color_by == DEFAULT_COLOR_BY
     coloring = window.coloring()
     assert coloring.rgb
@@ -103,20 +103,20 @@ def test_rebuilding_the_geometry_without_a_plotter_is_a_no_op(window: ViewerWind
     assert window.scene.visible_cells.size == 8
 
 
-# ── colouring ─────────────────────────────────────────────────────────────
-def test_categorical_colouring_is_per_cell_rgb(window: ViewerWindow) -> None:
+# ── coloring ─────────────────────────────────────────────────────────────
+def test_categorical_coloring_is_per_cell_rgb(window: ViewerWindow) -> None:
     window.state.color_by = "node_number"
     coloring = window.coloring()
 
     assert coloring.rgb
     assert coloring.values.shape == (window.scene.n_cells, 3)
     assert coloring.values.dtype == np.uint8
-    # Four nodes, four colours - ranked first, or the sparse numbers would
+    # Four nodes, four colors - ranked first, or the sparse numbers would
     # collide modulo the palette size.
     assert len({tuple(row) for row in coloring.values}) == 4
 
 
-def test_numeric_colouring_carries_a_colormap_and_limits(window: ViewerWindow) -> None:
+def test_numeric_coloring_carries_a_colormap_and_limits(window: ViewerWindow) -> None:
     window.state.color_by = "area"
     coloring = window.coloring()
 
@@ -143,7 +143,7 @@ def test_manual_limits_win_over_the_data(window: ViewerWindow) -> None:
     assert window.coloring().clim == (0.0, 1.0)
 
 
-def test_hiding_narrows_the_colouring_to_what_is_drawn(
+def test_hiding_narrows_the_coloring_to_what_is_drawn(
     window: ViewerWindow, model: gmm.GeometryModel
 ) -> None:
     window.state.color_by = "node_number"
@@ -203,7 +203,7 @@ def test_nothing_selected_highlights_nothing(window: ViewerWindow) -> None:
     assert window.highlight_outline().shape == (0, 2)
 
 
-def test_the_highlight_is_the_drawn_colour_made_brighter(window: ViewerWindow) -> None:
+def test_the_highlight_is_the_drawn_color_made_brighter(window: ViewerWindow) -> None:
     window.state.selection = Selection(item_id=window.model.get_item("a").id, face_id=0, cell=0)
     window.state.picker_mode = PickerMode.FACE
 
@@ -215,7 +215,7 @@ def test_the_highlight_is_the_drawn_colour_made_brighter(window: ViewerWindow) -
     assert np.all(window.highlight_colors() > drawn.astype(int) - 1)
 
 
-def test_a_numeric_colouring_is_brightened_from_its_colormap(window: ViewerWindow) -> None:
+def test_a_numeric_coloring_is_brightened_from_its_colormap(window: ViewerWindow) -> None:
     window.state.color_by = "emissivity_ir"
     window.state.selection = Selection(item_id=window.model.get_item("a").id, face_id=0, cell=0)
 
@@ -329,15 +329,15 @@ def test_item_granularity_reports_the_item_alone(
     assert rows["Geometry"] == "a"
     assert rows["Kind"] == "GeometryItem"
     assert rows["Primitive"] == "Rectangle"
-    assert "Face slot" not in rows
+    assert "Face" not in rows
     assert "TMM node" not in rows
 
 
-def test_the_colour_is_one_of_the_reported_properties(
+def test_the_color_is_one_of_the_reported_properties(
     window: ViewerWindow, model: gmm.GeometryModel
 ) -> None:
     window.state.selection = Selection(item_id=model.get_item("a").id, face_id=0, cell=0)
-    assert dict(window.info_panel.rows())["Colour"] == "255, 0, 0"
+    assert dict(window.info_panel.rows())["Color"] == "255, 0, 0"
 
 
 def test_a_tree_selection_describes_the_geometry_alone(
@@ -347,10 +347,10 @@ def test_a_tree_selection_describes_the_geometry_alone(
     rows = dict(window.info_panel.rows())
     assert rows["Geometry"] == "wing"
     assert rows["Kind"] == "GeometryGroup"
-    assert "Face slot" not in rows
+    assert "Face" not in rows
 
 
-def test_a_pick_describes_the_face_slot_too(window: ViewerWindow, model: gmm.GeometryModel) -> None:
+def test_a_pick_describes_the_face_too(window: ViewerWindow, model: gmm.GeometryModel) -> None:
     window.state.selection = Selection(
         item_id=model.get_item("a").id, face_id=0, node_number=100, cell=0
     )
@@ -358,7 +358,7 @@ def test_a_pick_describes_the_face_slot_too(window: ViewerWindow, model: gmm.Geo
 
     assert rows["Geometry"] == "a"
     assert rows["Primitive"] == "Rectangle"
-    assert rows["Face slot"] == "0"
+    assert rows["Face"] == "0"
     assert rows["Side"] == "1"
     assert rows["TMM node"] == "100"
     assert rows["IR emissivity"] == "0.85"
@@ -367,7 +367,7 @@ def test_a_pick_describes_the_face_slot_too(window: ViewerWindow, model: gmm.Geo
     assert rows["Density"] == MISSING
 
 
-def test_the_odd_slot_of_a_face_reports_side_two(
+def test_the_odd_face_of_a_face_reports_side_two(
     window: ViewerWindow, model: gmm.GeometryModel
 ) -> None:
     window.state.selection = Selection(item_id=model.get_item("a").id, face_id=1, node_number=200)
@@ -399,7 +399,7 @@ def test_selection_rows_of_an_unknown_geometry(
     assert rows == []
 
 
-def test_formatting_a_slot_outside_the_property(window: ViewerWindow) -> None:
+def test_formatting_a_face_outside_the_property(window: ViewerWindow) -> None:
     assert window.properties["area"].format(999) == MISSING
     assert window.properties["area"].format(-1) == MISSING
 

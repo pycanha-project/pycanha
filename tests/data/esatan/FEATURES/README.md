@@ -22,8 +22,8 @@ Both models contain, in this order:
 - **Materials** — a literal eight-value optical row with its `[BOL]` / `[EOL]`
   variants, `DEFINE_OPTICAL`, a literal bulk triple, `DEFINE_BULK` isotropic and
   `DEFINE_BULK` orthotropic.
-- **Primitives** — all seven shell primitives in shell coordinates, and all ten
-  given by points, including the box and the triangular prism that become
+- **Primitives** — all nine shell primitives in shell coordinates, and all ten
+  given by points, including the boxes and the triangular prisms that become
   several flat surfaces here.
 - **Attributes** — every per-side attribute on one surface, both compositions,
   both mesh types, per-direction node increments, and a surface left for ESATAN

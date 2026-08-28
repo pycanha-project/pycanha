@@ -1,17 +1,17 @@
-"""The appearance column: what the geometry is coloured by, and what that means.
+"""The appearance column: what the geometry is colored by, and what that means.
 
-The colour controls sit next to the colour bar and the legend they govern
+The color controls sit next to the color bar and the legend they govern
 rather than in the toolbar, which would otherwise overflow.
 
 For a **numeric** property the column offers a curated colormap shortlist with
 gradient previews, a reverse toggle, manual limits with an Auto override, and a
 log toggle. For a **categorical** one those are meaningless - a node number is
 a label, not a magnitude - so they are disabled and the legend list below takes
-over: one row per category, with its colour, its name, a checkbox that hides
+over: one row per category, with its color, its name, a checkbox that hides
 everything sharing that value, and a click that isolates it.
 
 An in-scene ``add_legend`` box was rejected for the job: it does not scroll,
-and colouring by node number routinely has hundreds of entries.
+and coloring by node number routinely has hundreds of entries.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ COLORMAPS: tuple[tuple[str, str], ...] = (
 #: Size of the gradient preview drawn beside each colormap name.
 _PREVIEW = QSize(64, 12)
 
-#: Size of the solid colour swatch beside each legend entry.
+#: Size of the solid color swatch beside each legend entry.
 _SWATCH = QSize(12, 12)
 
 #: The value carried by a legend row, so a click can find its category back.
@@ -85,7 +85,7 @@ def swatch_icon(color: tuple[int, int, int]) -> QIcon:
 
 
 class LegendPanel(QWidget):
-    """Colour-by, colour scale, and the interactive legend."""
+    """Color-by, color scale, and the interactive legend."""
 
     def __init__(
         self,
@@ -135,7 +135,7 @@ class LegendPanel(QWidget):
         self.show_all_button.clicked.connect(self._on_show_all_categories)
 
         form = QFormLayout()
-        form.addRow("Colour by", self.color_by_combo)
+        form.addRow("Color by", self.color_by_combo)
         form.addRow("Colormap", self.colormap_combo)
         form.addRow("", self.reverse_box)
         form.addRow("Min", self.min_edit)
@@ -154,11 +154,11 @@ class LegendPanel(QWidget):
 
     # ── what is on screen ─────────────────────────────────────────────────
     def current_property(self) -> FaceProperty:
-        """The property the geometry is currently coloured by."""
+        """The property the geometry is currently colored by."""
         return self._properties[self._state.color_by]
 
     def entries(self) -> list[Any]:
-        """The legend rows for the current colouring - empty when it is numeric."""
+        """The legend rows for the current coloring - empty when it is numeric."""
         return categories(self.current_property(), self._scene.face_ids)
 
     def refresh(self) -> None:
@@ -182,7 +182,7 @@ class LegendPanel(QWidget):
         self.min_edit.setText(str(low))
         self.max_edit.setText(str(high))
 
-        # A categorical colouring has no scale to speak of: the numbers are
+        # A categorical coloring has no scale to speak of: the numbers are
         # labels, and a colormap over them would read as a magnitude.
         numeric = not prop.categorical
         for widget in (
@@ -219,7 +219,7 @@ class LegendPanel(QWidget):
         }
 
     def set_category_hidden(self, value: int, hidden: bool) -> None:
-        """Hide or show everything whose current colour-by value is ``value``."""
+        """Hide or show everything whose current color-by value is ``value``."""
         categories_hidden = set(self._state.hidden_categories)
         if hidden:
             categories_hidden.add(int(value))

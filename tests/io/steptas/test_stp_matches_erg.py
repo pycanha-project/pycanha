@@ -46,7 +46,7 @@ REFINED = {"DROPPED_ATTRS": (2, 2)}
 
 #: The groups that arrive already split into flat faces, under names of the
 #: exporter's choosing rather than the ones this reader invents.
-SPLIT_GROUPS = ("SCS_BOX_", "PT_BOX_", "PT_PRISM_")
+SPLIT_GROUPS = ("SCS_BOX_", "PT_BOX_", "PT_PRISM_", "SCS_PRISM_")
 
 #: The sides whose node numbers the source states and the export leaves out.
 #:

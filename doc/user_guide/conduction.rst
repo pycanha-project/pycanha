@@ -75,7 +75,7 @@ Reading the report
    report.conductors_created
    report.items_processed
    report.items_skipped
-   report.cell_links_computed
+   report.face_pair_links_computed
 
 Anything the build had to skip or approximate is reported in the same form as
 the file readers, so code that branches on a code works for both:

@@ -56,7 +56,7 @@ def test_the_filter_greys_and_never_hides(window: ViewerWindow) -> None:
     assert not np.any(filtered[window.scene.node_numbers == 100])
 
 
-def test_a_categorical_colouring_greys_the_filtered_cells(window: ViewerWindow) -> None:
+def test_a_categorical_coloring_greys_the_filtered_cells(window: ViewerWindow) -> None:
     window.state.color_by = "node_number"
     window.state.set_node_range(100, 100)
     colors = window.coloring().values
@@ -66,7 +66,7 @@ def test_a_categorical_colouring_greys_the_filtered_cells(window: ViewerWindow) 
     assert not np.any(np.all(colors[in_range] == FILTERED_RGB, axis=1))
 
 
-def test_a_numeric_colouring_greys_through_nan(window: ViewerWindow) -> None:
+def test_a_numeric_coloring_greys_through_nan(window: ViewerWindow) -> None:
     window.state.color_by = "area"
     window.state.set_node_range(110, 210)
     values = window.coloring().values
@@ -143,9 +143,9 @@ def test_one_node_greys_everything_else(window: ViewerWindow) -> None:
     window.state.found_node = 110
     colors = window.coloring().values
 
-    # Exactly the same rule the range follows: the node keeps the colour it is
+    # Exactly the same rule the range follows: the node keeps the color it is
     # drawn in and the rest go grey. Nothing is hidden, and nothing is painted
-    # a colour of its own.
+    # a color of its own.
     on_node = window.scene.node_numbers == 110
     assert on_node.sum() == 4
     assert window.scene.visible_cells.size == window.scene.n_cells

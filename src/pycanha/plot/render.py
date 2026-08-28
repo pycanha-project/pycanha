@@ -138,7 +138,7 @@ def plot(
     headless rendering / testing).
 
     ``both_sides`` (default) draws each ThermalMesh side with its own data, so
-    the far side of a surface shows *its* face slot rather than the near side's.
+    the far side of a surface shows *its* face rather than the near side's.
 
     ``pick`` (default) makes right-clicking a face print its properties to the
     console; pass ``pick=False`` to leave the mouse buttons alone.

@@ -1,4 +1,4 @@
-"""The per-face-slot property arrays behind the color-by combo."""
+"""The per-face property arrays behind the color-by combo."""
 
 import numpy as np
 import pytest
@@ -22,7 +22,7 @@ def _two_item_model() -> pc.ThermalModel:
     'left' is aluminium with white paint on side 1 and nothing on side 2;
     'right' is titanium with black paint on both sides and radiates from side 1
     only. Sharing the node numbers is the case a node-keyed item lookup gets
-    wrong, and it is why every property here is keyed by face slot.
+    wrong, and it is why every property here is keyed by face.
     """
     tm = pc.ThermalModel("properties")
 
@@ -67,8 +67,8 @@ def properties(model: gmm.GeometryModel) -> dict:
     return face_properties(model)
 
 
-def _slots_of(model: gmm.GeometryModel, name: str) -> slice:
-    """Every face slot of item ``name``, both sides."""
+def _faces_of(model: gmm.GeometryModel, name: str) -> slice:
+    """Every face of item ``name``, both sides."""
     item_id = model.get_item(name).id
     for geometry_id, first, last in model.mesh.primitives:
         if geometry_id == item_id:
@@ -76,19 +76,19 @@ def _slots_of(model: gmm.GeometryModel, name: str) -> slice:
     raise AssertionError(f"item {name!r} owns no faces")
 
 
-# ── colour ────────────────────────────────────────────────────────────────
-def test_each_side_carries_its_own_colour(model: gmm.GeometryModel, properties: dict) -> None:
+# ── color ────────────────────────────────────────────────────────────────
+def test_each_side_carries_its_own_color(model: gmm.GeometryModel, properties: dict) -> None:
     color = properties["color"]
-    left, right = _slots_of(model, "left"), _slots_of(model, "right")
+    left, right = _faces_of(model, "left"), _faces_of(model, "right")
 
     assert color.categorical
-    # Three distinct colours over four sides: both side 1s are the same red.
+    # Three distinct colors over four sides: both side 1s are the same red.
     assert set(color.palette.values()) == {(255, 0, 0), (0, 0, 255), (0, 255, 0)}
     assert color.values[left][0] == color.values[right][0]
     assert color.values[left][1] != color.values[right][1]
 
 
-def test_a_colour_is_drawn_in_itself_rather_than_a_stand_in(properties: dict) -> None:
+def test_a_color_is_drawn_in_itself_rather_than_a_stand_in(properties: dict) -> None:
     color = properties["color"]
     colors = color.colors_of(color.values)
     # The palette is pinned, so what reaches the actor is the stored channels.
@@ -96,19 +96,19 @@ def test_a_colour_is_drawn_in_itself_rather_than_a_stand_in(properties: dict) ->
     assert colors.dtype == np.uint8
 
 
-def test_a_slot_no_item_owns_is_grey(properties: dict) -> None:
+def test_a_face_no_item_owns_is_grey(properties: dict) -> None:
     color = properties["color"]
     assert tuple(color.colors_of([-1])[0].tolist()) == MISSING_RGB
     assert color.format(-1) == MISSING
 
 
-def test_a_colour_is_named_by_its_channels(properties: dict) -> None:
+def test_a_color_is_named_by_its_channels(properties: dict) -> None:
     color = properties["color"]
     assert set(color.categories.values()) == {"255, 0, 0", "0, 0, 255", "0, 255, 0"}
     assert color.format(0) == "255, 0, 0"
 
 
-def test_the_legend_of_a_colouring_uses_the_colours_themselves(
+def test_the_legend_of_a_coloring_uses_the_colors_themselves(
     model: gmm.GeometryModel, properties: dict
 ) -> None:
     color = properties["color"]
@@ -124,20 +124,20 @@ def test_item_property_tells_apart_items_that_share_node_numbers(
     item = properties["item"]
     left, right = (model.get_item(name).id for name in ("left", "right"))
 
-    assert np.all(item.values[_slots_of(model, "left")] == left)
-    assert np.all(item.values[_slots_of(model, "right")] == right)
+    assert np.all(item.values[_faces_of(model, "left")] == left)
+    assert np.all(item.values[_faces_of(model, "right")] == right)
     assert item.categories == {left: "left", right: "right"}
     assert item.categorical
 
 
-def test_node_and_side_follow_slot_parity(model: gmm.GeometryModel, properties: dict) -> None:
+def test_node_and_side_follow_face_parity(model: gmm.GeometryModel, properties: dict) -> None:
     assert np.array_equal(properties["side"].values, np.tile([1, 2], model.mesh.nf() // 2))
     # Both panels use nodes 100 (side 1) and 200 (side 2).
     assert np.array_equal(properties["node_number"].values[0::2], np.full(4, 100))
     assert np.array_equal(properties["node_number"].values[1::2], np.full(4, 200))
 
 
-def test_face_id_property_is_the_slot_itself(properties: dict) -> None:
+def test_face_id_property_is_the_face_itself(properties: dict) -> None:
     values = properties["face_id"].values
     assert np.array_equal(values, np.arange(values.size))
 
@@ -161,9 +161,9 @@ def test_optical_family_covers_the_six_degrees_of_freedom(
 
 def test_each_side_carries_its_own_optical_material(model: gmm.GeometryModel) -> None:
     values = optical_properties(model)
-    left, right = _slots_of(model, "left"), _slots_of(model, "right")
+    left, right = _faces_of(model, "left"), _faces_of(model, "right")
 
-    # 'left' is painted on side 1 only, so its odd slots have nothing to report.
+    # 'left' is painted on side 1 only, so its odd faces have nothing to report.
     assert np.all(values[left][0::2, 0] == pytest.approx(0.85))
     assert np.all(np.isnan(values[left][1::2]))
     # 'right' is painted on both sides.
@@ -185,7 +185,7 @@ def test_optical_properties_of_a_model_without_materials() -> None:
 def test_thickness_and_bulk_are_broadcast_per_side(
     model: gmm.GeometryModel, properties: dict
 ) -> None:
-    left = _slots_of(model, "left")
+    left = _faces_of(model, "left")
     thickness = properties["thickness"].values[left]
     assert np.all(thickness[0::2] == pytest.approx(0.002))
     assert np.all(thickness[1::2] == pytest.approx(0.003))
@@ -198,7 +198,7 @@ def test_thickness_and_bulk_are_broadcast_per_side(
     assert np.all(properties["specific_heat"].values[left][0::2] == pytest.approx(900.0))
 
 
-def test_face_area_is_shared_by_the_two_slots_of_a_face(model: gmm.GeometryModel) -> None:
+def test_face_area_is_shared_by_the_two_faces_of_a_face(model: gmm.GeometryModel) -> None:
     areas = face_areas(model.mesh)
     # Each panel is 2 m x 1 m split into two faces along the first direction.
     assert np.all(areas == pytest.approx(1.0))
@@ -216,19 +216,19 @@ def test_material_names_are_interned_as_categories(
     optical = properties["optical_name"]
     assert set(optical.categories.values()) == {"white", "black"}
     # Side 2 of 'left' has no optical material, so it falls outside every category.
-    assert np.all(optical.values[_slots_of(model, "left")][1::2] == -1)
+    assert np.all(optical.values[_faces_of(model, "left")][1::2] == -1)
 
     bulk = properties["bulk_name"]
     assert set(bulk.categories.values()) == {"aluminium", "titanium"}
     assert np.all(
-        bulk.values[_slots_of(model, "right")] == bulk.values[_slots_of(model, "right")][0]
+        bulk.values[_faces_of(model, "right")] == bulk.values[_faces_of(model, "right")][0]
     )
 
 
 def test_activity_flags_follow_the_active_side_selectors(
     model: gmm.GeometryModel, properties: dict
 ) -> None:
-    left, right = _slots_of(model, "left"), _slots_of(model, "right")
+    left, right = _faces_of(model, "left"), _faces_of(model, "right")
     radiative = properties["radiative_active"].values
     conductive = properties["conductive_active"].values
 
@@ -256,7 +256,7 @@ def test_per_cell_spreads_a_property_over_the_polydata_cells(
 
 def test_the_five_families_are_offered_in_order(properties: dict) -> None:
     keys = list(properties)
-    # The colour first: it is what a window opens on.
+    # The color first: it is what a window opens on.
     assert keys[:5] == ["color", "item", "node_number", "face_id", "side"]
     assert keys[5:11] == [key for key, _ in OPTICAL_KEYS]
     assert set(keys[11:]) == {

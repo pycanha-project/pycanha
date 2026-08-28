@@ -45,7 +45,7 @@ class ViewerToolBar(QToolBar):
     ``Clear`` empties whichever is set.
 
     Two resets, because they undo different things: ``Show all`` brings back
-    what is hidden, ``Reset`` puts the whole window - colouring, scale, filter,
+    what is hidden, ``Reset`` puts the whole window - coloring, scale, filter,
     selection, camera - back to how it opened.
     """
 
@@ -87,8 +87,8 @@ class ViewerToolBar(QToolBar):
         self.lighting_action = self._action(
             "Lighting",
             "Shade the geometry.\n"
-            "Off, every face shows exactly the colour it stands for; on, the "
-            "shading shows the shape and the colours are read less exactly.",
+            "Off, every face shows exactly the color it stands for; on, the "
+            "shading shows the shape and the colors are read less exactly.",
             self._on_lighting_changed,
             checkable=True,
         )
@@ -100,7 +100,7 @@ class ViewerToolBar(QToolBar):
         )
         self.reset_action = self._action(
             "Reset",
-            "Put the whole view back to how it opened: colouring, scale, "
+            "Put the whole view back to how it opened: coloring, scale, "
             "filter, selection, hidden geometry and camera",
             self._on_reset,
         )

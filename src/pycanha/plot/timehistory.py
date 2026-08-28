@@ -7,7 +7,7 @@ plotting a history at all, and a window that replaced its curve on each pick
 would make that two screenshots.
 
 A vertical marker follows the time the viewer's slider is on, so the curve and
-the coloured geometry always say the same thing about the same instant.
+the colored geometry always say the same thing about the same instant.
 
 Closing the window ends the comparison: it reopens empty, and the next node
 picked starts a new one. Curves that survived a close would come back with no
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from matplotlib.lines import Line2D
     from PySide6.QtGui import QCloseEvent
 
-#: Colour of the line marking the instant the viewer is showing.
+#: Color of the line marking the instant the viewer is showing.
 MARKER_COLOR = "0.4"
 
 

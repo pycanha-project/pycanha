@@ -33,7 +33,7 @@ The builder is re-exported from :mod:`pycanha_core.conduction` unchanged:
   :func:`~pycanha_core.conduction.diagnostic_code_name`, what the build
   produced and what it had to skip or approximate
 * :func:`~pycanha_core.conduction.intra_primitive_links`,
-  :class:`~pycanha_core.conduction.CellLink` and
+  :class:`~pycanha_core.conduction.FacePairLink` and
   :func:`~pycanha_core.conduction.through_thickness_conductance`, the same
   conductances one item at a time, without a model
 * :func:`~pycanha_core.conduction.profile_of` and

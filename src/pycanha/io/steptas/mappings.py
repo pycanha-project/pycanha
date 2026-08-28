@@ -37,6 +37,7 @@ from pycanha.gmm.primitives import (
     Rectangle,
     Sphere,
     Triangle,
+    TriangularPrism,
 )
 
 from .. import shapes
@@ -73,7 +74,16 @@ __all__ = [
 type Note = tuple[str, str]
 
 Primitive = (
-    Triangle | Rectangle | Quadrilateral | Disc | Cylinder | Cone | Sphere | Paraboloid | Cube
+    Triangle
+    | Rectangle
+    | Quadrilateral
+    | Disc
+    | Cylinder
+    | Cone
+    | Sphere
+    | Paraboloid
+    | Cube
+    | TriangularPrism
 )
 """Every shape a STEP-TAS surface or cutting solid can become."""
 
@@ -315,6 +325,25 @@ def _solid_box(fields: Fields, notes: list[Note]) -> Placed:
     )
 
 
+def _solid_prism(fields: Fields, notes: list[Note]) -> Placed:
+    """Three base corners and the point the base is extruded to.
+
+    The prism takes its corners in the frame they were given in, so unlike the
+    box there is no placement to split out.  The base ordering STEP-TAS writes
+    already puts ``P1P2 x P1P3`` along ``P1P4``, which is what the primitive
+    requires; a file that does not is rejected rather than silently inverted.
+    """
+    _ = notes
+    prism = TriangularPrism(*(fields.point(index) for index in (1, 2, 3, 4)))
+    if not prism.is_valid():
+        msg = (
+            "a prism needs a non-degenerate base triangle and an extrusion that "
+            "leaves the base plane"
+        )
+        raise FieldError(msg)
+    return Placed(prism, np.zeros(3), np.eye(3))
+
+
 #: The solids this reader builds, by entity type.
 #:
 #: Building one is not the same as being able to cut with it: a paraboloid is
@@ -327,6 +356,7 @@ SOLIDS: dict[str, SolidBuilder] = {
     "MGM_SOLID_CONE": _bounded(_cone),
     "MGM_SOLID_SPHERE": _bounded(_sphere),
     "MGM_SOLID_PARABOLOID": _bounded(_paraboloid),
+    "MGM_SOLID_TRIANGULAR_PRISM": _solid_prism,
 }
 
 #: Entities that are recognised but have no pycanha reading, with the reason.
@@ -336,7 +366,6 @@ SOLIDS: dict[str, SolidBuilder] = {
 UNSUPPORTED_ENTITIES: dict[str, str] = {
     "MGM_TORUS": "there is no torus primitive",
     "MGM_SOLID_TORUS": "there is no torus primitive",
-    "MGM_SOLID_TRIANGULAR_PRISM": "there is no closed prism primitive to cut with",
     "MGM_INFINITE_SOLID_BY_PLANE": "an infinite planar cutter has no equivalent",
     "MGM_INFINITE_SOLID_CYLINDER": "an unbounded cutter has no equivalent",
     "MGM_ENCLOSURE": "cavities are a radiative concept, not geometry",
@@ -641,9 +670,18 @@ def _write_quadrilateral(
 ) -> Shape:
     """Four corners, of which the third is dropped into the plane of the others.
 
-    The format's quadrilateral must be planar and a model's need not be.  The
-    first, second and fourth corners are the ones that define both the surface
-    normal and the two mesh directions, so the third is the one to move.
+    The format's quadrilateral must be planar.  The first, second and fourth
+    corners are the ones that define both the surface normal and the two mesh
+    directions, so the third is the one to move.
+
+    Re-checked for 0.20, when the core quadrilateral became a real bilinear
+    patch rather than the rectangle it used to be silently read as: the
+    flattening **stays**.  A bilinear patch could describe a warped quad, but
+    ``Quadrilateral::is_valid`` still requires the third corner to be coplanar
+    with the other three, so a warped one is not a valid pycanha surface either
+    and nothing is being discarded here that the model could have held.  What
+    did change is that a *planar* quad is now written as the trapezoid it is,
+    where before both ends of the round trip read it as a rectangle.
     """
     corners = _corners(primitive, placement, 4)
     origin, along, other, across = corners
@@ -737,12 +775,14 @@ def solid_of(
 ) -> Shape | None:
     """The cutting solid *primitive* is written as, or ``None`` if it is not one.
 
-    A box is the one solid with no surface of the same name, and the one whose
-    points are not simply the primitive's: it carries a centre, an extent and an
-    orientation instead of corners.
+    A box and a prism are the two solids with no surface of the same name.  The
+    box is also the one whose points are not simply the primitive's: it carries
+    a centre, an extent and an orientation instead of corners.
     """
     if isinstance(primitive, pcc.gmm.Cube):
         return _write_solid_box(primitive, placement)
+    if isinstance(primitive, pcc.gmm.TriangularPrism):
+        return _write_solid_prism(primitive, placement)
     surface = shape_of(primitive, placement, notes)
     if surface is None:
         return None
@@ -766,6 +806,21 @@ def _write_solid_box(primitive: pcc.gmm.Cube, placement: pcc.gmm.CoordinateTrans
     origin = np.asarray(primitive.center, dtype=np.float64) - sum(edges) / 2.0
     corners = [origin, *(origin + edge for edge in edges)]
     return Shape("MGM_SOLID_BOX", tuple(_placed(corner, placement) for corner in corners))
+
+
+def _write_solid_prism(
+    primitive: pcc.gmm.TriangularPrism, placement: pcc.gmm.CoordinateTransformation
+) -> Shape:
+    """A prism, as its three base corners and the point the base extrudes to.
+
+    The corners go out in the primitive's own order, which already satisfies the
+    format's requirement that the edge to the fourth point lie on the side of the
+    base plane its winding normal points to -- the same rule the reader relies on.
+    """
+    corners = (primitive.p1, primitive.p2, primitive.p3, primitive.p4)
+    return Shape(
+        "MGM_SOLID_TRIANGULAR_PRISM", tuple(_placed(corner, placement) for corner in corners)
+    )
 
 
 def _matrix_of_quaternion(quaternion: npt.ArrayLike) -> npt.NDArray[np.float64]:

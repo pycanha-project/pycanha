@@ -1,12 +1,12 @@
 """The model properties the geometry can be colored by.
 
-Every option resolves to one ``(Nf,)`` array indexed by **face slot**, which is
+Every option resolves to one ``(Nf,)`` array indexed by **face**, which is
 what lines it up with the ``face_id`` cell array of the rendered polydata: a
-cell reads its own value with :meth:`FaceProperty.per_cell`. Side 1 slots are
-even, side 2 odd, so the two sides of a face carry their own material,
+cell reads its own value with :meth:`FaceProperty.per_cell`. Side 1 faces are
+even, side 2 odd, so the two faces of a pair carry their own material,
 thickness and activity rather than repeating side 1's.
 
-Five families are offered (in this order): the colour each ThermalMesh side is
+Five families are offered (in this order): the color each ThermalMesh side is
 painted, which is what a window opens on; topology - which face, node, side
 and item a cell belongs to; the six optical degrees of freedom; the bulk and
 geometric numbers; and the names and activity flags. Numeric properties use
@@ -14,7 +14,7 @@ geometric numbers; and the names and activity flags. Numeric properties use
 ``nan_color``; categorical ones use ``-1``, which
 :func:`pycanha.plot.polydata.categorical_colors` draws grey.
 
-Item-level values are broadcast over each item's slot range from
+Item-level values are broadcast over each item's face range from
 ``mesh.primitives``, one pass over the items - never a lookup per face.
 """
 
@@ -28,7 +28,7 @@ import pycanha_core as pcc
 
 from .picking import item_map
 from .polydata import MISSING_RGB, categorical_colors
-from .scene import slot_items, slot_nodes
+from .scene import face_items, face_nodes
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -48,18 +48,18 @@ OPTICAL_KEYS: tuple[tuple[str, str], ...] = (
 #: What the two activity flags mean, as legend entries.
 ACTIVITY_LABELS = {0: "inactive", 1: "active"}
 
-#: Key of the colouring a window opens on - the colour each ThermalMesh side
+#: Key of the coloring a window opens on - the color each ThermalMesh side
 #: carries, which is the model as it was drawn rather than as it was solved.
 COLOR_KEY = "color"
 
-#: Shown where the model has no value: a face slot with no material, an
+#: Shown where the model has no value: a face with no material, an
 #: unassigned node, a numeric property that came out ``nan``.
 MISSING = "-"
 
 
 @dataclass(frozen=True)
 class FaceProperty:
-    """One color-by option: a value per face slot, plus how to present it.
+    """One color-by option: a value per face, plus how to present it.
 
     ``categorical`` values are labels rather than magnitudes - a distinct color
     each, no color bar - and ``categories`` names them where the number itself
@@ -91,7 +91,7 @@ class FaceProperty:
         """The RGB every one of ``values`` is drawn in, as ``(n, 3)`` ``uint8``.
 
         A property that carries its own :attr:`palette` is drawn in it - the
-        colour of the geometry *is* the value, and a qualitative palette over it
+        color of the geometry *is* the value, and a qualitative palette over it
         would replace the answer with an arbitrary stand-in. Everything else
         gets the ranked palette, which spreads sparse labels such as node
         numbers over adjacent entries instead of colliding modulo its size.
@@ -122,11 +122,11 @@ class FaceProperty:
             return str(category)
         return self.categories.get(category, str(category))
 
-    def format(self, slot: int) -> str:
-        """Format the value at face slot ``slot`` for display."""
-        if not 0 <= slot < self.values.shape[0]:
+    def format(self, face: int) -> str:
+        """Format the value at face ``face`` for display."""
+        if not 0 <= face < self.values.shape[0]:
             return MISSING
-        value = self.values[slot]
+        value = self.values[face]
         if self.categorical:
             return self.category_label(int(value))
         if not np.isfinite(value):
@@ -136,7 +136,7 @@ class FaceProperty:
 
 @dataclass(frozen=True)
 class Category:
-    """One entry of a categorical colouring's legend."""
+    """One entry of a categorical coloring's legend."""
 
     value: int
     label: str
@@ -144,11 +144,11 @@ class Category:
 
 
 def categories(prop: FaceProperty, face_ids: npt.ArrayLike) -> list[Category]:
-    """The distinct categories ``prop`` takes over ``face_ids``, with their colours.
+    """The distinct categories ``prop`` takes over ``face_ids``, with their colors.
 
-    The colours are exactly the ones the geometry is drawn in, taken from
+    The colors are exactly the ones the geometry is drawn in, taken from
     :meth:`FaceProperty.colors_of` over *every* cell rather than the visible
-    ones - so switching a category off in the legend does not recolour the rest.
+    ones - so switching a category off in the legend does not recolor the rest.
     """
     if not prop.categorical:
         return []
@@ -181,11 +181,11 @@ class _Names:
 
 
 class _Colors:
-    """Intern colours the same way, keeping what each index stands for.
+    """Intern colors the same way, keeping what each index stands for.
 
-    A colour cannot be a categorical value on its own - a value is one integer -
-    so the distinct colours are numbered, and the numbering carries both the
-    label (the channels, as they are stored) and the colour itself, which is
+    A color cannot be a categorical value on its own - a value is one integer -
+    so the distinct colors are numbered, and the numbering carries both the
+    label (the channels, as they are stored) and the color itself, which is
     what the geometry and the legend swatch are then drawn in.
     """
 
@@ -200,7 +200,7 @@ class _Colors:
             return -1
         channels = tuple(int(channel) for channel in color.rgb)
         if len(channels) != 3:
-            msg = f"a colour needs three channels, got {len(channels)}"
+            msg = f"a color needs three channels, got {len(channels)}"
             raise ValueError(msg)
         rgb: tuple[int, int, int] = (channels[0], channels[1], channels[2])
         if rgb not in self._index:
@@ -211,13 +211,13 @@ class _Colors:
         return self._index[rgb]
 
 
-def _item_slots(model: Any) -> Iterator[tuple[Any, slice, slice]]:
-    """Yield each item with the slot ranges of its side-1 and side-2 faces.
+def _item_faces(model: Any) -> Iterator[tuple[Any, slice, slice]]:
+    """Yield each item with the face ranges of its side-1 and side-2 faces.
 
     In ``mesh.primitives`` order, so an item that a later range overlaps is
     overwritten by it - the same last-writer-wins rule
-    :func:`pycanha.plot.scene.slot_items` follows, and the reason a fully-cut
-    item ends up owning nothing. The ranges name side-1 (even) slots, so the
+    :func:`pycanha.plot.scene.face_items` follows, and the reason a fully-cut
+    item ends up owning nothing. The ranges name side-1 (even) faces, so the
     stop runs two past the last one to take in its side-2 partner.
     """
     items = item_map(model)
@@ -229,24 +229,24 @@ def _item_slots(model: Any) -> Iterator[tuple[Any, slice, slice]]:
         yield item, slice(first, stop, 2), slice(first + 1, stop, 2)
 
 
-def face_colors(model: Any, n_slots: int) -> FaceProperty:
-    """The colour every face slot is painted, as a colour-by option.
+def face_colors(model: Any, n_faces: int) -> FaceProperty:
+    """The color every face is painted, as a color-by option.
 
-    Each ThermalMesh side carries its own colour, so the two slots of a face
-    can differ. The distinct colours are interned into categories - which is
+    Each ThermalMesh side carries its own color, so the two faces of a pair
+    can differ. The distinct colors are interned into categories - which is
     what makes them legend rows that can be switched off and isolated like any
     other - and pinned as the property's palette, so what is drawn is the
-    colour itself rather than a stand-in from a qualitative map.
+    color itself rather than a stand-in from a qualitative map.
     """
-    values = np.full(int(n_slots), -1, dtype=np.int64)
+    values = np.full(int(n_faces), -1, dtype=np.int64)
     colors = _Colors()
-    for item, side1, side2 in _item_slots(model):
+    for item, side1, side2 in _item_faces(model):
         thermal_mesh = item.thermal_mesh
         values[side1] = colors.index(thermal_mesh.side1_color)
         values[side2] = colors.index(thermal_mesh.side2_color)
     return FaceProperty(
         COLOR_KEY,
-        "Colour",
+        "Color",
         values,
         categorical=True,
         categories=colors.labels,
@@ -255,7 +255,7 @@ def face_colors(model: Any, n_slots: int) -> FaceProperty:
 
 
 def optical_properties(model: Any) -> npt.NDArray[np.float64]:
-    """The six optical degrees of freedom of every face slot, ``nan`` where unset.
+    """The six optical degrees of freedom of every face, ``nan`` where unset.
 
     Rows follow ``OpticalMaterial.th_optical_properties``:
     ``[eps_ir, spec_ir, tau_ir, alpha_sol, spec_sol, tau_sol]``.
@@ -269,7 +269,7 @@ def optical_properties(model: Any) -> npt.NDArray[np.float64]:
     nothing.
     """
     values = np.full((int(model.mesh.nf()), len(OPTICAL_KEYS)), np.nan)
-    for item, side1, side2 in _item_slots(model):
+    for item, side1, side2 in _item_faces(model):
         thermal_mesh = item.thermal_mesh
         for optical, span in (
             (thermal_mesh.side1_optical, side1),
@@ -280,83 +280,83 @@ def optical_properties(model: Any) -> npt.NDArray[np.float64]:
 
 
 def face_areas(mesh: Any) -> npt.NDArray[np.float64]:
-    """Surface area of every face slot, summed over the triangles that mesh it.
+    """Surface area of every face, summed over the triangles that mesh it.
 
-    ``mesh::ops::compute_face_slot_areas`` does this in C++ but is not bound
-    yet, so the per-triangle areas are accumulated by face slot here.
+    ``mesh::ops::compute_face_areas`` does this in C++ but is not bound
+    yet, so the per-triangle areas are accumulated by face here.
     """
-    n_slots = int(mesh.nf())
-    if n_slots == 0 or int(mesh.nt()) == 0:
-        return np.zeros(n_slots)
+    n_faces = int(mesh.nf())
+    if n_faces == 0 or int(mesh.nt()) == 0:
+        return np.zeros(n_faces)
     areas = np.asarray(pcc.gmm.compute_areas(mesh), dtype=np.float64)
-    # face_ids always name the side-1 slot, so the accumulation lands on the
-    # even slots and the odd partner - the same patch of geometry seen from the
+    # face_ids always name the side-1 face, so the accumulation lands on the
+    # even faces and the odd partner - the same patch of geometry seen from the
     # other side - inherits it.
     face_ids = np.asarray(mesh.face_ids).astype(np.int64)
     # Weighted, so the sums come back as floats whatever the stubs think.
-    totals = np.asarray(np.bincount(face_ids, weights=areas, minlength=n_slots), dtype=np.float64)
-    totals[1::2] = totals[: 2 * (n_slots // 2) : 2]
+    totals = np.asarray(np.bincount(face_ids, weights=areas, minlength=n_faces), dtype=np.float64)
+    totals[1::2] = totals[: 2 * (n_faces // 2) : 2]
     return totals
 
 
 def face_properties(model: Any) -> dict[str, FaceProperty]:
     """Build every color-by option of ``model``, keyed by :attr:`FaceProperty.key`.
 
-    Insertion order is the order the color-by combo offers them: the colour the
+    Insertion order is the order the color-by combo offers them: the color the
     model itself carries first, since that is what a window opens on, then
     topology, then the optical degrees of freedom, then the bulk and geometric
     numbers, then the names and activity flags.
     """
     mesh = model.mesh
-    n_slots = int(mesh.nf())
-    slots = np.arange(n_slots, dtype=np.int64)
-    items = slot_items(mesh)
+    n_faces = int(mesh.nf())
+    faces = np.arange(n_faces, dtype=np.int64)
+    items = face_items(mesh)
     item_names = {
         int(geometry_id): item.name or "<anonymous>"
         for geometry_id, item in item_map(model).items()
     }
 
-    node_numbers = slot_nodes(mesh)
+    node_numbers = face_nodes(mesh)
     optical = optical_properties(model)
 
     properties = [
         # First, because it is what the window opens on.
-        face_colors(model, n_slots),
+        face_colors(model, n_faces),
         FaceProperty("item", "Geometry item", items, categorical=True, categories=item_names),
         FaceProperty("node_number", "TMM node", node_numbers, categorical=True),
-        FaceProperty("face_id", "Face slot", slots, categorical=True),
-        # Side 1 slots are even, side 2 odd - the parity *is* the side.
-        FaceProperty("side", "ThermalMesh side", (slots % 2) + 1, categorical=True),
+        FaceProperty("face_id", "Face", faces, categorical=True),
+        # Side 1 faces are even, side 2 odd - the parity *is* the side.
+        FaceProperty("side", "ThermalMesh side", (faces % 2) + 1, categorical=True),
     ]
     properties += [
         FaceProperty(key, label, optical[:, column], categorical=False)
         for column, (key, label) in enumerate(OPTICAL_KEYS)
     ]
-    properties += _shell_properties(model, n_slots)
+    properties += _shell_properties(model, n_faces)
     properties.append(
         FaceProperty("area", "Face area", face_areas(mesh), categorical=False, unit="m^2")
     )
     return {prop.key: prop for prop in properties}
 
 
-def _shell_properties(model: Any, n_slots: int) -> list[FaceProperty]:
-    """Broadcast the per-item, per-side shell properties over the face slots.
+def _shell_properties(model: Any, n_faces: int) -> list[FaceProperty]:
+    """Broadcast the per-item, per-side shell properties over the faces.
 
     Thickness, bulk material and the two activity flags all come off the same
     ThermalMesh, so they are filled in together in a single pass over the items
     rather than one pass each.
     """
-    thickness = np.full(n_slots, np.nan)
-    density = np.full(n_slots, np.nan)
-    conductivity = np.full(n_slots, np.nan)
-    specific_heat = np.full(n_slots, np.nan)
-    optical_name = np.full(n_slots, -1, dtype=np.int64)
-    bulk_name = np.full(n_slots, -1, dtype=np.int64)
-    radiative_active = np.full(n_slots, -1, dtype=np.int64)
-    conductive_active = np.full(n_slots, -1, dtype=np.int64)
+    thickness = np.full(n_faces, np.nan)
+    density = np.full(n_faces, np.nan)
+    conductivity = np.full(n_faces, np.nan)
+    specific_heat = np.full(n_faces, np.nan)
+    optical_name = np.full(n_faces, -1, dtype=np.int64)
+    bulk_name = np.full(n_faces, -1, dtype=np.int64)
+    radiative_active = np.full(n_faces, -1, dtype=np.int64)
+    conductive_active = np.full(n_faces, -1, dtype=np.int64)
     optical_names, bulk_names = _Names(), _Names()
 
-    for item, side1, side2 in _item_slots(model):
+    for item, side1, side2 in _item_faces(model):
         thermal_mesh = item.thermal_mesh
         sides = (
             (1, side1, thermal_mesh.side1_thick, thermal_mesh.side1_material),

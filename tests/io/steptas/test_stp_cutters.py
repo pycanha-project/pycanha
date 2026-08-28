@@ -1,9 +1,9 @@
 """Cutting tools, which STEP-TAS writes as solids rather than as surfaces.
 
 The feature model cuts with a cylinder and a box.  This one cuts with the other
-four shapes a tool can be, two of which pycanha cannot cut with at all -- and
-the interesting half of the fixture is that those two are reported and leave
-their target whole, rather than half-applied.
+four shapes a tool can be, one of which pycanha cannot cut with at all -- and
+the interesting part of the fixture is that it is reported and leaves its
+target whole, rather than half-applied.
 """
 
 from __future__ import annotations
@@ -81,14 +81,21 @@ def test_a_shape_that_encloses_nothing_cannot_cut(cut: tuple) -> None:
     assert "PARA_TOOL" in reported[0].message
 
 
-def test_a_solid_with_no_reading_here_is_named_rather_than_guessed(cut: tuple) -> None:
-    _, diagnostics = cut
-    reported = [note for note in diagnostics if note.code == "TAS_CUTTER_UNSUPPORTED"]
-    assert len(reported) == 1
-    assert "MGM_SOLID_TRIANGULAR_PRISM" in reported[0].message
+def test_a_prism_solid_cuts_rather_than_being_named_as_unreadable(cut: tuple) -> None:
+    """``MGM_SOLID_TRIANGULAR_PRISM`` has a closed prism to become since 0.20.
+
+    It carries its four corners in the file's own frame, so unlike the box
+    there is no placement split out of it.
+    """
+    model, diagnostics = cut
+    assert not [note for note in diagnostics if note.code == "TAS_CUTTER_UNSUPPORTED"]
+
+    prism = shape(item(model, "CUTTERS_PRISM_TOOL"), pcc.gmm.TriangularPrism)
+    assert list(prism.p1) == pytest.approx([-0.2, -0.7, -0.2])
+    assert list(prism.p4) == pytest.approx([-0.2, -0.7, 0.4])
 
 
-def test_the_two_readers_refuse_the_same_two_tools(cut: tuple) -> None:
+def test_the_two_readers_refuse_the_same_tool(cut: tuple) -> None:
     """The same model read from its own format reaches the same conclusion.
 
     Which tools can cut is a question about pycanha, not about either file, so
@@ -98,7 +105,9 @@ def test_the_two_readers_refuse_the_same_two_tools(cut: tuple) -> None:
     model, _ = cut
     source = GeometryModel("source")
     diagnostics = source.io.read_esatan_erg(SOURCE, on_diagnostic=lambda _note: None)
-    assert {"ERG_CUTTER_NOT_SOLID", "ERG_CUTTER_NOT_PRIMITIVE"} <= diagnostics.codes()
+    # Only the paraboloid is refused now; it encloses no volume however written.
+    assert "ERG_CUTTER_NOT_SOLID" in diagnostics.codes()
+    assert "ERG_CUTTER_NOT_PRIMITIVE" not in diagnostics.codes()
 
     def cutters(built: GeometryModel) -> set[str]:
         return {
@@ -108,11 +117,11 @@ def test_the_two_readers_refuse_the_same_two_tools(cut: tuple) -> None:
             for child in group.cutters
         }
 
-    assert cutters(model) == cutters(source) == {"CONE_TOOL", "SPHERE_TOOL"}
+    assert cutters(model) == cutters(source) == {"CONE_TOOL", "SPHERE_TOOL", "PRISM_TOOL"}
 
 
 def test_a_refused_cut_leaves_its_target_whole(cut: tuple) -> None:
-    """Two cuts apply and two do not, so two cut groups and no more.
+    """Three cuts apply and one does not, so three cut groups and no more.
 
     The alternative -- dropping the shape that could not be cut -- would lose
     geometry the file has; leaving it uncut keeps it, with the difference
@@ -122,6 +131,6 @@ def test_a_refused_cut_leaves_its_target_whole(cut: tuple) -> None:
     groups = [
         child for child in model.children_recursive() if isinstance(child, GeometryGroupCutted)
     ]
-    assert len(groups) == 2
+    assert len(groups) == 3
     plate = item(model, "CUTTERS_SLAB")
     assert plate.primitive.surface_area() == pytest.approx(4.0)

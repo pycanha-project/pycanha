@@ -11,8 +11,8 @@ has to import ``pycanha_core`` directly::
     print(pc.conduction.summary(report))
 
 The builder walks the geometry model and, for every conductively active face
-slot that carries a node number, creates one thermal node plus the in-plane and
-through-thickness conductors those slots imply.  Whether a side takes part is
+face that carries a node number, creates one thermal node plus the in-plane and
+through-thickness conductors those faces imply.  Whether a side takes part is
 ``ThermalMesh.conductive_active_side``, which is independent of the radiative
 one: a surface can conduct without radiating and the other way round.
 
@@ -37,8 +37,8 @@ from pycanha.io.diagnostics import Diagnostic, DiagnosticCollector, Severity
 if TYPE_CHECKING:
     from pycanha_core.conduction import (
         BuildDiagnostic,
-        CellLink,
         DiagnosticCode,
+        FacePairLink,
         MeridianProfile,
         TmmBuildOptions,
         TmmBuildReport,
@@ -51,8 +51,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BuildDiagnostic",
-    "CellLink",
     "DiagnosticCode",
+    "FacePairLink",
     "MeridianProfile",
     "TmmBuildOptions",
     "TmmBuildReport",
@@ -80,14 +80,14 @@ _SEVERITIES: dict[str, Severity] = {
     "CutGeometrySkipped": Severity.UNSUPPORTED,
     "UnmeshedPrimitive": Severity.INFO,
     "InactiveSideSkipped": Severity.INFO,
-    "TriangleApproximated": Severity.INFO,
+    "DiscreteLinkFallback": Severity.INFO,
     "AxisSingularity": Severity.INFO,
     "MissingBulk": Severity.WARNING,
     "ZeroThickness": Severity.WARNING,
     "ZeroConductivity": Severity.WARNING,
     "MixedBulkOnNode": Severity.WARNING,
     "NoNodeNumbers": Severity.WARNING,
-    "DegenerateCell": Severity.WARNING,
+    "DegenerateFacePair": Severity.WARNING,
 }
 
 

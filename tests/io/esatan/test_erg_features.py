@@ -14,9 +14,11 @@ by exactly those refusals and nothing else.
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 
 import numpy as np
+import pycanha_core as pcc
 import pytest
 
 from pycanha.gmm import (
@@ -87,22 +89,31 @@ def convertible() -> tuple[GeometryModel, object]:
 
 
 def test_every_supported_primitive_is_built(convertible: tuple) -> None:
-    """Seven shell-coordinate primitives and ten by-points ones, all present."""
+    """Nine shell-coordinate primitives and ten by-points ones, all present."""
     model, _ = convertible
     for name in ("SCS_DISC", "SCS_CYL", "SCS_CONE", "SCS_SPHERE", "SCS_RECT", "SCS_PARA"):
         assert isinstance(model.get_item(name), GeometryItem), name
+    assert isinstance(model.get_item("SCS_TRAP"), GeometryItem)
     for name in ("PT_TRIANGLE", "PT_RECT", "PT_QUAD", "PT_DISC", "PT_CYL", "PT_CONE"):
         assert isinstance(model.get_item(name), GeometryItem), name
     for name in ("PT_SPHERE", "PT_PARA"):
         assert isinstance(model.get_item(name), GeometryItem), name
-    # The two that have no single-primitive reading become groups of faces.
+    # The four that have no single-primitive reading become groups of faces.
     assert isinstance(model.get_group("SCS_BOX"), GeometryGroup)
+    assert isinstance(model.get_group("SCS_PRISM"), GeometryGroup)
     assert isinstance(model.get_group("PT_PRISM"), GeometryGroup)
     assert isinstance(model.get_group("PT_BOX"), GeometryGroup)
 
 
 def test_primitive_geometry_is_numerically_right(convertible: tuple) -> None:
-    """Areas, not merely types: a wrong parametrisation still builds a shape."""
+    """Areas, not merely types: a wrong parametrisation still builds a shape.
+
+    Every area below is the closed form for the shape the file describes,
+    written out here rather than taken from ``surface_area()`` on the other
+    side of the comparison.  That distinction is the whole point: the
+    quadrilateral was wrong for years because the mesher and the primitive
+    agreed with each other.
+    """
     model, _ = convertible
 
     # A 270-degree annulus between r = 0.02 and r = 0.1.
@@ -120,9 +131,127 @@ def test_primitive_geometry_is_numerically_right(convertible: tuple) -> None:
     band = model.get_item("SCS_SPHERE").primitive.surface_area()
     assert band == pytest.approx(2 * math.pi * 0.1 * (2 * 0.1 * math.sin(math.radians(60))))
 
+    # A paraboloid z = r^2 / (4f) up to height h has area
+    # (8 pi f^2 / 3) * ((1 + h/f)^(3/2) - 1); here f = 0.1 and h = 0.2.
+    assert model.get_item("SCS_PARA").primitive.surface_area() == pytest.approx(
+        (8 * math.pi * 0.1**2 / 3) * ((1 + 0.2 / 0.1) ** 1.5 - 1)
+    )
+
+    # A trapezoid parallel to the XY-plane: its two edges parallel to X are
+    # 2 * beta * cot(60) long at beta = 0.1 and at beta = 0.3, spanning 0.2.
+    cot60 = 1.0 / math.tan(math.radians(60.0))
+    assert model.get_item("SCS_TRAP").primitive.surface_area() == pytest.approx(
+        (2 * 0.3 * cot60 + 2 * 0.1 * cot60) / 2 * (0.3 - 0.1)
+    )
+
     # By points: a right triangle with legs 0.3 and 0.4.
     assert model.get_item("PT_TRIANGLE").primitive.surface_area() == pytest.approx(0.5 * 0.3 * 0.4)
     assert model.get_item("PT_RECT").primitive.surface_area() == pytest.approx(0.3 * 0.4)
+
+    # A genuine trapezoid, and the one the reader used to get wrong: its
+    # parallel sides are 0.30 and 0.35 across a span of 0.40, so the area is
+    # 0.13.  Read as the rectangle spanned by two of its edges it comes to
+    # 0.12, which is a plausible number and the wrong one.
+    assert model.get_item("PT_QUAD").primitive.surface_area() == pytest.approx(
+        (0.30 + 0.35) / 2 * 0.40
+    )
+
+    # A full cone: apex 0.4 above a base of radius 0.2, so pi * r * slant.
+    assert model.get_item("PT_CONE").primitive.surface_area() == pytest.approx(
+        math.pi * 0.2 * math.hypot(0.2, 0.4)
+    )
+
+    assert model.get_item("SCS_RECT").primitive.surface_area() == pytest.approx(0.2 * 0.3)
+
+    # A half cone (angmax 180) of semi-angle 30, between heights 0.05 and 0.25
+    # measured from the apex: pi * (r1 + r2) * slant, halved.  ``SEMI`` is 30
+    # where this surface is read and 45 by the end of the file; the reader
+    # evaluates where it reads, which is the divergence ERG_REBOUND_VARIABLE
+    # reports.
+    semi = math.radians(30.0)
+    assert model.get_item("SCS_CONE").primitive.surface_area() == pytest.approx(
+        0.5 * math.pi * (0.05 * math.tan(semi) + 0.25 * math.tan(semi)) * (0.20 / math.cos(semi))
+    )
+
+    assert model.get_item("PT_DISC").primitive.surface_area() == pytest.approx(math.pi * 0.2**2)
+    assert model.get_item("PT_CYL").primitive.surface_area() == pytest.approx(
+        2 * math.pi * 0.15 * 0.30
+    )
+    assert model.get_item("PT_SPHERE").primitive.surface_area() == pytest.approx(
+        4 * math.pi * 0.2**2
+    )
+    # Same formula as SCS_PARA, but the focal length is implied by the rim:
+    # R = 0.2 at h = 0.2 gives f = R^2 / (4h) = 0.05.
+    assert model.get_item("PT_PARA").primitive.surface_area() == pytest.approx(
+        (8 * math.pi * 0.05**2 / 3) * ((1 + 0.2 / 0.05) ** 1.5 - 1)
+    )
+
+
+#: The surfaces whose area the test above checks against a closed form.
+#:
+#: Kept beside the test so the guard below can compare what is asserted with
+#: what the model actually holds.
+NUMERICALLY_ASSERTED = (
+    "SCS_DISC",
+    "SCS_CYL",
+    "SCS_CONE",
+    "SCS_SPHERE",
+    "SCS_RECT",
+    "SCS_PARA",
+    "SCS_TRAP",
+    "PT_TRIANGLE",
+    "PT_RECT",
+    "PT_QUAD",
+    "PT_DISC",
+    "PT_CYL",
+    "PT_CONE",
+    "PT_SPHERE",
+    "PT_PARA",
+)
+
+#: The primitives that exist only to cut with: never meshed, radiated or
+#: conducted, so an area of theirs would mean nothing.  What they remove is
+#: asserted where the cut is instead.
+CUT_ONLY = (pcc.gmm.Cube, pcc.gmm.TriangularPrism)
+
+
+def surface_constructors(source: Path, model: GeometryModel) -> dict[str, str]:
+    """Each ESATAN constructor in *source* that built a surface, to one item.
+
+    Read from the file text rather than from the reader's tables, so this stays
+    a statement about the fixture and not about the code under test.
+    """
+    built = dict(re.findall(r"^(\w+)\s*=\s*(SHELL_\w+)\s*\(", source.read_text("utf-8"), re.M))
+    found: dict[str, str] = {}
+    for item in model.children_recursive():
+        if not isinstance(item, GeometryItem) or isinstance(item.primitive, CUT_ONLY):
+            continue
+        constructor = built.get(item.name)
+        if constructor is not None:
+            found.setdefault(constructor, item.name)
+    return found
+
+
+def test_every_surface_constructor_has_a_closed_form_area(convertible: tuple) -> None:
+    """No constructor may build a surface nobody checked the area of.
+
+    This is the guard for the gap the quadrilateral came through.  ``PT_QUAD``
+    was in this fixture from the start, was a real trapezoid, and was the one
+    primitive the numeric test never asserted on -- everywhere else it appeared,
+    the assertion was ``isinstance(..., GeometryItem)``.  Adding a constructor
+    the reader can build now fails here until somebody writes down what its area
+    ought to be.
+
+    The unit is the **constructor**, not the shape class: ``SHELL_CONE`` and
+    ``SHELL_SCS_CONE`` both make a ``Cone`` from entirely different parameters,
+    and the SCS one was once wrong for every truncated cone while the by-points
+    one was right.  Checking one ``Cone`` would have missed it.
+    """
+    model, _ = convertible
+    built = surface_constructors(CONVERTIBLE, model)
+    asserted = {constructor for constructor, name in built.items() if name in NUMERICALLY_ASSERTED}
+    missing = sorted(set(built) - asserted)
+    assert not missing, f"surface constructors with no closed-form area: {missing}"
 
 
 def test_a_box_becomes_six_faces_and_a_prism_three(convertible: tuple) -> None:

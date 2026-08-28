@@ -25,6 +25,7 @@ from pycanha.gmm import (
     GeometryItem,
     GeometryModel,
 )
+from pycanha.gmm.mesh import ops as mesh_ops
 from pycanha.io.esatan.errors import EsatanParseError
 from pycanha.io.esatan.geometry import cuts_to_esatan_mesh, esatan_mesh_to_cuts
 
@@ -354,6 +355,52 @@ def test_cut_with_sense_minus_one_builds_a_cut_group(tmp_path: Path) -> None:
     assert [target.name for target in cut.targets] == ["P"]
     assert [cutter.name for cutter in cut.cutters] == ["C"]
     assert "ERG_CUTTER_SENSE" not in diagnostics.codes()
+
+
+CHAINED_CUT = """
+GEOMETRY P;
+P = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0);
+GEOMETRY C1;
+C1 = SHELL_SCS_CYLINDER(radius = 0.5, hmin = -1.0, hmax = 1.0, sense = -1);
+C1 = TRANSLATE(object_name = C1, x_dist = 1.0, y_dist = 1.0);
+GEOMETRY C2;
+C2 = SHELL_SCS_CYLINDER(radius = 0.5, hmin = -1.0, hmax = 1.0, sense = -1);
+C2 = TRANSLATE(object_name = C2, x_dist = 2.0, y_dist = 2.0);
+GEOMETRY X1;
+X1 = P - C1;
+GEOMETRY X2;
+X2 = X1 - C2;
+"""
+
+
+def test_a_chained_cut_nests_and_meshes(tmp_path: Path) -> None:
+    """``(P - C1) - C2`` is a cut group whose target is another cut group.
+
+    The reader always built this shape; what used to happen is that meshing it
+    raised ``GeometryGroupCutted: cut targets must be GeometryItems``. Nothing
+    noticed, because reading "succeeded" and no test ever called ``.mesh`` --
+    the failure surfaced only when somebody opened the viewer. Core 0.20
+    resolves a chain, so the assertion that matters here is the mesh.
+
+    Two cylinders of radius 0.5 punched through a 4 x 4 plate leave
+    ``16 - 2 * pi * 0.5**2``, taken against the closed form rather than against
+    an uncut copy of the same model.
+    """
+    model, diagnostics = build(tmp_path, CHAINED_CUT)
+
+    outer = model.get_cut_group("X2")
+    assert isinstance(outer, GeometryGroupCutted)
+    assert [cutter.name for cutter in outer.cutters] == ["C2"]
+
+    # The natural nesting, not a flattened list holding both cutters.
+    inner = outer.targets[0]
+    assert isinstance(inner, GeometryGroupCutted)
+    assert inner.name == "X1"
+    assert [cutter.name for cutter in inner.cutters] == ["C1"]
+
+    area = float(mesh_ops.compute_areas(outer.mesh).sum())
+    assert area == pytest.approx(4.0 * 4.0 - 2 * math.pi * 0.5**2, rel=1e-3)
+    assert "ERG_CUT_TARGET_NOT_ITEM" not in diagnostics.codes()
 
 
 def test_default_cutter_sense_is_reported_and_skipped(tmp_path: Path) -> None:
