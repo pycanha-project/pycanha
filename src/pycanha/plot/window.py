@@ -35,6 +35,7 @@ from pyvistaqt import QtInteractor
 
 from .. import log
 from . import edges, results
+from .depth import push_lines, push_surface
 from .icons import apply_window_icon
 from .panels.info_panel import InfoPanel
 from .panels.legend_panel import LegendPanel
@@ -94,13 +95,20 @@ EDGE_COLOR = "black"
 FACE_EDGE_WIDTH = 1.0
 PRIMITIVE_EDGE_WIDTH = 3.0
 
-#: How far towards the camera a coincident overlay is pushed, in the units
-#: VTK's polygon offset takes (negative is towards the camera). Lines are
-#: pushed further than surfaces, so a line is never swallowed by the selection
-#: overlay lying on the same geometry - and every line uses the same value, so
-#: the mesh, the outlines and the selection ring cannot z-fight each other.
-SURFACE_OFFSET = -4.0
-LINE_OFFSET = -8.0
+#: How close to the camera the near plane may get, as a fraction of the
+#: distance to what the camera is looking at. Without it a single vertex that
+#: happens to drift in front of the camera - a strut the view has been pushed
+#: through, covering no pixels worth seeing - sets the near plane for the whole
+#: frame and costs every other surface its depth precision. Anything this much
+#: nearer than the subject is incidental, and is clipped instead. Being a
+#: fraction of the subject's distance it scales with the zoom, so what is being
+#: looked at is never the thing that gets cut.
+FOCAL_NEAR_FRACTION = 0.02
+
+#: The last-resort floor under the near plane, as a fraction of the far plane,
+#: for when even the subject is right against the camera. VTK's own value for a
+#: 24-bit depth buffer.
+NEAR_PLANE_FLOOR = 1e-3
 
 #: What a face outside the node filter is drawn in - greyed, never hidden.
 FILTERED_COLOR = "lightgray"
@@ -215,12 +223,16 @@ class ViewerWindow(QMainWindow):
 
         self.state.subscribe(self._on_state_change)
         self._enable_picking()
+        self._watch_the_clipping_range()
         # The panel published its default case while the window was still being
         # built, before anything was subscribed to hear it, so the result
         # coloring is filled in here - ready for the moment it is chosen.
         self.refresh_result()
         self._sync_results_strip()
         self.rebuild_geometry()
+        # Drawn once here because the overlays are only ever put up in response
+        # to a change, and an edge display that is on by default never gets one.
+        self._draw_edges()
 
     def _add_dock(self, title: str, widget: QWidget, area: Qt.DockWidgetArea) -> QDockWidget:
         dock = QDockWidget(title, self)
@@ -543,6 +555,71 @@ class ViewerWindow(QMainWindow):
         """How many triangles the master mesh holds, sides not counted twice."""
         return self.scene.n_cells // 2 if self.scene.both_sides else self.scene.n_cells
 
+    # ── depth ─────────────────────────────────────────────────────────────
+    def _watch_the_clipping_range(self) -> None:
+        """Put the near and far planes back on the geometry before every frame.
+
+        On the renderer's own start-of-frame event rather than on the camera or
+        the interactor: VTK resets the range from inside its interactor styles,
+        after the camera has moved and before it renders, so the only place
+        that is guaranteed to be after every reset - a rotate, a dolly, a
+        window resize, a reset view - is the frame itself.
+        """
+        if self.plotter is None:
+            return
+        self.plotter.renderer.AddObserver("StartEvent", self._on_start_frame)
+
+    def _on_start_frame(self, *args: object) -> None:
+        del args
+        self.tighten_clipping_range()
+
+    def tighten_clipping_range(self) -> None:
+        """Fit the near and far planes to the geometry, not to its bounding box.
+
+        The depth buffer's precision is spread over the near-far range, so how
+        far apart two surfaces must be before the renderer can tell which one
+        is in front is decided here. VTK's own reset gives that range the
+        bounding box inflated by half its own depth, which puts the near plane
+        behind the camera, where it is clamped to a thousandth of the far plane
+        - a ratio of 1000 from every viewpoint, whatever the model. Surfaces a
+        fraction of a percent of the model apart then land on the same depth
+        value and which one is drawn is decided by rounding, which is why
+        hidden edges came and went with the zoom.
+
+        The planes are fitted to the geometry's own extent along the view
+        direction instead, which from outside a model is a ratio of a few
+        rather than of a thousand. Two things keep one stray vertex from
+        undoing that: every point of the scene counts, including geometry
+        currently hidden, so the planes can only be more generous than they
+        need to be rather than tight enough to clip what is on screen; and the
+        near plane will not chase a vertex closer to the camera than
+        :data:`FOCAL_NEAR_FRACTION` of the distance to what is being looked at.
+        """
+        if self.plotter is None:
+            return
+        points = self.scene.points
+        if points.shape[0] == 0:
+            return
+        camera = self.plotter.camera
+        eye = np.asarray(camera.GetPosition(), dtype=np.float64)
+        direction = np.asarray(camera.GetFocalPoint(), dtype=np.float64) - eye
+        reach = float(np.linalg.norm(direction))
+        if reach == 0.0:
+            return
+        direction /= reach
+        # How far along the view direction each point lies, the camera at zero.
+        depths = points @ direction - float(eye @ direction)
+        far = float(depths.max())
+        if far <= 0.0:
+            # The whole model is behind the camera; there is nothing to fit to.
+            return
+        ahead = depths[depths > 0.0]
+        # A hair in front of the nearest point and behind the furthest, so
+        # neither is clipped by its own plane.
+        near = 0.99 * float(ahead.min()) if ahead.size else 0.0
+        far *= 1.01
+        camera.SetClippingRange(max(near, FOCAL_NEAR_FRACTION * reach, NEAR_PLANE_FLOOR * far), far)
+
     # ── edges ─────────────────────────────────────────────────────────────
     def visible_triangles(self) -> npt.NDArray[np.intp]:
         """The side-1 cells currently drawn - one entry per rendered triangle.
@@ -594,13 +671,12 @@ class ViewerWindow(QMainWindow):
     ) -> None:
         """Put one set of lines over the geometry, or take it away.
 
-        The lines lie exactly on the surface they outline, so they are pushed
-        towards the camera by more than any surface is (:data:`LINE_OFFSET`
-        against :data:`SURFACE_OFFSET`). Without that ordering the selection
-        overlay - itself a surface pushed forward - swallows whichever lines
-        happen to land behind it, which is a stripe of the mesh here and a
-        piece of a face outline there rather than anything that reads as a
-        rule.
+        The lines lie exactly on the surface they outline, so they need the
+        depth offsetting switched on to sit clear of it - see :mod:`.depth` for
+        the ladder they end up in. Without it the selection overlay, itself a
+        surface pushed forward, swallows whichever lines happen to land behind
+        it: a stripe of the mesh here and a piece of a face outline there
+        rather than anything that reads as a rule.
         """
         if self.plotter is None:
             return
@@ -617,9 +693,7 @@ class ViewerWindow(QMainWindow):
             show_scalar_bar=False,
             name=name,
         )
-        mapper = actor.mapper
-        mapper.SetResolveCoincidentTopologyToPolygonOffset()
-        mapper.SetRelativeCoincidentTopologyLineOffsetParameters(LINE_OFFSET, LINE_OFFSET)
+        push_lines(actor.mapper)
 
     def _draw_highlight(self) -> None:
         """Draw the selection: the same cells, brighter, ringed in one line."""
@@ -647,9 +721,7 @@ class ViewerWindow(QMainWindow):
         )
         # Coincident with the surface it covers, so it is pushed towards the
         # camera - but by less than the lines, which have to stay on top of it.
-        mapper = actor.mapper
-        mapper.SetResolveCoincidentTopologyToPolygonOffset()
-        mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(SURFACE_OFFSET, SURFACE_OFFSET)
+        push_surface(actor.mapper)
         self._draw_lines(
             SELECTION_OUTLINE,
             self.highlight_outline(),

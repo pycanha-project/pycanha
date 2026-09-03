@@ -1,4 +1,4 @@
-"""The geometry tree, with a name filter and a hide/show context menu."""
+"""The geometry tree, with a name filter and a hide/show/expand context menu."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from ..state import Change, Selection
 from ..tree_model import GeometryTreeModel
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from PySide6.QtCore import QObject, QPoint
 
     from ..state import ViewState
@@ -22,9 +24,10 @@ class TreePanel(QWidget):
     """Name filter above a single-column view of the geometry hierarchy.
 
     Selection is bidirectional and single: clicking a row selects that geometry
-    in the shared state, and a 3D pick that selects an item scrolls its row
-    into view. Hide, Show and Show only act on the whole subtree of the row
-    they are invoked on - hiding a group means hiding what is in it.
+    in the shared state, and a 3D pick that selects an item opens the groups
+    above its row and scrolls it into view. Every context-menu action acts on
+    the whole subtree of the row it is invoked on - hiding a group means hiding
+    what is in it, and expanding one means opening everything below it.
     """
 
     def __init__(self, model: Any, state: ViewState, parent: QWidget | None = None) -> None:
@@ -52,7 +55,7 @@ class TreePanel(QWidget):
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.customContextMenuRequested.connect(self._on_context_menu)
         self.view.clicked.connect(self._on_clicked)
-        self.view.expandAll()
+        self._collapse_to_top_level()
         # Clicking the empty space under the last row is how a selection is
         # dropped from here, the way clicking past the geometry drops it in the
         # 3D view. A QTreeView keeps its current row on such a click, so the
@@ -79,8 +82,7 @@ class TreePanel(QWidget):
         if text:
             self.view.expandAll()
         else:
-            self.view.collapseAll()
-            self.view.expand(self.proxy.index(0, 0))
+            self._collapse_to_top_level()
 
     # ── selection ─────────────────────────────────────────────────────────
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
@@ -136,6 +138,10 @@ class TreePanel(QWidget):
                 selection_model.setCurrentIndex(
                     index, QItemSelectionModel.SelectionFlag.ClearAndSelect
                 )
+                # The tree starts collapsed, and ``scrollTo`` does nothing for a
+                # row inside a collapsed group, so a 3D pick has to open the way
+                # down to its row before it can be scrolled into view.
+                self._expand_ancestors(index)
                 self.view.scrollTo(index)
             else:
                 # The current row goes too, not just the highlight: a row that
@@ -146,15 +152,67 @@ class TreePanel(QWidget):
         finally:
             self._syncing = False
 
+    # ── expanding ─────────────────────────────────────────────────────────
+    def _collapse_to_top_level(self) -> None:
+        """Show the model row and the geometry directly under it, nothing more.
+
+        The tree opens this way and comes back to it when the filter is
+        cleared, so a big model is a short list to start from rather than every
+        item at once. The model row itself stays open because collapsing it too
+        would leave a single row that says only the model's name.
+        """
+        self.view.collapseAll()
+        self.view.expand(self.proxy.index(0, 0))
+
+    def _expand_ancestors(self, index: QModelIndex) -> None:
+        """Open every group above ``index``, so that its row is on screen."""
+        parent = index.parent()
+        while parent.isValid():
+            self.view.expand(parent)
+            parent = parent.parent()
+
+    def _collapse_subtree(self, index: QModelIndex) -> None:
+        """Collapse ``index`` and every row beneath it.
+
+        Qt has ``expandRecursively`` but no collapsing counterpart, so the
+        descendants are walked here - collapsing only the row itself would
+        leave the rows inside it open the next time it is expanded.
+        """
+        for row in range(self.proxy.rowCount(index)):
+            self._collapse_subtree(self.proxy.index(row, 0, index))
+        self.view.collapse(index)
+
     # ── context menu ──────────────────────────────────────────────────────
-    def _on_context_menu(self, position: QPoint) -> None:
-        node = self._node_at(self.view.indexAt(position))
+    def context_actions(self, index: QModelIndex) -> list[tuple[str, Callable[[], None]]]:
+        """What the right-click menu offers over ``index``, as label/callback pairs.
+
+        Pairs rather than ``QAction``s so the menu is one line of Qt and the
+        behaviour can be exercised headless, as the 3D menu is.
+
+        Expand all and Collapse all are offered only on a row that has
+        something under it, and act on that whole subtree; on a leaf they would
+        be actions that do nothing.
+        """
+        node = self._node_at(index)
         if node is None:
+            return []
+        actions: list[tuple[str, Callable[[], None]]] = [
+            ("Hide", lambda: self._state.hide(node.item_ids)),
+            ("Show", lambda: self._state.show(node.item_ids)),
+            ("Show only", lambda: self._state.show_only(node.item_ids)),
+        ]
+        if self.proxy.rowCount(index):
+            actions.append(("Expand all", lambda: self.view.expandRecursively(index)))
+            actions.append(("Collapse all", lambda: self._collapse_subtree(index)))
+        return actions
+
+    def _on_context_menu(self, position: QPoint) -> None:
+        actions = self.context_actions(self.view.indexAt(position))
+        if not actions:
             return
         menu = QMenu(self.view)
-        menu.addAction("Hide", lambda: self._state.hide(node.item_ids))
-        menu.addAction("Show", lambda: self._state.show(node.item_ids))
-        menu.addAction("Show only", lambda: self._state.show_only(node.item_ids))
+        for label, action in actions:
+            menu.addAction(label, action)
         viewport = self.view.viewport()
         if viewport is not None:
             # Shown, not run: ``popup`` leaves the action to the normal event

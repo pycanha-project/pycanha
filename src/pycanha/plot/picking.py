@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pycanha_core as pcc
 
+from .depth import push_surface
 from .polydata import polydata_from_triangles
 
 if TYPE_CHECKING:
@@ -234,9 +235,7 @@ def highlight_cells(
         show_scalar_bar=False,
         name=name,
     )
-    mapper = actor.mapper
-    mapper.SetResolveCoincidentTopologyToPolygonOffset()
-    mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(-4.0, -4.0)
+    push_surface(actor.mapper)
 
 
 def clear_highlight(plotter: pv.Plotter, name: str = _HIGHLIGHT_NAME) -> None:

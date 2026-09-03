@@ -17,6 +17,16 @@ from .io import GeometryIo
 #: Actor name of the time readout, so each frame replaces the previous one.
 _TIME_LABEL = "_time_label"
 
+#: Default chordal deviation tolerance, in model length units, for every model
+#: this package builds. Only the curved meshers read it - disc, cylinder, cone,
+#: sphere, paraboloid - and it refines *within* each ThermalMesh face, so it
+#: changes how round a curve looks and how accurately its area is measured
+#: without touching the face or node structure. The core ships 1e-3, which draws
+#: a 20 mm optic as a 10-sided polygon and under-measures a model's area by
+#: ~0.1%; 1e-4 costs roughly twice the triangles and converges the area to
+#: within 0.01%.
+DEFAULT_DEVIATION_TOLERANCE = 1e-4
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
@@ -81,7 +91,16 @@ class GeometryModel(pcc.gmm.GeometryModel):
     (:meth:`plot`, :meth:`to_polydata`, :meth:`plot_node_range`), geometry
     import/export through :attr:`io`, plus a textual view of the scene
     hierarchy (:meth:`format_tree` / :meth:`print_tree`).
+
+    Also starts from :data:`DEFAULT_DEVIATION_TOLERANCE` rather than the core's
+    coarser meshing default.
     """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.default_mesh_options = pcc.gmm.MeshOptions(
+            deviation_tolerance=DEFAULT_DEVIATION_TOLERANCE
+        )
 
     # ── import / export ───────────────────────────────────────────────────
     @property

@@ -124,6 +124,11 @@ class ViewerToolBar(QToolBar):
         )
 
         state.subscribe(self._on_state_change)
+        # The toggles start from the state rather than from unchecked: a
+        # default that is on has to look on, or the first click on it sets what
+        # is already set, emits nothing, and reads as a button that does not
+        # work.
+        self._sync_edges()
         self._sync_filters()
 
     def _action(

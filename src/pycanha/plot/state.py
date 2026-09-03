@@ -104,10 +104,12 @@ class EdgeDisplay:
     Independent of each other and of everything else: ``triangles`` is the
     actor's own ``show_edges``, while the other two are overlay actors built by
     :mod:`pycanha.plot.edges`.
+
+    Face edges are on by default.
     """
 
     triangles: bool = False
-    faces: bool = False
+    faces: bool = True
     primitives: bool = False
 
 
