@@ -41,9 +41,13 @@ declaration: CONST? NAME NAME dims? ("=" expr)? ";"
 dims: "[" expr ("," expr)* "]"
 
 assignment: lvalue "=" expr ";"
-lvalue: dotted_name env_suffix?
-// Thermal property environment selector, e.g. `Keplacoat [EOL] = [...];`
-env_suffix: "[" NAME "]"
+lvalue: dotted_name subscript_suffix?
+// One bracketed suffix, two unrelated meanings: the thermal property
+// environment selector `Keplacoat [EOL] = [...];` and the array element write
+// `grid[1] = [...];`.  They are the same shape and a subscript may be a
+// variable, so the grammar cannot tell them apart -- only what the name was
+// declared as can, which is where the builder decides.
+subscript_suffix: "[" expr ("," expr)* "]"
 
 call_stmt: NAME "(" arglist? ")" ";"
 
@@ -77,7 +81,8 @@ switch_default: _DEFAULT ":" statement*
            | NOT_OP unary_expr -> unary
            | atom
 
-?atom: func_call
+?atom: index
+     | func_call
      | vector
      | array
      | NUMBER  -> number
@@ -86,6 +91,8 @@ switch_default: _DEFAULT ":" statement*
      | dotted_name
      | "(" expr ")"
 
+// Reading one element of a declared array, e.g. `point1 = grid[255]`.
+index: dotted_name "[" expr ("," expr)* "]"
 func_call: NAME "(" arglist? ")"
 // Procedure arguments are named; the predefined functions (SQRT, EVAL, ...)
 // take positional ones, so both forms are admitted everywhere.

@@ -29,6 +29,7 @@ __all__ = [
     "ForBlock",
     "IfBlock",
     "Include",
+    "Index",
     "Lvalue",
     "ModelFile",
     "Num",
@@ -95,6 +96,23 @@ class Ref(Positioned):
 
 
 @dataclass(frozen=True)
+class Index(Positioned):
+    """One element of an array, ``grid[255]``.
+
+    ``indices`` are expressions rather than numbers because the subscript may
+    be computed, and they count from one.
+    """
+
+    target: Ref
+    indices: tuple[Expr, ...]
+
+    @property
+    def name(self) -> str:
+        """The array being indexed."""
+        return self.target.name
+
+
+@dataclass(frozen=True)
 class Vector(Positioned):
     """A bracketed ``[a, b, c]`` literal: a point, a bulk triple, an optical row."""
 
@@ -141,7 +159,7 @@ class UnaryOp(Positioned):
     operand: Expr
 
 
-Expr = Num | Str | Bool | Ref | Vector | Array | Call | BinOp | UnaryOp
+Expr = Num | Str | Bool | Ref | Index | Vector | Array | Call | BinOp | UnaryOp
 
 
 # -- statements ------------------------------------------------------------
@@ -151,17 +169,38 @@ Expr = Num | Str | Bool | Ref | Vector | Array | Call | BinOp | UnaryOp
 class Lvalue(Positioned):
     """The target of an assignment.
 
-    ``environment`` is the thermal property environment selected by a trailing
-    ``[BOL]`` / ``[EOL]`` suffix, or ``None`` for the default environment.
+    ``subscript`` holds whatever was inside a trailing ``[...]``.  The same
+    shape spells two unrelated things -- the thermal property environment in
+    ``Keplacoat[EOL] = ...`` and the array element in ``grid[1] = ...`` -- and
+    which one it is depends on what the name was declared as, so the choice is
+    left to the reader rather than made here.  :attr:`environment` offers the
+    first reading and :attr:`indices` the second.
     """
 
     path: tuple[str, ...]
-    environment: str | None = None
+    subscript: tuple[Expr, ...] = ()
 
     @property
     def name(self) -> str:
         """The symbol being assigned to, without any attribute path."""
         return self.path[0]
+
+    @property
+    def environment(self) -> str | None:
+        """The subscript read as a property environment, if it can be.
+
+        That is a single bare name, as ``[BOL]`` and ``[EOL]`` are; ``None``
+        for the default environment and for anything an environment cannot be.
+        """
+        if len(self.subscript) != 1:
+            return None
+        only = self.subscript[0]
+        return only.name if isinstance(only, Ref) and len(only.path) == 1 else None
+
+    @property
+    def indices(self) -> tuple[Expr, ...]:
+        """The subscript read as array indices; empty when there is none."""
+        return self.subscript
 
     @property
     def attribute(self) -> str | None:

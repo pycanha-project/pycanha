@@ -11,7 +11,7 @@ with a diagnostic wherever it is not.  Two decisions shape the output:
   rotation matrix has to be decomposed into angles.  It is also the only
   spelling that covers a quadrilateral.
 * **A model does not record which spelling it was read from.**  A file written
-  here will therefore differ from that model's own export wherever the source
+  here will therefore differ from the file it was read from wherever that one
   used the other spelling.  That is a difference of expression, not of geometry.
 
 Everything the model cannot supply -- a label, a sub-model name, a criticality
@@ -263,7 +263,7 @@ class _Writer:
         rest.extend(self._attributes(item))
         # Points lead, in the order the shape defines them; everything else goes
         # into the order the format writes it, so a file can be compared against
-        # an ESATAN export without the difference being one of arrangement.
+        # a canonical file without the difference being one of arrangement.
         attributes = [*points, *sort_attributes(rest)]
         self.primitives.append(f"GEOMETRY {name};")
         self.primitives.extend(indent_arguments(f"{name} = {function}", attributes))

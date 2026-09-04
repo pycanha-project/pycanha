@@ -1,4 +1,4 @@
-BEGIN_MODEL FEATURES_TAS
+BEGIN_MODEL FEATURES
 
 /* ------------------------------------------------------------------ */
 /* Independent variables: declarations, expressions, vectors, points.  */
@@ -180,9 +180,15 @@ SCS_BOX = SHELL_SCS_BOX(
     xmax = 0.20000000,
     ymax = 0.30000000,
     height = 0.40000000,
+    meshType1 = "regular",
     nodes1 = 1,
+    ratio1 = 1.00000000,
+    meshType2 = "regular",
     nodes2 = 1,
+    ratio2 = 1.00000000,
+    meshType3 = "regular",
     nodes3 = 1,
+    ratio3 = 1.00000000,
     nbase1 = 1600,
     ndelta1 = 1,
     opt1 = Black,
@@ -209,8 +215,12 @@ SCS_PRISM = SHELL_SCS_TRIANGULAR_PRISM(
     beta = 0.20000000,
     gamma_min = 60.00000000,
     gamma_max = 120.00000000,
+    meshType1 = "regular",
     nodes1 = 1,
+    ratio1 = 1.00000000,
+    meshType4 = "regular",
     nodes4 = 1,
+    ratio4 = 1.00000000,
     nbase1 = 1800,
     ndelta1 = 1,
     opt1 = Black,
@@ -350,6 +360,8 @@ ATTRS = SHELL_SCS_RECTANGLE(
     bulk2 = Steel,
     thick2 = 0.00300000,
     through_cond = "BULK",
+    conductance = 0.00000000,
+    emittance = 0.00000000,
     meshType1 = "regular",
     nodes1 = 2,
     ratio1 = 1.00000000,
@@ -589,9 +601,439 @@ AUTO_NUM.NDELTA1 = 1;
 AUTO_NUM.NBASE2 = 9000;
 AUTO_NUM.NDELTA2 = 1;
 
+
+/* ------------------------------------------------------------------ */
+/* Arrays used as primitive corners.                                   */
+/*                                                                     */
+/* A POINT array is declared with a size, filled one element at a      */
+/* time, and its elements are then named as the corners of a surface.  */
+/* A REAL vector, whose elements are read the same way, is here for    */
+/* comparison: the two share one subscript syntax and only the         */
+/* declaration says which type an element has.  The array declared     */
+/* with an initializer list is further up, so both spellings are here. */
 /* ------------------------------------------------------------------ */
 
-FEATURES_TAS = STATIC_ASM + KINEMATIC_ASM + SOLO + ATTRS + SPLIT_DELTA + AUTO_NUM +
-    MOVED + CLEARED + DROPPED_ATTRS + INSULATED + LATE_CONE;
+OPTICAL Low_e;
+DEFINE_OPTICAL (
+    optical = Low_e,
+    ir_emiss = 0.40000000,
+    solar_absorb = 0.40000000);
+
+POINT grid[4];
+grid[1] = [0.0, 0.0, 0.0];
+grid[2] = [1.0, 0.0, 0.0];
+grid[3] = [1.0, 1.0, 0.0];
+grid[4] = [0.0, 1.0, 0.0];
+
+REAL heights[2];
+heights[1] = 0.25;
+heights[2] = 0.75;
+
+/* Corners taken straight out of the array. */
+GEOMETRY T1;
+T1 = SHELL_TRIANGLE(
+    point1 = grid[1],
+    point2 = grid[2],
+    point3 = grid[3],
+    nodes1 = 1,
+    nodes2 = 1,
+    nbase1 = 60000,
+    ndelta1 = 1,
+    opt1 = Low_e,
+    opt2 = Low_e);
+
+/* An element inside an expression, so an element is a value like any other and
+   not only a literal in disguise. */
+GEOMETRY T2;
+T2 = SHELL_TRIANGLE(
+    point1 = grid[1],
+    point2 = grid[4],
+    point3 = [0.0, 1.0, heights[2]],
+    nodes1 = 1,
+    nodes2 = 1,
+    nbase1 = 60100,
+    ndelta1 = 1,
+    opt1 = Low_e,
+    opt2 = Low_e);
+
+GEOMETRY PT_ARRAY;
+PT_ARRAY = T1 + T2;
+
+/* ------------------------------------------------------------------ */
+/* One plate cut by two more of the shapes a tool can be.  The         */
+/* cylinder and the box are further up; a cone and a sphere are here.  */
+/* Each removes what it encloses, which is `sense = -1`.  A prism      */
+/* cutter is not here because the writer has no spelling for one, and  */
+/* this model has to survive being written back out.                   */
+/* ------------------------------------------------------------------ */
+
+GEOMETRY SLAB;
+SLAB = SHELL_SCS_RECTANGLE(
+    xmin = -1.00000000,
+    xmax = 1.00000000,
+    ymin = -1.00000000,
+    ymax = 1.00000000,
+    height = 0.00000000,
+    nodes1 = 2,
+    nodes2 = 2,
+    nbase1 = 61000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY CONE_TOOL;
+CONE_TOOL = SHELL_SCS_CONE(
+    semi_ang = 30.00000000,
+    hmin = 0.10000000,
+    hmax = 0.40000000,
+    sense = -1,
+    nbase1 = 61100,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+CONE_TOOL = TRANSLATE(object_name = CONE_TOOL, x_dist = -0.50000000, z_dist = -0.20000000);
+
+GEOMETRY SPHERE_TOOL;
+SPHERE_TOOL = SHELL_SCS_SPHERE(
+    radius = 0.20000000,
+    sense = -1,
+    nbase1 = 61200,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+SPHERE_TOOL = TRANSLATE(object_name = SPHERE_TOOL, x_dist = 0.50000000);
+
+GEOMETRY HOLED;
+HOLED = SLAB - CONE_TOOL - SPHERE_TOOL;
+
+/* ------------------------------------------------------------------ */
+/* Every face with a node of its own, on both sides, so that one node  */
+/* names exactly one face and `expected_faces.csv` can give that       */
+/* face's area and the position of its parametric centre.  These       */
+/* shapes are order 1, so six decimals leave plenty of margin, and     */
+/* their meshes are uneven so that swapping the two parametric         */
+/* directions moves the numbers.                                       */
+/* ------------------------------------------------------------------ */
+
+GEOMETRY TRAP;
+TRAP = SHELL_SCS_TRAPEZOID(
+    beta_min = 1.00000000,
+    beta_max = 3.00000000,
+    gamma_min = 60.00000000,
+    gamma_max = 120.00000000,
+    height = 0.50000000,
+    nodes1 = 3,
+    nodes2 = 2,
+    nbase1 = 62000,
+    ndelta1 = 1,
+    nbase2 = 62050,
+    ndelta2 = 1,
+    thick = 0.00200000,
+    bulk = Alu,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY QUAD;
+QUAD = SHELL_QUADRILATERAL(
+    point1 = [5.00000000, 0.00000000, 0.00000000],
+    point2 = [7.00000000, 0.00000000, 0.00000000],
+    point3 = [6.50000000, 2.00000000, 0.00000000],
+    point4 = [5.50000000, 2.00000000, 0.00000000],
+    nodes1 = 2,
+    nodes2 = 2,
+    nbase1 = 62100,
+    ndelta1 = 1,
+    nbase2 = 62150,
+    ndelta2 = 1,
+    thick = 0.00200000,
+    bulk = Alu,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY RECT;
+RECT = SHELL_SCS_RECTANGLE(
+    xmin = 0.00000000,
+    xmax = 2.00000000,
+    ymin = 0.00000000,
+    ymax = 1.00000000,
+    height = -1.00000000,
+    nodes1 = 2,
+    nodes2 = 2,
+    nbase1 = 62200,
+    ndelta1 = 1,
+    nbase2 = 62250,
+    ndelta2 = 1,
+    thick = 0.00200000,
+    bulk = Alu,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY TRI;
+TRI = SHELL_TRIANGLE(
+    point1 = [0.00000000, 5.00000000, 0.00000000],
+    point2 = [2.00000000, 5.00000000, 0.00000000],
+    point3 = [0.00000000, 8.00000000, 0.00000000],
+    nodes1 = 2,
+    nodes2 = 2,
+    nbase1 = 62300,
+    ndelta1 = 1,
+    nbase2 = 62350,
+    ndelta2 = 1,
+    thick = 0.00200000,
+    bulk = Alu,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY DISC;
+DISC = SHELL_SCS_DISC(
+    rmin = 0.20000000,
+    rmax = 1.00000000,
+    angmin = 0.00000000,
+    angmax = 90.00000000,
+    height = 3.00000000,
+    nodes1 = 2,
+    nodes2 = 3,
+    nbase1 = 62400,
+    ndelta1 = 1,
+    nbase2 = 62450,
+    ndelta2 = 1,
+    thick = 0.00200000,
+    bulk = Alu,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY FACES;
+FACES = TRAP + QUAD + RECT + TRI + DISC;
+
+
+/* ------------------------------------------------------------------ */
+/* The attribute bank.                                                 */
+/*                                                                     */
+/* One rectangle per attribute combination, all the same shape and one */
+/* node base apart, so that what separates any two of them is the      */
+/* attributes and nothing else.  Nothing here is meant to describe      */
+/* hardware: the shapes sit on top of one another and the numbers are  */
+/* chosen to be told apart, not to be plausible.                       */
+/* ------------------------------------------------------------------ */
+
+/* Nothing but the minimum: every default left implicit. */
+
+GEOMETRY BANK_IMPLICIT;
+BANK_IMPLICIT = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    nbase1 = 70000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* The same surface with every default spelled out.  Reading the two has to
+   give the same thing, which is the whole claim a default makes. */
+
+GEOMETRY BANK_EXPLICIT;
+BANK_EXPLICIT = SHELL_SCS_RECTANGLE(
+    xmin = 0.00000000,
+    xmax = 0.10000000,
+    ymin = 0.00000000,
+    ymax = 0.10000000,
+    height = 0.00000000,
+    sense = 1,
+    analysis_type = "Lumped Parameter",
+    composition = "SINGLE",
+    meshType1 = "regular",
+    nodes1 = 1,
+    ratio1 = 1.00000000,
+    meshType2 = "regular",
+    nodes2 = 1,
+    ratio2 = 1.00000000,
+    side1 = "Active",
+    nbase1 = 71000,
+    ndelta1 = 1,
+    opt1 = Black,
+    side2 = "Active",
+    nbase2 = 71500,
+    ndelta2 = 1,
+    opt2 = Black);
+
+/* One side taking no part at all. */
+
+GEOMETRY BANK_INACTIVE;
+BANK_INACTIVE = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    side1 = "Active",
+    side2 = "Inactive",
+    nbase1 = 72000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* One side radiating and the other conducting: two activities, one per
+   calculation, so neither costs the other anything. */
+
+GEOMETRY BANK_ACTIVITIES;
+BANK_ACTIVITIES = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    side1 = "Radiative",
+    side2 = "Conductive",
+    nbase1 = 73000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* One thickness for the whole shell, shared between the conducting sides. */
+
+GEOMETRY BANK_SINGLE;
+BANK_SINGLE = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    composition = "SINGLE",
+    bulk = Alu,
+    thick = 0.00200000,
+    nbase1 = 74000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* A thickness and a material of its own on each side. */
+
+GEOMETRY BANK_DUAL;
+BANK_DUAL = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    composition = "DUAL",
+    bulk1 = Alu,
+    thick1 = 0.00100000,
+    bulk2 = Laminate,
+    thick2 = 0.00400000,
+    nbase1 = 75000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Mirror);
+
+/* Insulation, which needs a surface of its own. */
+
+GEOMETRY BANK_INSULATION;
+BANK_INSULATION = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    insulation1 = Blanket,
+    insulation2 = Blanket,
+    nbase1 = 76000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* Bookkeeping this model has nowhere to keep: names, criticalities and the
+   sub-model a surface belongs to. */
+
+GEOMETRY BANK_BOOKKEEPING;
+BANK_BOOKKEEPING = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    label1 = "bank front",
+    criticality1 = "CRITICAL",
+    model1 = "BANK",
+    label2 = "bank back",
+    criticality2 = "NORMAL",
+    model2 = "BANK",
+    nbase1 = 77000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* A node-number increment per direction, which one scalar step cannot hold. */
+
+GEOMETRY BANK_SPLIT_DELTA;
+BANK_SPLIT_DELTA = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    nodes1 = 2,
+    nodes2 = 3,
+    nbase1 = 78000,
+    ndelta1_1 = 1,
+    ndelta1_2 = 20,
+    opt1 = Black,
+    opt2 = Black);
+
+/* A regular mesh with a ratio in each direction: cuts that grow. */
+
+GEOMETRY BANK_REGULAR;
+BANK_REGULAR = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    meshType1 = "regular",
+    nodes1 = 3,
+    ratio1 = 2.00000000,
+    meshType2 = "regular",
+    nodes2 = 2,
+    ratio2 = 3.00000000,
+    nbase1 = 79000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* The same mesh said the other way: the interior cuts given outright, once
+   from an array declared with an initializer list and once from one filled
+   element by element. */
+
+REAL SPACING[2];
+SPACING[1] = 0.30000000;
+SPACING[2] = 0.60000000;
+
+GEOMETRY BANK_POSITIONS;
+BANK_POSITIONS = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    meshType1 = "positions",
+    meshPositions1 = CUTS,
+    meshType2 = "positions",
+    meshPositions2 = SPACING,
+    nbase1 = 80000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* The through-thickness quantities, which generate no couplings here.  The
+   other analysis type is on a surface of its own further up: a second one
+   would only report the same thing twice. */
+
+GEOMETRY BANK_THROUGH_THICKNESS;
+BANK_THROUGH_THICKNESS = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    analysis_type = "Lumped Parameter",
+    through_cond = "USER",
+    conductance = 12.00000000,
+    emittance = 0.05000000,
+    nbase1 = 81000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+/* A colour on each side, named from the format's palette. */
+
+GEOMETRY BANK_COLOURS;
+BANK_COLOURS = SHELL_SCS_RECTANGLE(
+    xmax = 0.10000000,
+    ymax = 0.10000000,
+    colour1 = "GREEN",
+    colour2 = "MAGENTA",
+    nbase1 = 82000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY BANK;
+BANK = BANK_IMPLICIT + BANK_EXPLICIT + BANK_INACTIVE + BANK_ACTIVITIES + BANK_SINGLE +
+    BANK_DUAL + BANK_INSULATION + BANK_BOOKKEEPING + BANK_SPLIT_DELTA + BANK_REGULAR +
+    BANK_POSITIONS + BANK_THROUGH_THICKNESS + BANK_COLOURS;
+
+/* ------------------------------------------------------------------ */
+
+FEATURES = STATIC_ASM + KINEMATIC_ASM + SOLO + ATTRS + SPLIT_DELTA + AUTO_NUM +
+    MOVED + CLEARED + DROPPED_ATTRS + INSULATED + LATE_CONE + PT_ARRAY + HOLED + FACES +
+    BANK;
 
 END_MODEL

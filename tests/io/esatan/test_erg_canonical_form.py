@@ -1,13 +1,20 @@
-"""How close the written file is to the form ESATAN itself writes.
+"""How close the written file is to the canonical form of the format.
 
-A committed reference export sits beside the feature models, so the comparison
-is against a real file rather than against a belief about one.
+The canonical form is what the format looks like once every default is spelled
+out, floats are normalised, and each primitive's attributes are in the one fixed
+order: two files describing the same model that way differ only in content.
 
-The writer does not aim to reproduce that file byte for byte -- it would have to
-invent values for concepts a :class:`~pycanha.gmm.GeometryModel` has no field
-for.  What it does aim at is that the *only* differences are those concepts.
-These tests pin that down from both sides: the attributes written are in the
-format's order, and the attributes not written are exactly the known list.
+The writer does not aim to reproduce a whole model byte for byte -- it would
+have to invent values for concepts a :class:`~pycanha.gmm.GeometryModel` has no
+field for.  What it does aim at is that the *only* differences are those
+concepts.  These tests pin that down from both sides: the attributes written are
+in the format's order, and the attributes not written are exactly the known
+list.
+
+The comparison is a round trip on the corpus -- read it, write it, and compare
+what was written against what the corpus itself carries.  The corpus states
+every attribute in the format, including the ones pycanha cannot hold, which is
+what makes the second half of that comparison mean anything.
 """
 
 from __future__ import annotations
@@ -20,19 +27,9 @@ import pytest
 from pycanha.gmm import GeometryModel
 from pycanha.io.esatan.geometry.canonical import ATTRIBUTE_ORDER, sort_attributes
 
-FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
-SOURCE = FEATURES / "FEATURES_TAS.erg"
-REFERENCE = FEATURES / "FEATURES_TAS_export.erg"
+CORPUS = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES.erg"
 
-#: The canonical form of the wider feature model, used only for the order check.
-#:
-#: It covers the constructs the other one leaves out -- the torus, the
-#: half-space cutter, the removed face -- so the attribute order is checked
-#: against every construct there is a canonical form for, not just the subset
-#: the writer is compared against.
-WIDER_REFERENCE = FEATURES / "FEATURES_ERG_export.erg"
-
-#: Attributes ESATAN writes that a GeometryModel has nowhere to hold.
+#: Attributes the format has that a GeometryModel has nowhere to hold.
 #:
 #: Each is a row in the coverage table, and closing any of them means a field in
 #: the model or in the core -- not a change to the writer.  A name leaving this
@@ -47,6 +44,7 @@ UNMODELLED = {
     "model1",
     "model2",
     "insulation1",
+    "insulation2",
     # Lumped-parameter is the only analysis type represented.
     "analysis_type",
     # No through-thickness couplings are generated from geometry.
@@ -67,14 +65,27 @@ UNMODELLED = {
     "ratio4",
 }
 
-#: Written, but said another way -- not a gap, and not something to close.
+#: The surface whose mesh the writer says in fewer words, and what it says.
 #:
-#: The source spells one mesh as explicit cut positions that happen to divide
-#: the range evenly.  Reading it keeps the cuts, and writing recognises them as
-#: uniform and says so, which is the same mesh in fewer words.
-EXPRESSED_DIFFERENTLY = {"meshPositions2"}
+#: The corpus spells this one as explicit cut positions that happen to divide
+#: the range evenly.  Reading keeps the cuts; writing recognises them as uniform
+#: and says so.  Not a gap and not something to close -- the same mesh, stated
+#: the shorter way -- but it has to stay a *recognition* rather than a writer
+#: that has forgotten how to say positions at all, which the surface below
+#: proves it has not.
+UNIFORM_POSITIONS = "SCS_RECT"
+KEPT_POSITIONS = "BANK_POSITIONS"
 
-_CALL = re.compile(r"^(?P<name>\w+) = (?P<function>SHELL_\w+) \((?P<body>.*?)\);", re.S | re.M)
+#: Attributes the corpus states in a spelling this comparison cannot see.
+#:
+#: ``attributes_of`` reads each ``NAME = SHELL_*(...)`` call, and these are given
+#: on their own line afterwards instead -- by ``SET_ATTRIBUTE_RECURSIVE`` or by a
+#: dotted assignment.  Both spellings are deliberate: they are the two other ways
+#: the format has of saying the same thing, and they are covered where the
+#: reader is tested rather than here.
+SET_ELSEWHERE = {"nbase1", "nbase2", "ndelta1", "ndelta2", "colour1", "colour2", "thick", "bulk"}
+
+_CALL = re.compile(r"^(?P<name>\w+) = (?P<function>SHELL_\w+) ?\((?P<body>.*?)\);", re.S | re.M)
 
 
 def attributes_of(text: str) -> dict[str, list[str]]:
@@ -88,38 +99,38 @@ def attributes_of(text: str) -> dict[str, list[str]]:
 
 @pytest.fixture(scope="module")
 def written(tmp_path_factory: pytest.TempPathFactory) -> dict[str, list[str]]:
-    model = GeometryModel("FEATURES_TAS")
-    model.io.read_esatan_erg(SOURCE, on_diagnostic=lambda _note: None)
+    model = GeometryModel("FEATURES")
+    model.io.read_esatan_erg(CORPUS, on_diagnostic=lambda _note: None)
     out = tmp_path_factory.mktemp("canonical") / "written.erg"
-    model.io.write_esatan_erg(out, name="FEATURES_TAS", on_diagnostic=lambda _note: None)
+    model.io.write_esatan_erg(out, name="FEATURES", on_diagnostic=lambda _note: None)
     return attributes_of(out.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
-def reference() -> dict[str, list[str]]:
-    return attributes_of(REFERENCE.read_text(encoding="utf-8"))
+def source() -> dict[str, list[str]]:
+    return attributes_of(CORPUS.read_text(encoding="utf-8"))
 
 
-def test_the_reference_export_is_readable(reference: dict[str, list[str]]) -> None:
+def test_the_corpus_parses_as_a_list_of_calls(source: dict[str, list[str]]) -> None:
     """Guards the parsing the rest of this module depends on."""
-    assert len(reference) > 15
-    assert reference["PT_RECT"][:3] == ["point1", "point2", "point4"]
+    assert len(source) > 15
+    assert source["PT_RECT"][:3] == ["point1", "point2", "point4"]
 
 
 def test_the_same_primitives_are_written(
-    written: dict[str, list[str]], reference: dict[str, list[str]]
+    written: dict[str, list[str]], source: dict[str, list[str]]
 ) -> None:
     """A box and a prism are several surfaces here, so they are named apart."""
     # A box or a prism *used as geometry* becomes several named faces.  The one
     # used as a cutting tool stays a single solid, so it keeps its own name.
     decomposed = {"SCS_BOX", "PT_BOX", "PT_PRISM", "SCS_PRISM"}
-    expected = set(reference) - decomposed
+    expected = set(source) - decomposed
     faces = {name for name in written if re.search(r"_face\d$", name)}
     assert set(written) - faces == expected
 
 
 def test_every_attribute_written_is_one_the_format_has(written: dict[str, list[str]]) -> None:
-    """A misspelling here produces a file ESATAN rejects."""
+    """A misspelling here produces a file the format does not have."""
     for name, keys in written.items():
         for key in keys:
             if key.startswith("point"):
@@ -128,7 +139,7 @@ def test_every_attribute_written_is_one_the_format_has(written: dict[str, list[s
 
 
 def test_attributes_are_written_in_the_formats_order(written: dict[str, list[str]]) -> None:
-    """Same order as an export, so a diff shows content rather than arrangement."""
+    """Same order as a canonical file, so a diff shows content, not arrangement."""
     for name, keys in written.items():
         rest = [key for key in keys if not key.startswith("point")]
         positions = [ATTRIBUTE_ORDER[key] for key in rest]
@@ -143,9 +154,9 @@ def test_the_leading_arguments_are_the_shape(written: dict[str, list[str]]) -> N
 
 
 def test_what_is_never_written_is_exactly_what_the_model_cannot_hold(
-    written: dict[str, list[str]], reference: dict[str, list[str]]
+    written: dict[str, list[str]], source: dict[str, list[str]]
 ) -> None:
-    """The exit criterion: the difference from a real export is only those.
+    """The exit criterion: the difference from the corpus is only those.
 
     Stated as "never written *anywhere*" rather than per surface.  Per surface
     would conflate two unrelated things -- a surface that simply has no node
@@ -155,26 +166,50 @@ def test_what_is_never_written_is_exactly_what_the_model_cannot_hold(
     the by-points spelling, which is a choice recorded as an accepted
     divergence, not something the model cannot hold.
     """
-    in_reference = {key for keys in reference.values() for key in keys if key in ATTRIBUTE_ORDER}
+    in_source = {key for keys in source.values() for key in keys if key in ATTRIBUTE_ORDER}
     ever_written = {key for keys in written.values() for key in keys if key in ATTRIBUTE_ORDER}
 
-    missing = in_reference - ever_written
-    expected = UNMODELLED | EXPRESSED_DIFFERENTLY
+    missing = in_source - ever_written
+    expected = UNMODELLED
     assert missing == expected, (
         f"no longer missing: {sorted(expected - missing)}; "
         f"newly missing: {sorted(missing - expected)}"
     )
+    # Nothing may leave this comparison by being spelled somewhere the reader of
+    # the corpus does not look: everything set on its own line afterwards has to
+    # come back out in the call the writer emits.
+    assert ever_written >= SET_ELSEWHERE
 
 
-@pytest.mark.parametrize("path", [REFERENCE, WIDER_REFERENCE], ids=["tas", "erg"])
-def test_the_reference_exports_agree_with_the_recorded_order(path: Path) -> None:
-    """The order table is a claim about the canonical form; check it against one.
+def test_an_even_position_list_is_written_as_the_regular_mesh_it_is(
+    written: dict[str, list[str]], source: dict[str, list[str]]
+) -> None:
+    """One surface's cuts divide its range evenly, and one surface's do not.
 
-    Both models are checked, because between them they use every construct that
-    has a canonical form -- an attribute that only ever appears on a torus or a
-    removed face would otherwise never be looked at.
+    Both are given as positions in the corpus.  The even one comes back out as
+    ``regular`` with a node count, which is the same mesh in fewer words; the
+    uneven one has no shorter form and keeps its positions.  Checking only the
+    first would pass just as well on a writer that could not say positions.
     """
-    for name, keys in attributes_of(path.read_text(encoding="utf-8")).items():
+    assert "meshPositions2" in source[UNIFORM_POSITIONS]
+    assert "meshPositions2" not in written[UNIFORM_POSITIONS]
+    assert "meshType2" in written[UNIFORM_POSITIONS]
+    assert "nodes2" in written[UNIFORM_POSITIONS]
+
+    assert "meshPositions2" in source[KEPT_POSITIONS]
+    assert "meshPositions2" in written[KEPT_POSITIONS]
+
+
+def test_the_written_file_agrees_with_the_recorded_order(written: dict[str, list[str]]) -> None:
+    """The order table against a file written from it -- self-consistency only.
+
+    ``ATTRIBUTE_ORDER`` governs the order the writer sorts attributes into, and
+    this compares a file the writer produced against that same table.  It cannot
+    catch a wrong table; only a writer that stopped consulting it.  A wrong table
+    shows up the moment a model in canonical form is read, which is what the
+    ``.erg`` reader tests do continuously.
+    """
+    for name, keys in written.items():
         rest = [key for key in keys if not key.startswith("point") and key in ATTRIBUTE_ORDER]
         positions = [ATTRIBUTE_ORDER[key] for key in rest]
         assert positions == sorted(positions), f"{name}: {rest}"

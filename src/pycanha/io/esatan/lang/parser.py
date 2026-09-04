@@ -121,14 +121,19 @@ class _ArgList(_Aux):
         self.items = tuple(children)
 
 
-class _EnvSuffix(_Aux):
-    """A ``[BOL]`` / ``[EOL]`` property-environment selector on an assignment target."""
+class _SubscriptSuffix(_Aux):
+    """The bracketed suffix on an assignment target, uninterpreted.
 
-    __slots__ = ("name",)
+    It spells the ``[EOL]`` property environment and the ``grid[1]`` array
+    element alike; :class:`~pycanha.io.esatan.lang.ast.Lvalue` carries both
+    readings and the reader picks one from the declaration.
+    """
+
+    __slots__ = ("items",)
 
     def __init__(self, children: Sequence[object]) -> None:
         super().__init__(children)
-        self.name = str(children[0])
+        self.items = tuple(child for child in children if isinstance(child, ast.Expr))
 
 
 class _Dims(_Aux):
@@ -263,6 +268,11 @@ class _AstBuilder(Transformer[Token, object]):
     def dotted_name(self, children: list[Token]) -> ast.Ref:
         return ast.Ref(tuple(str(child) for child in children), **self._pos(children))
 
+    def index(self, children: list[object]) -> ast.Index:
+        target = _ref(children[0])
+        indices = tuple(child for child in children[1:] if isinstance(child, ast.Expr))
+        return ast.Index(target, indices, **self._pos(children))
+
     def vector(self, children: list[ast.Expr]) -> ast.Vector:
         return ast.Vector(tuple(children), **self._pos(children))
 
@@ -308,8 +318,8 @@ class _AstBuilder(Transformer[Token, object]):
 
     # -- statements --------------------------------------------------------
 
-    def env_suffix(self, children: list[object]) -> _EnvSuffix:
-        return _EnvSuffix(children)
+    def subscript_suffix(self, children: list[object]) -> _SubscriptSuffix:
+        return _SubscriptSuffix(children)
 
     def dims(self, children: list[object]) -> _Dims:
         return _Dims(children)
@@ -317,8 +327,8 @@ class _AstBuilder(Transformer[Token, object]):
     def lvalue(self, children: list[object]) -> ast.Lvalue:
         ref = _ref(children[0])
         suffix = children[1] if len(children) > 1 else None
-        environment = suffix.name if isinstance(suffix, _EnvSuffix) else None
-        return ast.Lvalue(ref.path, environment, **self._pos(children))
+        subscript = suffix.items if isinstance(suffix, _SubscriptSuffix) else ()
+        return ast.Lvalue(ref.path, subscript, **self._pos(children))
 
     def declaration(self, children: list[object]) -> ast.Declaration:
         rest = list(children)

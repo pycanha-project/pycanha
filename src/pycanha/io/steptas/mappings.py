@@ -3,8 +3,9 @@
 The tables here are the whole of the format knowledge: which attribute of a
 shape is its axis and which its radius, which shapes count their mesh in the
 opposite direction, and how a material's thirteen numbers become an optical and
-a bulk.  They were established from files a converter produced, checked against
-the shapes those files were made from.
+a bulk.  Each entry states the correspondence itself, not a rule for deriving
+one: which attribute of an entity carries which quantity is a fact about the
+format, and there is nowhere else in this package that it is written down.
 
 A construct absent from these tables is not an error: the reader reports it and
 carries on, which is what makes a file from another tool readable at all.
@@ -119,9 +120,9 @@ def _perpendicular(
     """The component of *vector* perpendicular to *axis*.
 
     A shape of revolution gives its angular datum as a point, and nothing
-    obliges that point to lie in the plane the angle is measured in -- the
-    converter writes it at whatever distance suits it.  Only the direction
-    within that plane is meaningful, so it is projected before use.
+    obliges that point to lie in the plane the angle is measured in, nor at any
+    particular distance from the axis.  Only the direction within that plane is
+    meaningful, so it is projected before use.
     """
     direction = _unit(axis)
     return vector - float(np.dot(vector, direction)) * direction

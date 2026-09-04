@@ -1,9 +1,10 @@
 """Reading a STEP-TAS file into a geometry model.
 
-The fixture is a converted feature model, so one file exercises every shape,
-both kinds of mesh spacing, the placements, a cut and the material table.  The
-assertions are numeric and written out by hand: a shape read with the wrong
-parametrisation is still a shape, and only its measurements give it away.
+The fixture is the language corpus in its STEP-TAS form, so one file exercises
+every shape, both kinds of mesh spacing, the placements, a cut and the material
+table.  The assertions are numeric and written out by hand: a shape read with
+the wrong parametrisation is still a shape, and only its measurements give it
+away.
 """
 
 from __future__ import annotations
@@ -22,10 +23,10 @@ from pycanha.gmm import (
     GeometryItem,
     GeometryModel,
 )
+from pycanha.io.part21 import read_part21
 from pycanha.io.steptas import StepTasError
 
-FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
-CONVERTED = FEATURES / "FEATURES_TAS.stp"
+CORPUS = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES.stp"
 
 #: Every code the fixture must report, and why each one is unavoidable.
 #:
@@ -49,9 +50,9 @@ EXPECTED_CODES = {
 
 
 @pytest.fixture(scope="module")
-def converted() -> tuple[GeometryModel, object]:
-    model = GeometryModel("FEATURES_TAS")
-    return model, model.io.read_steptas(CONVERTED, on_diagnostic=lambda _note: None)
+def corpus() -> tuple[GeometryModel, object]:
+    model = GeometryModel("FEATURES")
+    return model, model.io.read_steptas(CORPUS, on_diagnostic=lambda _note: None)
 
 
 def item(model: GeometryModel, name: str) -> GeometryItem:
@@ -77,17 +78,25 @@ def shape[T](model: GeometryModel, name: str, kind: type[T]) -> T:
 # -- what gets built --------------------------------------------------------
 
 
-def test_the_whole_hierarchy_is_rebuilt(converted: tuple) -> None:
-    """Groups inside groups, and the cut at the bottom of one of them."""
-    model, _ = converted
-    assert isinstance(model.get_group("FEATURES_TAS"), GeometryGroup)
+def test_the_whole_hierarchy_is_rebuilt(corpus: tuple) -> None:
+    """Groups inside groups, and the cut at the bottom of one of them.
+
+    The outermost group takes the name the file gives its model, which is read
+    out of the file rather than written down here: it is the one name in the
+    hierarchy that is not a name the corpus itself chose.
+    """
+    model, _ = corpus
+    root = read_part21(CORPUS).of_kind("MGM_MESHED_GEOMETRIC_MODEL")[0].params[0]
+    assert isinstance(root, str)
+    assert root
+    assert isinstance(model.get_group(root), GeometryGroup)
     assert isinstance(model.get_group("STATIC_ASM"), GeometryGroup)
     assert isinstance(model.get_group("SCS_SHAPES"), GeometryGroup)
     assert isinstance(model.get_cut_group("DRILLED"), GeometryGroupCutted)
 
 
-def test_every_shape_type_is_built(converted: tuple) -> None:
-    model, _ = converted
+def test_every_shape_type_is_built(corpus: tuple) -> None:
+    model, _ = corpus
     for name in ("SCS_DISC", "SCS_CYL", "SCS_CONE", "SCS_SPHERE", "SCS_RECT", "SCS_PARA"):
         assert isinstance(model.get_item(name), GeometryItem), name
     for name in ("PT_RECT", "PT_QUAD", "PT_DISC", "PT_CYL", "PT_CONE", "PT_SPHERE", "PT_PARA"):
@@ -99,47 +108,47 @@ def test_every_shape_type_is_built(converted: tuple) -> None:
     assert isinstance(model.get_group("PT_PRISM"), GeometryGroup)
 
 
-def test_only_the_expected_losses_are_reported(converted: tuple) -> None:
-    _, diagnostics = converted
+def test_only_the_expected_losses_are_reported(corpus: tuple) -> None:
+    _, diagnostics = corpus
     assert diagnostics.codes() == EXPECTED_CODES
 
 
 # -- shapes, numerically ----------------------------------------------------
 
 
-def test_a_disc_keeps_its_radii_and_its_sector(converted: tuple) -> None:
+def test_a_disc_keeps_its_radii_and_its_sector(corpus: tuple) -> None:
     """A washer three quarters of the way round, lifted along its axis."""
-    model, _ = converted
+    model, _ = corpus
     disc = shape(model, "SCS_DISC", pcc.gmm.Disc)
     assert disc.surface_area() == pytest.approx(0.75 * math.pi * (0.1**2 - 0.02**2))
     assert list(disc.p1) == pytest.approx([0.0, 0.0, 0.05])
 
 
-def test_a_cylinder_takes_its_height_from_its_axis(converted: tuple) -> None:
-    model, _ = converted
+def test_a_cylinder_takes_its_height_from_its_axis(corpus: tuple) -> None:
+    model, _ = corpus
     cylinder = shape(model, "SCS_CYL", pcc.gmm.Cylinder)
     assert cylinder.surface_area() == pytest.approx(2 * math.pi * 0.1 * 0.3)
 
 
-def test_a_cone_is_given_as_a_frustum(converted: tuple) -> None:
+def test_a_cone_is_given_as_a_frustum(corpus: tuple) -> None:
     """Two end radii and the two centres, rather than a half-angle."""
-    model, _ = converted
+    model, _ = corpus
     cone = shape(model, "LATE_CONE", pcc.gmm.Cone)
     assert (cone.radius1, cone.radius2) == pytest.approx((0.05, 0.25))
     slant = math.hypot(0.2, 0.2)
     assert cone.surface_area() == pytest.approx(math.pi * (0.05 + 0.25) * slant)
 
 
-def test_a_sphere_is_truncated_by_axial_height(converted: tuple) -> None:
+def test_a_sphere_is_truncated_by_axial_height(corpus: tuple) -> None:
     """The band between two latitudes, whose area is the hat-box theorem's."""
-    model, _ = converted
+    model, _ = corpus
     sphere = shape(model, "SCS_SPHERE", pcc.gmm.Sphere)
     height = 2 * 0.1 * math.sin(math.radians(60.0))
     assert sphere.surface_area() == pytest.approx(2 * math.pi * 0.1 * height)
 
 
-def test_a_paraboloid_keeps_its_rim_radius(converted: tuple) -> None:
-    model, _ = converted
+def test_a_paraboloid_keeps_its_rim_radius(corpus: tuple) -> None:
+    model, _ = corpus
     paraboloid = shape(model, "SCS_PARA", pcc.gmm.Paraboloid)
     focal, height = 0.1, 0.2
     rim = 2.0 * math.sqrt(focal * height)
@@ -149,8 +158,8 @@ def test_a_paraboloid_keeps_its_rim_radius(converted: tuple) -> None:
     assert paraboloid.surface_area() == pytest.approx(8.0 * math.pi * focal**2 * reach / 3.0)
 
 
-def test_a_rectangle_keeps_its_two_edge_directions(converted: tuple) -> None:
-    model, _ = converted
+def test_a_rectangle_keeps_its_two_edge_directions(corpus: tuple) -> None:
+    model, _ = corpus
     rectangle = shape(model, "PT_RECT", pcc.gmm.Rectangle)
     assert list(rectangle.p1) == pytest.approx([1.0, 0.0, 0.5])
     assert rectangle.surface_area() == pytest.approx(0.3 * 0.4)
@@ -159,49 +168,49 @@ def test_a_rectangle_keeps_its_two_edge_directions(converted: tuple) -> None:
 # -- mesh and node numbers --------------------------------------------------
 
 
-def test_a_surface_of_revolution_has_its_mesh_directions_exchanged(converted: tuple) -> None:
+def test_a_surface_of_revolution_has_its_mesh_directions_exchanged(corpus: tuple) -> None:
     """The file counts the axial direction first; this model counts around.
 
     The disc is meshed four ways round and three deep.  Read without the
     exchange it would come out three by four -- a mesh of the right size on the
     wrong axes, which is only visible in a count like this one.
     """
-    model, _ = converted
+    model, _ = corpus
     mesh = item(model, "SCS_DISC").thermal_mesh
     assert len(mesh.dir1_mesh) - 1 == 4
     assert len(mesh.dir2_mesh) - 1 == 3
 
 
-def test_a_planar_surface_keeps_the_order_it_was_written_in(converted: tuple) -> None:
-    model, _ = converted
+def test_a_planar_surface_keeps_the_order_it_was_written_in(corpus: tuple) -> None:
+    model, _ = corpus
     mesh = item(model, "SCS_RECT").thermal_mesh
     assert len(mesh.dir1_mesh) - 1 == 3
     assert len(mesh.dir2_mesh) - 1 == 4
 
 
-def test_uneven_mesh_spacing_is_carried_by_its_positions(converted: tuple) -> None:
+def test_uneven_mesh_spacing_is_carried_by_its_positions(corpus: tuple) -> None:
     """One direction is a geometric progression, the other explicit cuts."""
-    model, _ = converted
+    model, _ = corpus
     mesh = item(model, "SCS_RECT").thermal_mesh
     assert list(mesh.dir1_mesh) == pytest.approx([0.0, 1 / 7, 3 / 7, 1.0])
     assert list(mesh.dir2_mesh) == pytest.approx([0.0, 0.25, 0.5, 0.75, 1.0])
 
 
-def test_node_numbers_come_back_as_a_start_and_a_step(converted: tuple) -> None:
-    model, _ = converted
+def test_node_numbers_come_back_as_a_start_and_a_step(corpus: tuple) -> None:
+    model, _ = corpus
     mesh = item(model, "SCS_DISC").thermal_mesh
     assert (mesh.node1_start, mesh.node1_step) == (1000, 1)
     assert (mesh.node2_start, mesh.node2_step) == (1000, 1)
 
 
-def test_a_surface_numbered_per_direction_is_reported_not_guessed(converted: tuple) -> None:
+def test_a_surface_numbered_per_direction_is_reported_not_guessed(corpus: tuple) -> None:
     """Two increments cannot become one, so the surface says so.
 
     ``SPLIT_DELTA`` advances by one along its first direction and by ten along
     its second.  A single step cannot reproduce that, and quietly keeping the
     first would leave most of its faces holding another face's number.
     """
-    _, diagnostics = converted
+    _, diagnostics = corpus
     reported = [note for note in diagnostics if note.code == "TAS_NODE_ORDER_IRREGULAR"]
     assert any("SPLIT_DELTA" in note.message for note in reported)
 
@@ -209,16 +218,16 @@ def test_a_surface_numbered_per_direction_is_reported_not_guessed(converted: tup
 # -- attributes -------------------------------------------------------------
 
 
-def test_radiative_activity_comes_from_the_active_side(converted: tuple) -> None:
+def test_radiative_activity_comes_from_the_active_side(corpus: tuple) -> None:
     """``active_side`` states which sides radiate, and only that."""
-    model, _ = converted
+    model, _ = corpus
     both = item(model, "SCS_DISC").thermal_mesh
     assert both.radiative_active_side is ActiveSide.BOTH
     one = item(model, "ATTRS").thermal_mesh
     assert one.radiative_active_side is ActiveSide.SIDE1
 
 
-def test_optical_properties_are_rebuilt_from_the_material_table(converted: tuple) -> None:
+def test_optical_properties_are_rebuilt_from_the_material_table(corpus: tuple) -> None:
     """Specularity is a fraction of what is reflected, not the reflectivity.
 
     The mirror absorbs 0.12 of the solar band and reflects the rest, of which
@@ -226,7 +235,7 @@ def test_optical_properties_are_rebuilt_from_the_material_table(converted: tuple
     the model was built with; taking the fraction for the value itself would
     leave the surface far too specular.
     """
-    model, _ = converted
+    model, _ = corpus
     optical = item(model, "SCS_CYL").thermal_mesh.side2_optical
     assert optical.name == "Mirror"
     ir_emiss, ir_spec, ir_transm, solar_absorb, solar_spec, solar_transm = (
@@ -237,9 +246,9 @@ def test_optical_properties_are_rebuilt_from_the_material_table(converted: tuple
     assert (ir_spec, solar_spec) == pytest.approx((0.90, 0.85))
 
 
-def test_bulk_properties_keep_the_argument_order_straight(converted: tuple) -> None:
+def test_bulk_properties_keep_the_argument_order_straight(corpus: tuple) -> None:
     """Density, specific heat and conductivity, two of which are transposed."""
-    model, _ = converted
+    model, _ = corpus
     bulk = item(model, "SCS_CYL").thermal_mesh.side1_material
     assert bulk.name == "Alu"
     assert bulk.density == pytest.approx(2700.0)
@@ -247,16 +256,16 @@ def test_bulk_properties_keep_the_argument_order_straight(converted: tuple) -> N
     assert bulk.conductivity == pytest.approx(160.0)
 
 
-def test_thickness_is_kept_per_side(converted: tuple) -> None:
+def test_thickness_is_kept_per_side(corpus: tuple) -> None:
     """The source shares one thickness between the two active sides."""
-    model, _ = converted
+    model, _ = corpus
     mesh = item(model, "SCS_CYL").thermal_mesh
     assert mesh.side1_thick == pytest.approx(0.001)
     assert mesh.side2_thick == pytest.approx(0.001)
 
 
-def test_colours_arrive_as_values_rather_than_names(converted: tuple) -> None:
-    model, _ = converted
+def test_colours_arrive_as_values_rather_than_names(corpus: tuple) -> None:
+    model, _ = corpus
     mesh = item(model, "ATTRS").thermal_mesh
     assert tuple(mesh.side1_color.rgb) == (255, 0, 0)
     assert tuple(mesh.side2_color.rgb) == (0, 0, 255)
@@ -265,13 +274,13 @@ def test_colours_arrive_as_values_rather_than_names(converted: tuple) -> None:
 # -- placement --------------------------------------------------------------
 
 
-def test_a_placement_sequence_is_composed_in_the_order_it_is_written(converted: tuple) -> None:
+def test_a_placement_sequence_is_composed_in_the_order_it_is_written(corpus: tuple) -> None:
     """Three fixed-axis rotations and two translations, in file order.
 
     Composing them the other way round also lands the surface somewhere
     plausible, which is why the corner is checked and not merely the area.
     """
-    model, _ = converted
+    model, _ = corpus
     moved = item(model, "MOVED")
     corner = moved.transform.apply(np.zeros(3))
     assert list(corner) == pytest.approx([5.0, 1.0, 0.0])
@@ -287,9 +296,9 @@ def test_a_placement_sequence_is_composed_in_the_order_it_is_written(converted: 
     assert list(edge) == pytest.approx(list(rotation @ np.array([0.1, 0.0, 0.0])))
 
 
-def test_an_axis_placement_becomes_the_frame_it_names(converted: tuple) -> None:
+def test_an_axis_placement_becomes_the_frame_it_names(corpus: tuple) -> None:
     """A group is placed by its own axes: local X onto global Y, and a shift."""
-    model, _ = converted
+    model, _ = corpus
     placed = model.get_group("PT_SHAPES")
     assert list(placed.transform.apply(np.zeros(3))) == pytest.approx([0.0, 3.0, 0.0])
     moved = placed.transform.apply(np.array([1.0, 0.0, 0.0]))
@@ -299,9 +308,9 @@ def test_an_axis_placement_becomes_the_frame_it_names(converted: tuple) -> None:
 # -- cutting ----------------------------------------------------------------
 
 
-def test_a_difference_surface_becomes_a_cut_group(converted: tuple) -> None:
+def test_a_difference_surface_becomes_a_cut_group(corpus: tuple) -> None:
     """Two successive cuts arrive as one difference nested inside another."""
-    model, _ = converted
+    model, _ = corpus
     outer = model.get_cut_group("DRILLED")
     assert isinstance(outer, GeometryGroupCutted)
     inner = model.get_cut_group("DRILLED_1")
@@ -310,9 +319,9 @@ def test_a_difference_surface_becomes_a_cut_group(converted: tuple) -> None:
     assert isinstance(model.get_item("BOX_CUTTER"), GeometryItem)
 
 
-def test_a_box_used_as_a_cutter_is_read_as_a_closed_solid(converted: tuple) -> None:
+def test_a_box_used_as_a_cutter_is_read_as_a_closed_solid(corpus: tuple) -> None:
     """A cutting tool has to bound a volume, so the box arrives as a cube."""
-    model, _ = converted
+    model, _ = corpus
     cutter = item(model, "BOX_CUTTER")
     assert cutter.primitive.surface_area() == pytest.approx(2 * (0.2 * 0.2 + 2 * 0.2 * 2.1))
     centre = cutter.transform.apply(np.zeros(3))
@@ -338,4 +347,4 @@ def test_a_file_without_geometry_is_refused(tmp_path: Path) -> None:
 def test_strict_reading_stops_at_the_first_serious_loss() -> None:
     model = GeometryModel("strict")
     with pytest.raises(StepTasError):
-        model.io.read_steptas(CONVERTED, strict=True, on_diagnostic=lambda _note: None)
+        model.io.read_steptas(CORPUS, strict=True, on_diagnostic=lambda _note: None)

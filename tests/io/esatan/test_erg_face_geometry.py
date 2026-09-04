@@ -8,13 +8,16 @@ total area does not move at all. What moves is which face is where -- and with
 it every per-face quantity the model carries, since node numbers, thermo-optical
 properties and activity flags are all indexed by face.
 
-So this fixture gives every face a node of its own and pins two numbers per
-node: the area of that face, and the position of its parametric centre. The
-expected values live in ``expected_faces.csv`` beside the model. They are
-independent of anything in pycanha, which is the point -- a reader and a mesher
+So one block of the corpus gives every face a node of its own and pins two
+numbers per node: the area of that face, and the position of its parametric
+centre. The expected values live in ``expected_faces.csv`` beside the model.
+They are stated, not computed here, which is the point -- a reader and a mesher
 that are wrong in the same way agree with each other and disagree with these.
 
-See ``tests/data/esatan/FACEGEOM/README.md`` for the model itself.
+Only the surfaces the table names are looked at: the corpus is a whole language
+exercise and most of it has nothing to do with per-face position.
+
+See ``tests/data/esatan/README.md`` for the model itself.
 """
 
 from __future__ import annotations
@@ -29,9 +32,9 @@ from pycanha.gmm import GeometryModel
 from pycanha.plot.picking import item_map
 from pycanha.plot.properties import face_areas
 
-FIXTURE = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FACEGEOM"
-MODEL = FIXTURE / "FACEGEOM.erg"
-EXPECTED = FIXTURE / "expected_faces.csv"
+DATA = Path(__file__).resolve().parents[2] / "data" / "esatan"
+MODEL = DATA / "FEATURES.erg"
+EXPECTED = DATA / "expected_faces.csv"
 
 #: Flat faces are meshed exactly, so their area is a plain equality.
 FLAT_TOLERANCE = 1e-5
@@ -79,7 +82,7 @@ class Face:
 
 @pytest.fixture(scope="module")
 def model() -> GeometryModel:
-    built = GeometryModel("FACEGEOM")
+    built = GeometryModel("FEATURES")
     built.io.read_esatan_erg(MODEL, on_diagnostic=lambda _note: None)
     return built
 
@@ -90,15 +93,21 @@ def expected() -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def measured(model: GeometryModel, expected: list[dict[str, str]]) -> list:
+    """The items the expected table is about, found by the names it uses."""
+    wanted = {row["item"] for row in expected}
+    return [item for item in item_map(model).values() if item.name in wanted]
+
+
 @pytest.fixture(scope="module")
-def faces(model: GeometryModel) -> dict[int, Face]:
-    """Every node number in the model, with the face it names.
+def faces(model: GeometryModel, expected: list[dict[str, str]]) -> dict[int, Face]:
+    """Every node number of those surfaces, with the face it names.
 
     Built from ``node_of`` rather than from the world mesh, so a node that two
     faces share would collide here and be caught by the test below.
     """
     found: dict[int, Face] = {}
-    for item in item_map(model).values():
+    for item in measured(model, expected):
         mesh = item.thermal_mesh
         for second in range(len(list(mesh.dir2_mesh)) - 1):
             for first in range(len(list(mesh.dir1_mesh)) - 1):
@@ -111,11 +120,13 @@ def test_each_node_names_exactly_one_face(
     model: GeometryModel, faces: dict[int, Face], expected: list[dict[str, str]]
 ) -> None:
     """The premise the rest of the module rests on."""
+    items = measured(model, expected)
+    assert len(items) == len({row["item"] for row in expected}), "a named surface is missing"
     total = sum(
         (len(list(item.thermal_mesh.dir1_mesh)) - 1)
         * (len(list(item.thermal_mesh.dir2_mesh)) - 1)
         * 2
-        for item in item_map(model).values()
+        for item in items
     )
     assert len(faces) == total, "a node number is shared by two faces"
     assert set(faces) == {int(row["node"]) for row in expected}

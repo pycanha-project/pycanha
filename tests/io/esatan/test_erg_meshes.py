@@ -14,6 +14,7 @@ what a cut removes against the closed form instead.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -25,17 +26,24 @@ from pycanha.gmm.mesh import ops as mesh_ops
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "esatan"
 
-#: Every committed ``.erg``, and whether anything in it is cut away.
+#: Every committed ``.erg``, found rather than listed.
 #:
-#: A cut model's triangulated area is *less* than the sum of its primitives by
-#: however much was removed, which is the point of the cut and not a defect.
-MODELS: dict[str, bool] = {
-    "FEATURES/FEATURES_ERG.erg": True,
-    "FEATURES/FEATURES_TAS.erg": True,
-    "CUTTERS/CUTTERS.erg": True,
-    "DISC/DISC.erg": False,
-    "FACEGEOM/FACEGEOM.erg": False,
-}
+#: A hand-written list is a list somebody has to remember to extend, and one
+#: fixture was already missing from this one -- exempt from the guard for as
+#: long as nobody noticed.
+MODELS: tuple[Path, ...] = tuple(sorted(DATA.rglob("*.erg")))
+
+
+def is_cut(path: Path) -> bool:
+    """Whether anything in the model at *path* is cut away.
+
+    A cut model's triangulated area is *less* than the sum of its primitives by
+    however much was removed, which is the point of the cut and not a defect.
+    Read off the model's own text, so adding a cut to a fixture moves it into
+    the weaker check by itself.
+    """
+    return bool(re.search(r"=\s*\w+\s*-\s*\w+", path.read_text(encoding="utf-8")))
+
 
 #: Triangulating a curved surface inscribes it, so the mesh is systematically
 #: *under* the analytic area and converges as the mesh refines. Flat shapes are
@@ -44,24 +52,25 @@ MODELS: dict[str, bool] = {
 TRIANGULATION_TOLERANCE = 0.02
 
 
-def read(name: str) -> GeometryModel:
-    path = DATA / name
+def read(path: Path) -> GeometryModel:
     model = GeometryModel(path.stem)
     model.io.read_esatan_erg(path, on_diagnostic=lambda _note: None)
     return model
 
 
-@pytest.mark.parametrize("name", list(MODELS))
-def test_every_committed_model_meshes(name: str) -> None:
+@pytest.mark.parametrize("path", MODELS, ids=lambda path: path.stem)
+def test_every_committed_model_meshes(path: Path) -> None:
     """The assertion whose absence let a chained cut ship broken."""
-    mesh = read(name).mesh
+    mesh = read(path).mesh
     assert mesh.nt() > 0
     assert mesh.nf() > 0
     assert np.isfinite(np.asarray(mesh.vertices)).all()
 
 
-@pytest.mark.parametrize("name", [n for n, cut in MODELS.items() if not cut])
-def test_an_uncut_model_meshes_the_area_its_shapes_have(name: str) -> None:
+@pytest.mark.parametrize(
+    "path", [path for path in MODELS if not is_cut(path)], ids=lambda path: path.stem
+)
+def test_an_uncut_model_meshes_the_area_its_shapes_have(path: Path) -> None:
     """Total triangulated area against the sum of the primitives' own areas.
 
     Two independent computations: the mesher walks each primitive's
@@ -69,7 +78,7 @@ def test_an_uncut_model_meshes_the_area_its_shapes_have(name: str) -> None:
     that disagrees with its own shape shows up here as a total that does not
     close.
     """
-    model = read(name)
+    model = read(path)
     meshed = float(mesh_ops.compute_areas(model.mesh).sum())
     analytic = sum(
         item.primitive.surface_area()

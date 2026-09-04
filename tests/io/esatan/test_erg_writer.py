@@ -28,7 +28,7 @@ from pycanha.gmm import (
     GeometryModel,
 )
 
-FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
+FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES.erg"
 
 #: What the format's precision is worth as a relative tolerance.
 #:
@@ -391,8 +391,8 @@ def test_every_activity_survives_a_round_trip(
 
 def test_the_feature_model_survives_a_write_intact() -> None:
     """Every item, every area: the broadest statement available without ESATAN."""
-    source = FEATURES / "FEATURES_TAS.erg"
-    first = read(source, "FEATURES_TAS")
+    source = FEATURES
+    first = read(source, "FEATURES")
 
     with tempfile.TemporaryDirectory() as directory:
         out = Path(directory) / "written.erg"

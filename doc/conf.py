@@ -237,16 +237,16 @@ def _write_esatan_coverage() -> None:
     published version drifting from the code: a checked-in copy would only be
     as current as the last person who remembered to refresh it.
 
-    The ``fixture`` column comes from reading the committed feature models, so
-    it too is a fact about the tree rather than a claim about it.
+    The ``fixture`` column comes from reading the committed models, so it too is
+    a fact about the tree rather than a claim about it.
     """
     # Resolved: Sphinx does not promise an absolute ``__file__``, and a relative
     # one walks to the wrong place silently -- the table still renders, with the
-    # two columns that come from the feature models mysteriously blank.
+    # column that comes from the models mysteriously blank.
     here = Path(__file__).resolve().parent
-    fixtures = here.parent / "tests" / "data" / "esatan" / "FEATURES"
+    fixtures = here.parent / "tests" / "data" / "esatan"
     if not fixtures.is_dir():
-        msg = f"cannot generate the ESATAN coverage table: no feature models at {fixtures}"
+        msg = f"cannot generate the ESATAN coverage table: no models at {fixtures}"
         raise FileNotFoundError(msg)
 
     target = here / "import_export" / "esatan-coverage.csv"

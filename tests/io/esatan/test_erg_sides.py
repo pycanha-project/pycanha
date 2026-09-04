@@ -26,68 +26,66 @@ from pycanha.plot.picking import item_map
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "esatan"
 
-MODELS = (
-    "FEATURES/FEATURES_ERG.erg",
-    "FEATURES/FEATURES_TAS.erg",
-    "CUTTERS/CUTTERS.erg",
-    "DISC/DISC.erg",
-    "FACEGEOM/FACEGEOM.erg",
-)
+#: Every committed ``.erg``, found rather than listed.
+#:
+#: A hand-written list is a list somebody has to remember to extend, and one
+#: fixture was already missing from this one -- exempt from the parity guard for
+#: as long as nobody noticed.
+MODELS: tuple[Path, ...] = tuple(sorted(DATA.rglob("*.erg")))
 
 
 #: The primitives that exist only to cut with, and so are never triangulated.
 CUT_ONLY = (pcc.gmm.Cube, pcc.gmm.TriangularPrism)
 
 
-def read(name: str) -> GeometryModel:
-    path = DATA / name
+def read(path: Path) -> GeometryModel:
     model = GeometryModel(path.stem)
     model.io.read_esatan_erg(path, on_diagnostic=lambda _note: None)
     return model
 
 
-@pytest.mark.parametrize("name", MODELS)
-def test_no_triangle_carries_an_odd_face_id(name: str) -> None:
+@pytest.mark.parametrize("path", MODELS, ids=lambda path: path.stem)
+def test_no_triangle_carries_an_odd_face_id(path: Path) -> None:
     """Parity is the side, so an odd-tagged triangle is a swapped side.
 
     A cut classifier that compared a triangle's winding against the primitive's
     normal and returned the odd id when they disagreed produced exactly this,
     and for a cut disc it did so for *every* triangle.
     """
-    face_ids = np.asarray(read(name).mesh.face_ids).astype(np.int64)
+    face_ids = np.asarray(read(path).mesh.face_ids).astype(np.int64)
     odd = np.flatnonzero(face_ids % 2 != 0)
     assert odd.size == 0, f"{odd.size} triangles tagged with an odd (side-2) face id"
 
 
-@pytest.mark.parametrize("name", MODELS)
-def test_every_item_starts_on_an_even_face(name: str) -> None:
+@pytest.mark.parametrize("path", MODELS, ids=lambda path: path.stem)
+def test_every_item_starts_on_an_even_face(path: Path) -> None:
     """An item whose base is odd has side 1 and side 2 exchanged throughout.
 
     This is what a face count taken from the surviving triangles used to break:
     a trailing cut-away pair took the maximum down with it, the item reported an
     odd number of faces, and every later item was shifted by an odd amount.
     """
-    mesh = read(name).mesh
+    mesh = read(path).mesh
     for geometry_id, first_face_id, last_face_id in mesh.primitives:
         assert int(first_face_id) % 2 == 0, f"geometry {geometry_id} starts on an odd face"
         assert int(last_face_id) % 2 == 0, f"geometry {geometry_id} ends on an odd face"
 
 
-@pytest.mark.parametrize("name", MODELS)
-def test_the_face_count_is_even(name: str) -> None:
+@pytest.mark.parametrize("path", MODELS, ids=lambda path: path.stem)
+def test_the_face_count_is_even(path: Path) -> None:
     """Faces come in pairs, so an odd total means one lost its partner."""
-    assert int(read(name).mesh.nf()) % 2 == 0
+    assert int(read(path).mesh.nf()) % 2 == 0
 
 
-@pytest.mark.parametrize("name", MODELS)
-def test_side_one_faces_carry_the_side_one_node_numbers(name: str) -> None:
+@pytest.mark.parametrize("path", MODELS, ids=lambda path: path.stem)
+def test_side_one_faces_carry_the_side_one_node_numbers(path: Path) -> None:
     """The even face of each pair holds what the ThermalMesh calls side 1.
 
     Read off the world mesh and compared against the item's own ``side1_*`` /
     ``side2_*`` fields -- the two ends of the path that the disc defect broke in
     the middle of.
     """
-    model = read(name)
+    model = read(path)
     mesh = model.mesh
     node_numbers = np.asarray(mesh.node_numbers).astype(np.int64)
     by_id = item_map(model)
@@ -112,8 +110,8 @@ def test_side_one_faces_carry_the_side_one_node_numbers(name: str) -> None:
     assert checked > 0
 
 
-@pytest.mark.parametrize("name", MODELS)
-def test_triangle_winding_agrees_with_the_primitive_normal(name: str) -> None:
+@pytest.mark.parametrize("path", MODELS, ids=lambda path: path.stem)
+def test_triangle_winding_agrees_with_the_primitive_normal(path: Path) -> None:
     """The assertion whose absence hid the disc defect, run on real models.
 
     A triangle's winding normal *defines* side 1, so every primitive must wind
@@ -135,7 +133,7 @@ def test_triangle_winding_agrees_with_the_primitive_normal(name: str) -> None:
     apex. A reversed primitive gives -1, so the sign is decisive and the
     measured worst legitimate case is +0.86.
     """
-    model = read(name)
+    model = read(path)
     checked = 0
     for item in item_map(model).values():
         primitive = item.primitive

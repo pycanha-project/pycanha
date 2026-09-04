@@ -225,3 +225,39 @@ def test_a_prism_cutter_removes_exactly_its_own_footprint(tmp_path: Path) -> Non
     model, _ = build(tmp_path, PLATE_AND_PRISM)
     area = float(mesh_ops.compute_areas(model.get_cut_group("X").mesh).sum())
     assert area == pytest.approx((4.0 * 4.0) - (0.5 * 2.0 * 2.0))
+
+
+#: A plate a paraboloid is aimed at.  A paraboloid is an open surface, so there
+#: is nothing there to be inside of and it cannot be a tool.
+PLATE_AND_PARABOLOID = """
+GEOMETRY P;
+P = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0);
+GEOMETRY B;
+B = SHELL_SCS_PARABOLOID(
+    flength = 0.5,
+    hmin = 0.0,
+    hmax = 2.0,
+    sense = -1);
+GEOMETRY X;
+X = P - B;
+"""
+
+
+def test_a_shape_that_encloses_nothing_cannot_cut(tmp_path: Path) -> None:
+    """The refusal is about the shape, not about the statement asking for it.
+
+    A paraboloid is written exactly as a cone is and asks to cut in exactly the
+    same words; what separates them is that one bounds a volume and the other
+    does not.  The plate has to survive whole rather than be dropped with the
+    tool: leaving it uncut keeps geometry the file has, with the difference
+    reported.
+    """
+    model, diagnostics = build(tmp_path, PLATE_AND_PARABOLOID)
+    refusals = [note for note in diagnostics if note.code == "ERG_CUTTER_NOT_SOLID"]
+    assert len(refusals) == 1
+    assert "B" in refusals[0].message
+    assert "ERG_CUTTER_NOT_PRIMITIVE" not in diagnostics.codes()
+    assert not [
+        child for child in model.children_recursive() if isinstance(child, GeometryGroupCutted)
+    ]
+    assert model.get_item("P").primitive.surface_area() == pytest.approx(16.0)

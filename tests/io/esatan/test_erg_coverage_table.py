@@ -20,7 +20,7 @@ import pytest
 
 from pycanha.io.esatan.geometry import coverage, mappings
 
-FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
+ESATAN_DATA = Path(__file__).resolve().parents[2] / "data" / "esatan"
 
 #: Statuses under which a primitive must be something the reader can build.
 _BUILDABLE = frozenset({"supported", "lossy"})
@@ -28,7 +28,7 @@ _BUILDABLE = frozenset({"supported", "lossy"})
 
 @pytest.fixture(scope="module")
 def table() -> list[coverage.Row]:
-    return coverage.rows(FEATURES)
+    return coverage.rows(ESATAN_DATA)
 
 
 def primitives(table: list[coverage.Row]) -> list[coverage.Row]:
@@ -47,7 +47,6 @@ def test_the_inventory_is_populated_and_well_formed(table: list[coverage.Row]) -
     for row in table:
         assert row.pycanha_status in coverage.STATUSES, row.construct
         assert row.kind, row.construct
-        assert row.steptas_status in ("", "yes", "no"), row.construct
 
 
 def test_nothing_is_left_undecided(table: list[coverage.Row]) -> None:
@@ -98,9 +97,12 @@ def test_no_primitive_is_claimed_supported_and_decomposed_at_once(
 
 
 def test_the_fixture_column_names_models_that_exist(table: list[coverage.Row]) -> None:
+    """The column names a model, and every name in it has to be one of ours."""
+    filed = {path.name for path in ESATAN_DATA.rglob("*.erg")}
+    assert filed, "no models to draw the fixture column from"
     for row in table:
         if row.fixture:
-            assert (FEATURES / row.fixture).is_file(), row.construct
+            assert row.fixture in filed, row.construct
 
 
 def test_most_constructs_are_exercised_by_a_committed_model(table: list[coverage.Row]) -> None:
@@ -112,16 +114,6 @@ def test_most_constructs_are_exercised_by_a_committed_model(table: list[coverage
     # relative to the working directory and so is covered by its own tests.
     supported = {row.construct for row in unexercised if row.pycanha_status == "supported"}
     assert supported == {"INCLUDE"}
-
-
-def test_a_construct_only_the_wider_model_carries_does_not_convert(
-    table: list[coverage.Row],
-) -> None:
-    """The two models differ by exactly the constructs STEP-TAS refuses."""
-    by_construct = {row.construct: row for row in table}
-    for construct in ("SHELL_SCS_TORUS", "REMOVE_FACE / RESTORE_FACES"):
-        assert by_construct[construct].steptas_status == "no"
-    assert by_construct["SHELL_SCS_DISC"].steptas_status == "yes"
 
 
 def test_the_one_sided_activities_are_no_longer_a_reduction(table: list[coverage.Row]) -> None:
