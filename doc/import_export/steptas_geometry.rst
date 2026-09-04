@@ -215,6 +215,13 @@ Report codes on writing
    planar. A model's need not be. One corner is moved onto the perpendicular,
    or into the plane of the other three, and the message states by how much.
 
+``TAS_WRITE_STRAIGHTENED_PRISM``
+   The format's triangular prism is a right one: the edge to its fourth corner
+   must lie along the base's own normal, and a file whose prism leans is
+   rejected as invalid. A model's prism may lean, so the fourth corner is
+   dropped onto the normal, keeping the base, the height and the direction. The
+   message states how far it leaned.
+
 The remaining codes are ``TAS_WRITE_RENAMED`` when two items share a name,
 ``TAS_WRITE_UNKNOWN_NODE`` for something in the model that is not a geometry,
 and ``TAS_WRITE_EMPTY_MODEL`` for a model with no geometry in it.

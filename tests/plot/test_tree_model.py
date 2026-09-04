@@ -219,6 +219,73 @@ def test_filtering_keeps_matching_rows_and_their_parents(panel: TreePanel) -> No
     assert panel.proxy.rowCount(root) == 2
 
 
+def test_the_tree_opens_showing_only_the_top_level(panel: TreePanel) -> None:
+    root = panel.proxy.index(0, 0)
+    assert panel.view.isExpanded(root)
+    for row in range(panel.proxy.rowCount(root)):
+        assert not panel.view.isExpanded(panel.proxy.index(row, 0, root))
+
+
+def test_clearing_the_filter_collapses_back_to_the_top_level(panel: TreePanel) -> None:
+    panel.filter_edit.setText("plate")
+    root = panel.proxy.index(0, 0)
+    assert panel.view.isExpanded(panel.proxy.index(0, 0, root))
+
+    panel.filter_edit.setText("")
+    assert panel.view.isExpanded(root)
+    for row in range(panel.proxy.rowCount(root)):
+        assert not panel.view.isExpanded(panel.proxy.index(row, 0, root))
+
+
+def test_a_selected_row_is_opened_up_to_from_a_collapsed_tree(
+    panel: TreePanel, state: ViewState, model: gmm.GeometryModel
+) -> None:
+    index = panel.proxy.mapFromSource(panel.tree_model.index_of(model.get_item("A").id))
+    assert not panel.view.isExpanded(index.parent())
+
+    state.selection = Selection(item_id=model.get_item("A").id)
+
+    assert panel.view.isExpanded(index.parent())
+
+
+def test_expand_all_and_collapse_all_act_on_the_whole_subtree(
+    panel: TreePanel, model: gmm.GeometryModel
+) -> None:
+    root = panel.proxy.index(0, 0)
+    cut_id = _node(panel.tree_model, "geo_0").geometry_id
+    cut = panel.proxy.mapFromSource(panel.tree_model.index_of(cut_id))
+
+    dict(panel.context_actions(root))["Expand all"]()
+    assert panel.view.isExpanded(cut)
+
+    # Only the subtree it was invoked on: the wing is left as it was.
+    wing = panel.proxy.mapFromSource(panel.tree_model.index_of(model.get_group("wing").id))
+    dict(panel.context_actions(cut))["Collapse all"]()
+    assert not panel.view.isExpanded(cut)
+    assert panel.view.isExpanded(wing)
+
+
+def test_expand_all_reopens_a_group_with_its_own_rows_closed(panel: TreePanel) -> None:
+    """Collapse all closes the rows inside a group, not just the group itself."""
+    root = panel.proxy.index(0, 0)
+    cut_id = _node(panel.tree_model, "geo_0").geometry_id
+    cut = panel.proxy.mapFromSource(panel.tree_model.index_of(cut_id))
+    inner = panel.proxy.index(0, 0, cut)
+
+    dict(panel.context_actions(root))["Expand all"]()
+    dict(panel.context_actions(root))["Collapse all"]()
+    panel.view.expand(root)
+    panel.view.expand(cut)
+    assert not panel.view.isExpanded(inner)
+
+
+def test_a_leaf_row_is_offered_no_expanding(panel: TreePanel, model: gmm.GeometryModel) -> None:
+    leaf = panel.proxy.mapFromSource(panel.tree_model.index_of(model.get_item("A").id))
+    panel.view.expandAll()
+    labels = [label for label, _ in panel.context_actions(leaf)]
+    assert labels == ["Hide", "Show", "Show only"]
+
+
 def test_the_context_menu_actions_hide_the_whole_subtree(
     panel: TreePanel, state: ViewState, model: gmm.GeometryModel
 ) -> None:

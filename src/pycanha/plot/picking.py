@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pycanha_core as pcc
 
+from .depth import push_surface
 from .polydata import polydata_from_triangles
 
 if TYPE_CHECKING:
@@ -31,10 +32,10 @@ _HIGHLIGHT_NAME = "_picked_face"
 
 @dataclass(frozen=True)
 class FaceInfo:
-    """Properties of one face slot, as reported by a pick.
+    """Properties of one face, as reported by a pick.
 
-    ``face_id`` is the face slot of the *reported side* (side 1 slots are even,
-    side 2 slots odd), matching the ``face_id`` cell array of the polydata.
+    ``face_id`` is the face of the *reported side* (side 1 faces are even,
+    side 2 faces odd), matching the ``face_id`` cell array of the polydata.
     Every model-derived field is ``None`` when it cannot be resolved - picking a
     bare TriMesh still yields the face, side and node number.
     """
@@ -73,7 +74,7 @@ def geometry_map(model: Any) -> dict[int, Any]:
 
 
 def owning_item(mesh: Any, face_id: int, items: dict[int, Any]) -> Any:
-    """Return the item whose primitive range contains ``face_id`` (side-1 slot).
+    """Return the item whose primitive range contains ``face_id`` (side-1 face).
 
     Ranges are scanned back-to-front because they may overlap: an item cut away
     entirely leaves a zero-width range at the next item's offset, and the core
@@ -108,7 +109,7 @@ def face_info(
         raise IndexError(msg)
 
     side = 2 if cell_index >= n_tri else 1
-    # face_ids always name the side-1 (even) slot; the side-2 partner is slot + 1.
+    # face_ids always name the side-1 (even) face; the side-2 partner is face + 1.
     base_face_id = int(mesh.face_ids[cell_index % n_tri])
     face_id = base_face_id | (side - 1)
 
@@ -188,7 +189,7 @@ def highlight_face(
     backface_culling: bool,
     name: str = _HIGHLIGHT_NAME,
 ) -> None:
-    """Draw every triangle of face slot ``face_id`` in ``color``.
+    """Draw every triangle of face ``face_id`` in ``color``.
 
     The overlay is exactly coincident with the face it covers, so its mapper is
     put on a polygon offset towards the camera; without that the two surfaces
@@ -220,7 +221,7 @@ def highlight_cells(
 
     The polygon-offset dance is the same as :func:`highlight_face`; this form
     takes the triangles directly so a caller can highlight a whole item or a
-    node's faces rather than one slot.
+    node's faces rather than one face.
     """
     if triangles.shape[0] == 0:
         return
@@ -234,9 +235,7 @@ def highlight_cells(
         show_scalar_bar=False,
         name=name,
     )
-    mapper = actor.mapper
-    mapper.SetResolveCoincidentTopologyToPolygonOffset()
-    mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(-4.0, -4.0)
+    push_surface(actor.mapper)
 
 
 def clear_highlight(plotter: pv.Plotter, name: str = _HIGHLIGHT_NAME) -> None:

@@ -40,7 +40,7 @@ from pycanha.gmm.transformations import CoordinateTransformation
 
 from ..lang import ast
 from ..lang.diagnostics import DiagnosticCollector
-from ..lang.evaluate import EvaluationError, evaluate
+from ..lang.evaluate import EvaluationError, as_int, evaluate
 from ..lang.parser import parse_file
 from .mappings import (
     ACTIVITY,
@@ -60,6 +60,8 @@ from .mappings import (
     bulk_from_triple,
     esatan_mesh_to_cuts,
     is_uninitialised_bulk,
+    prism_faces,
+    prism_solid,
     split_thickness,
 )
 from .palette import DEFAULT_COLOUR, colour_of
@@ -73,7 +75,7 @@ if TYPE_CHECKING:
     from pycanha.io.diagnostics import Diagnostic
 
     from ..lang.evaluate import Value
-    from .mappings import BoxAxes
+    from .mappings import BoxAxes, PrismCorners
 
 __all__ = ["read_erg_into"]
 
@@ -132,14 +134,28 @@ class _Builder:
         self.opticals: dict[str, OpticalMaterial] = {}
         self.variables: dict[str, Value] = {}
         self.declared: dict[str, str] = {}
+        #: Arrays under construction, as ``name -> elements``.  Held as lists so
+        #: an element write stays O(1); frozen into the tuple :attr:`variables`
+        #: holds each time one changes, which is what expressions read.
+        self.arrays: dict[str, list[Value]] = {}
+        #: Elements of each array that no assignment has reached yet, so that
+        #: reading one can be reported.
+        self.unassigned: dict[str, set[int]] = {}
+        #: Arrays declared with more than one dimension.  Usable whole, but not
+        #: indexable, so a write to one is refused rather than left to overwrite
+        #: the whole table.
+        self.multi_dim: set[str] = set()
         self.senses: dict[str, int] = {}
         self.box_axes: dict[str, BoxAxes] = {}
+        self.prism_corners: dict[str, PrismCorners] = {}
         self.consumed: set[str] = set()
         self.unhandled: list[ast.Statement] = []
         self._order: list[str] = []
         self._unnumbered: list[str] = []
         self._boxes: dict[str, tuple[int, bool]] = {}
         """Boxes still read as geometry, as (definition line, is meshed)."""
+        self._prisms: dict[str, tuple[int, int, bool]] = {}
+        """Prisms still read as geometry, as (line, wall count, is meshed)."""
         self._skipped: dict[str, str] = {}
         """Names deliberately not built, and the construct that each one was."""
 
@@ -165,6 +181,22 @@ class _Builder:
                     "ERG_BOX_NODE_ORDER",
                     f"'{name}' is a meshed box: its faces are numbered in this reader's own "
                     "face order, so per-face node numbers are a permutation of the source's",
+                    line=line,
+                )
+        for name, (line, walls, meshed) in self._prisms.items():
+            # Deferred for the same reason as the box above: a prism used as a
+            # cutter is read as a closed solid, and never had these walls.
+            self.diagnostics.info(
+                "ERG_PRISM_DECOMPOSED",
+                f"'{name}' is a triangular prism; it becomes a group of {walls} side walls, "
+                "with no end caps -- the prism has none",
+                line=line,
+            )
+            if meshed:
+                self.diagnostics.error(
+                    "ERG_BOX_NODE_ORDER",
+                    f"'{name}' is a meshed prism: its walls are numbered in this reader's own "
+                    "order, so per-face node numbers are a permutation of the source's",
                     line=line,
                 )
         if self._unnumbered:
@@ -250,6 +282,9 @@ class _Builder:
                 line=statement.line,
             )
         self.declared[statement.name] = kind
+        if statement.dims and kind in _VALUE_KINDS:
+            self._declare_array(statement, kind)
+            return
         if statement.init is None:
             return
         if kind in _VALUE_KINDS:
@@ -265,6 +300,20 @@ class _Builder:
         target = statement.target
         if target.attribute is not None:
             self._dotted_override(statement)
+            return
+        # A bracketed suffix is an array element where the name was declared as
+        # an array, and a property environment everywhere else.  The two are
+        # spelled identically and only the declaration separates them.
+        if target.subscript and target.name in self.arrays:
+            self._assign_element(statement, target.name)
+            return
+        if target.subscript and target.name in self.multi_dim:
+            self.diagnostics.unsupported(
+                "ERG_ARRAY_DIMENSIONS",
+                f"'{target.name}' is a multi-dimensional array; only one-dimensional arrays "
+                "can be indexed, so the assignment was skipped",
+                line=statement.line,
+            )
             return
         if target.environment is not None:
             # Only the default environment is carried; ESATAN itself falls back
@@ -368,12 +417,128 @@ class _Builder:
     # -- values and materials ----------------------------------------------
 
     def _evaluate(self, expr: ast.Expr, line: int, *, quiet: bool = False) -> Value | None:
+        if not quiet:
+            self._report_unassigned_reads(expr, line)
         try:
             return evaluate(expr, self.variables)
         except EvaluationError as exc:
             if not quiet:
                 self.diagnostics.warning("ERG_UNRESOLVED_VALUE", str(exc), line=line)
             return None
+
+    def _report_unassigned_reads(self, expr: ast.Expr, line: int) -> None:
+        """Name array elements read before anything assigned them.
+
+        The value still comes back as the zero the declaration left there, so
+        the model loads; but a corner silently at the origin is a mistake that
+        shows up much later as degenerate geometry, if at all.
+        """
+        for index in _iter_indices(expr):
+            pending = self.unassigned.get(index.name)
+            if pending is None or len(index.indices) != 1:
+                continue
+            position = self._evaluate(index.indices[0], line, quiet=True)
+            if position is None:
+                continue
+            try:
+                which = as_int(position)
+            except EvaluationError:
+                continue
+            if which in pending:
+                zero = self.arrays[index.name][which - 1]
+                self.diagnostics.warning(
+                    "ERG_ARRAY_UNASSIGNED",
+                    f"'{index.name}[{which}]' is read but never assigned; it holds {zero}, "
+                    "which is what the source format would also use",
+                    line=line,
+                )
+
+    def _declare_array(self, statement: ast.Declaration, kind: str) -> None:
+        """Reserve ``TYPE name[n];`` so its elements can be written and read.
+
+        An array is also usable whole -- a mesh-position list and a material
+        property table are both passed by name -- so the value under
+        :attr:`variables` stays whatever the declaration or the elements say,
+        and only :attr:`arrays` knows it can be indexed.
+
+        Without an initialiser every element starts at the type's zero, which
+        is what the language does; reading one that nothing assigned is
+        reported by :meth:`_report_unassigned_reads` rather than refused, since
+        a corner silently at the origin is a modelling mistake worth naming.
+        """
+        name = statement.name
+        initial = None if statement.init is None else self._evaluate(statement.init, statement.line)
+
+        # Multi-dimensional arrays keep their initialiser and stay usable whole;
+        # only indexing one is refused, because the element order is what this
+        # reader does not know.  Reported there, not here, so the far commoner
+        # pass-the-whole-table use costs nothing.
+        if len(statement.dims) != 1:
+            self.multi_dim.add(name)
+            if initial is not None:
+                self.variables[name] = initial
+            return
+
+        size = self._evaluate(statement.dims[0], statement.line)
+        if size is None:
+            return
+        try:
+            count = as_int(size)
+        except EvaluationError as exc:
+            self.diagnostics.warning("ERG_UNRESOLVED_VALUE", str(exc), line=statement.line)
+            return
+
+        if isinstance(initial, tuple) and len(initial) == count:
+            self.arrays[name] = list(initial)
+            self.unassigned[name] = set()
+        else:
+            zero: Value = (0.0, 0.0, 0.0) if kind in ("POINT", "COORDINATE") else 0.0
+            self.arrays[name] = [zero] * count
+            self.unassigned[name] = set(range(1, count + 1))
+            if initial is not None:
+                # Kept whole rather than spread over elements, since how it maps
+                # onto them is exactly what the length disagreement leaves open.
+                self.variables[name] = initial
+                return
+        self.variables[name] = tuple(self.arrays[name])
+
+    def _assign_element(self, statement: ast.Assignment, name: str) -> None:
+        """Write one element of a declared array."""
+        target = statement.target
+        line = statement.line
+        elements = self.arrays[name]
+
+        if len(target.indices) != 1:
+            self.diagnostics.unsupported(
+                "ERG_ARRAY_DIMENSIONS",
+                f"'{name}' is written with {len(target.indices)} subscripts; only "
+                "one-dimensional arrays can be indexed, so the assignment was skipped",
+                line=line,
+            )
+            return
+
+        position = self._evaluate(target.indices[0], line)
+        value = self._evaluate(statement.value, line)
+        if position is None or value is None:
+            return
+        try:
+            index = as_int(position)
+        except EvaluationError as exc:
+            self.diagnostics.warning("ERG_UNRESOLVED_VALUE", str(exc), line=line)
+            return
+
+        if not 1 <= index <= len(elements):
+            self.diagnostics.error(
+                "ERG_ARRAY_INDEX_RANGE",
+                f"'{name}[{index}]' is outside the declared {name}[1..{len(elements)}]; "
+                "the assignment was skipped",
+                line=line,
+            )
+            return
+
+        elements[index - 1] = value
+        self.unassigned[name].discard(index)
+        self.variables[name] = tuple(elements)
 
     def _store_value(self, name: str, expr: ast.Expr, line: int) -> None:
         value = self._evaluate(expr, line)
@@ -549,15 +714,19 @@ class _Builder:
         self.senses[name] = args.integer("sense", 1)
 
     def _build_prism(self, name: str, call: ast.Call, line: int) -> None:
-        """Build a triangular prism as its three side walls.
+        """Build a triangular prism as its three side walls, solid in reserve.
 
-        Unlike a box a prism has no closed-solid reading, so it cannot be used
-        as a cutting tool -- and it is not a closed shell either, because its
-        triangular ends are genuinely absent rather than merely undecomposed.
+        Like a box, which reading is right depends on where the prism is *used*
+        and the cut statement comes later in the file, so both are prepared
+        here: the group of walls is registered now and swapped for the closed
+        solid if the name turns up after a ``-``.  The triangular ends are
+        genuinely absent from the walls rather than merely undecomposed -- they
+        exist only in the solid.
         """
         args = self._arguments(call)
         try:
-            faces = PRISMS[call.name.upper()](args)
+            corners = PRISMS[call.name.upper()](args)
+            faces = prism_faces(corners)
         except EvaluationError as exc:
             self.diagnostics.error(
                 "ERG_BAD_PRIMITIVE",
@@ -565,20 +734,9 @@ class _Builder:
                 line=line,
             )
             return
+        self.prism_corners[name] = corners
         meshed = self._register_faces(name, faces, call, args, line)
-        self.diagnostics.info(
-            "ERG_PRISM_DECOMPOSED",
-            f"'{name}' is a triangular prism; it becomes a group of {len(faces)} side walls, "
-            "with no end caps -- the prism has none",
-            line=line,
-        )
-        if meshed:
-            self.diagnostics.error(
-                "ERG_BOX_NODE_ORDER",
-                f"'{name}' is a meshed prism: its walls are numbered in this reader's own "
-                "order, so per-face node numbers are a permutation of the source's",
-                line=line,
-            )
+        self._prisms[name] = (line, len(faces), meshed)
         self.senses[name] = args.integer("sense", 1)
 
     def _register_faces(
@@ -606,7 +764,7 @@ class _Builder:
             # numbers unique and the count right even though the order in which
             # ESATAN visits the faces is not reproduced.
             self._offset_nodes(item.thermal_mesh, offset)
-            offset += item.thermal_mesh.num_pair_faces
+            offset += item.thermal_mesh.num_face_pairs
             items.append(item)
         self._register(name, GeometryGroup(name, list(items)))
         return offset > len(faces)
@@ -896,30 +1054,46 @@ class _Builder:
     # -- composition -------------------------------------------------------
 
     def _assign_composition(self, name: str, expr: ast.BinOp, line: int) -> None:
+        """Build one ``a + b - c`` expression: everything added, less everything cut.
+
+        The two operators may be mixed, and a mixed expression cuts the *whole*
+        combination rather than only its first operand -- ESATAN's own
+        documentation reaches that form by adding to an existing cut, writing
+        ``c = a - b; c = c + d;`` back out as ``c = a + d - b``.  So the
+        operands are split by their operator and not by their position.
+        """
         terms, operators = _flatten(expr)
-        if "+" in operators and "-" in operators:
-            self.diagnostics.error(
-                "ERG_MIXED_COMPOSITION",
-                f"'{name}' mixes combination and cutting in one expression, which the format "
-                "does not allow; the statement was skipped",
-                line=line,
-            )
-            return
+        # The leading term has no operator of its own; it is always combined.
+        signs = ["+", *operators]
         # A term that cannot be resolved -- most often a primitive this reader
         # skipped -- must not take its siblings down with it: the surviving
         # operands are still combined, and only the missing one is reported.
-        pairs = [(term, self._geometry_operand(term, name, line)) for term in terms]
-        kept = [(term, child) for term, child in pairs if child is not None]
+        triples = [
+            (sign, term, self._geometry_operand(term, name, line))
+            for sign, term in zip(signs, terms, strict=True)
+        ]
+        kept = [(sign, term, child) for sign, term, child in triples if child is not None]
         if not kept:
             return
-        for term, _ in kept:
+        for _, term, _child in kept:
             if isinstance(term, ast.Ref):
                 self.consumed.add(term.name)
-        resolved = [child for _, child in kept]
-        if operators[0] == "+":
-            self._combine(name, resolved, line)
-        else:
-            self._cut(name, resolved, [term for term, _ in kept], line)
+        targets = [child for sign, _, child in kept if sign == "+"]
+        cutters = [(term, child) for sign, term, child in kept if sign == "-"]
+        if not cutters:
+            self._combine(name, targets, line)
+            return
+        if not targets:
+            # Every added operand went missing, so there is nothing left for the
+            # cutters to act on and a cut group would be registered with no
+            # target at all.  The reason each one went is already reported.
+            self.diagnostics.error(
+                "ERG_NO_CUT_TARGET",
+                f"'{name}' has no geometry left to cut; the statement was skipped",
+                line=line,
+            )
+            return
+        self._cut(name, targets, cutters, line)
 
     def _geometry_operand(
         self, expr: ast.Expr, owner: str, line: int
@@ -975,17 +1149,22 @@ class _Builder:
     def _cut(
         self,
         name: str,
-        resolved: Sequence[GeometryItem | GeometryGroup | GeometryGroupCutted],
-        terms: Sequence[ast.Expr],
+        targets: Sequence[GeometryItem | GeometryGroup | GeometryGroupCutted],
+        candidates: Sequence[tuple[ast.Expr, GeometryItem | GeometryGroup | GeometryGroupCutted]],
         line: int,
     ) -> None:
-        """Build a cut group, rejecting the cutter modes that are not representable."""
-        target, *candidates = resolved
+        """Build a cut group, rejecting the cutter modes that are not representable.
+
+        Every added operand is a target: the cut takes the combination, and a
+        cut group holds the several targets that expresses directly, so the
+        expression survives a round trip through the writer unchanged.
+        """
         cutters: list[GeometryItem] = []
-        for candidate, term in zip(candidates, terms[1:], strict=True):
+        for term, candidate in candidates:
             cutter_name = term.name if isinstance(term, ast.Ref) else "<expression>"
-            # A box arrives here as its six faces; a group cannot cut, so it is
-            # re-read as the closed solid the same statement describes.
+            # A box arrives here as its six faces and a prism as its three walls;
+            # a group cannot cut, so it is re-read as the closed solid the same
+            # statement describes.
             cutter = (
                 candidate
                 if isinstance(candidate, GeometryItem)
@@ -1018,17 +1197,23 @@ class _Builder:
                 continue
             cutters.append(cutter)
         if not cutters:
-            self._register(name, GeometryGroup(name, [target]))
+            self._combine(name, targets, line)
             return
-        self._register(name, GeometryGroupCutted(name, [target], cutters))
+        self._register(name, GeometryGroupCutted(name, list(targets), cutters))
 
     def _solid_form(self, name: str, line: int) -> GeometryItem | None:
-        """Re-read a box as a closed solid, because a group cannot cut anything.
+        """Re-read a decomposed shape as a closed solid, since a group cannot cut.
 
         A cutting tool needs no mesh, optical properties or node numbers, so the
-        six faces built for the geometry reading are dropped and the registered
-        object is replaced -- the box was only ever going to be one of the two.
+        flat faces built for the geometry reading are dropped and the registered
+        object is replaced -- the shape was only ever going to be one of the two.
+        Boxes and prisms are the two that have a solid reading; anything else
+        has none, and ``None`` is what tells the caller to report that.
         """
+        return self._box_solid_form(name, line) or self._prism_solid_form(name, line)
+
+    def _box_solid_form(self, name: str, line: int) -> GeometryItem | None:
+        """The closed-solid reading of a box, if *name* is one."""
         axes = self.box_axes.get(name)
         if axes is None:
             return None
@@ -1052,6 +1237,31 @@ class _Builder:
             "ERG_BOX_CUTTER",
             f"'{name}' is a box used as a cutting tool, so it is read as a single closed "
             "solid rather than as its six faces",
+            line=line,
+        )
+        return item
+
+    def _prism_solid_form(self, name: str, line: int) -> GeometryItem | None:
+        """The closed-solid reading of a triangular prism, if *name* is one.
+
+        The prism's two triangular ends exist only in this reading, where they
+        close the volume being subtracted and are never meshed or radiated.
+        """
+        corners = self.prism_corners.get(name)
+        if corners is None:
+            return None
+        try:
+            solid = prism_solid(corners)
+        except EvaluationError as exc:
+            self.diagnostics.error("ERG_BAD_PRIMITIVE", f"'{name}': {exc}", line=line)
+            return None
+        item = GeometryItem(name, solid, ThermalMesh())
+        self.geometries[name] = item
+        self._prisms.pop(name, None)
+        self.diagnostics.info(
+            "ERG_PRISM_CUTTER",
+            f"'{name}' is a triangular prism used as a cutting tool, so it is read as a "
+            "single closed solid -- with the two triangular ends its shell form has not",
             line=line,
         )
         return item
@@ -1227,6 +1437,25 @@ def _numbers(value: object) -> list[float]:
     if not isinstance(value, tuple):
         return []
     return [float(item) for item in value if isinstance(item, int | float)]
+
+
+def _iter_indices(expr: ast.Expr) -> Iterable[ast.Index]:
+    """Every array read inside *expr*, however deeply nested."""
+    pending: list[ast.Expr] = [expr]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, ast.Index):
+            yield current
+            pending.extend(current.indices)
+        elif isinstance(current, ast.Vector | ast.Array):
+            pending.extend(current.items)
+        elif isinstance(current, ast.BinOp):
+            pending.extend((current.left, current.right))
+        elif isinstance(current, ast.UnaryOp):
+            pending.append(current.operand)
+        elif isinstance(current, ast.Call):
+            pending.extend(current.args.values())
+            pending.extend(current.positional)
 
 
 def _describe_statement(statement: ast.Statement) -> str:

@@ -1,4 +1,4 @@
-"""Result discovery, frames and their mapping onto face slots.
+"""Result discovery, frames and their mapping onto faces.
 
 Everything in :mod:`pycanha.plot.results` is plain numpy over the public
 thermal model, so all of it is exercised without a widget. The panel and the
@@ -23,7 +23,7 @@ CASE_TIMES = [0.0, 100.0, 200.0]
 
 
 def two_panel_model() -> pc.ThermalModel:
-    """Two 2x1 panels, four faces, eight face slots, eight tmm nodes."""
+    """Two 2x1 panels, four faces, eight faces, eight tmm nodes."""
     tm = pc.ThermalModel("results")
     panels = []
     for index, name in enumerate(("a", "b")):
@@ -98,8 +98,8 @@ def test_only_populated_dense_attributes_are_offered(solved: pc.ThermalModel) ->
     assert results.attributes(solved, "no such case") == []
 
 
-def test_a_coupling_history_is_not_a_colouring(solved: pc.ThermalModel) -> None:
-    # KL is a matrix per instant, not a value per node, so it cannot colour a
+def test_a_coupling_history_is_not_a_coloring(solved: pc.ThermalModel) -> None:
+    # KL is a matrix per instant, not a value per node, so it cannot color a
     # face and must not reach the attribute combo.
     model = solved.tmm.thermal_data.models.get_model("hot case")
     model.conductive_couplings.push_back(0.0, sp.csr_matrix(np.eye(len(CASE_NODES))))
@@ -149,11 +149,11 @@ def test_the_frame_index_is_clamped_never_interpolated(solved: pc.ThermalModel) 
         assert np.array_equal(series.frame(index), series.values[index])
 
 
-def test_the_colour_limits_span_the_whole_series(solved: pc.ThermalModel) -> None:
+def test_the_color_limits_span_the_whole_series(solved: pc.ThermalModel) -> None:
     series = results.series(solved, "hot case", "T")
     assert series is not None
     # Not the range of one frame: the same temperature has to be the same
-    # colour at every instant.
+    # color at every instant.
     assert series.clim() == (300.0, 330.0)
 
 
@@ -196,39 +196,39 @@ def test_a_history_is_one_nodes_column(solved: pc.ThermalModel) -> None:
 
 
 # ── onto the geometry ─────────────────────────────────────────────────────
-def test_values_land_on_the_slots_of_their_node(solved: pc.ThermalModel) -> None:
+def test_values_land_on_the_faces_of_their_node(solved: pc.ThermalModel) -> None:
     series = results.series(solved, "hot case", "T")
     assert series is not None
-    slot_nodes = np.asarray(solved.gmm.mesh.node_numbers)
-    values = results.slot_values(series, 0, slot_nodes)
+    face_nodes = np.asarray(solved.gmm.mesh.node_numbers)
+    values = results.face_values(series, 0, face_nodes)
 
-    assert values.shape == slot_nodes.shape
-    for slot, node in enumerate(slot_nodes.tolist()):
+    assert values.shape == face_nodes.shape
+    for face, node in enumerate(face_nodes.tolist()):
         if node in CASE_NODES:
-            assert values[slot] == series.frame(0)[CASE_NODES.index(node)]
+            assert values[face] == series.frame(0)[CASE_NODES.index(node)]
         else:
             # Panel 'b' is not in the case at all, and neither is any side-2
             # node: those faces read as absent rather than as zero.
-            assert np.isnan(values[slot])
+            assert np.isnan(values[face])
 
 
-def test_a_result_colouring_keeps_the_title_still(solved: pc.ThermalModel) -> None:
+def test_a_result_coloring_keeps_the_title_still(solved: pc.ThermalModel) -> None:
     series = results.series(solved, "hot case", "T")
     assert series is not None
-    slot_nodes = np.asarray(solved.gmm.mesh.node_numbers)
-    first = results.result_property(series, 0, slot_nodes)
-    last = results.result_property(series, 2, slot_nodes)
+    face_nodes = np.asarray(solved.gmm.mesh.node_numbers)
+    first = results.result_property(series, 0, face_nodes)
+    last = results.result_property(series, 2, face_nodes)
 
     assert first.key == RESULT_KEY
     assert first.label == "Temperature (hot case)"
-    # The instant is deliberately not in the label: it is the colour bar's
-    # title, and a title that changed per frame would stack colour bars.
+    # The instant is deliberately not in the label: it is the color bar's
+    # title, and a title that changed per frame would stack color bars.
     assert last.label == first.label
     assert first.clim == last.clim == series.clim()
     assert not np.array_equal(first.values, last.values)
 
 
-def test_the_placeholder_colouring_is_all_missing() -> None:
+def test_the_placeholder_coloring_is_all_missing() -> None:
     placeholder = results.empty_property(8)
     assert placeholder.key == RESULT_KEY
     assert placeholder.values.shape == (8,)

@@ -6,10 +6,12 @@ pycanha-core counterparts and add operator overloads:
 * ``a + b`` -> a new anonymous ``GeometryGroup`` whose children are the flattened
   operands (never mutating the operands).
 * ``target - cutter`` -> a new ``GeometryGroupCutted``; chaining ``- cutter``
-  appends further cutters to the same cut group.
+  appends further cutters to the same cut group. That flattening is sugar, not
+  a requirement: since core 0.20 a cut group may itself be cut, so
+  ``(a - c1) - c2`` is a legal nested pair and resolves the same way.
 
 Only ``GeometryItem`` whose primitive is a closed solid (Sphere, Cylinder, Cone,
-Cube) may be a cutter; this is enforced by the C++ side.
+Cube, TriangularPrism) may be a cutter; this is enforced by the C++ side.
 """
 
 from __future__ import annotations

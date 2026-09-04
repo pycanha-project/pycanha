@@ -37,9 +37,9 @@ def opened(solved: pc.ThermalModel, qtbot: object) -> Iterator[ViewerWindow]:
 
 @pytest.fixture
 def window(opened: ViewerWindow) -> ViewerWindow:
-    """The same window, switched to the result colouring.
+    """The same window, switched to the result coloring.
 
-    A window opens on the colour the model carries, and the results strip is
+    A window opens on the color the model carries, and the results strip is
     dead until a result is what is being drawn - so that is where nearly every
     test here has to start.
     """
@@ -80,7 +80,7 @@ def test_a_model_with_nothing_solved_has_nothing_to_show(qtbot: object) -> None:
         viewer.close()
 
 
-def test_a_solved_model_opens_on_the_geometry_colours(opened: ViewerWindow) -> None:
+def test_a_solved_model_opens_on_the_geometry_colors(opened: ViewerWindow) -> None:
     assert opened.has_results
     assert opened.state.color_by == DEFAULT_COLOR_BY
     # Read and ready, so choosing it draws it - but not drawn, and not
@@ -91,7 +91,7 @@ def test_a_solved_model_opens_on_the_geometry_colours(opened: ViewerWindow) -> N
     assert not opened.time_panel.isEnabled()
 
 
-def test_choosing_the_result_colouring_wakes_the_strip(opened: ViewerWindow) -> None:
+def test_choosing_the_result_coloring_wakes_the_strip(opened: ViewerWindow) -> None:
     opened.state.color_by = RESULT_KEY
     assert opened.time_panel.isEnabled()
     assert opened.current_property().label == "Temperature (current)"
@@ -131,16 +131,16 @@ def test_the_attribute_survives_a_case_change_that_keeps_it(window: ViewerWindow
     assert panel.current_attribute() == "T"
 
 
-def test_the_colouring_is_the_values_of_the_selected_node(window: ViewerWindow) -> None:
+def test_the_coloring_is_the_values_of_the_selected_node(window: ViewerWindow) -> None:
     select_case(window, "hot case")
     coloring = window.coloring()
-    slot_nodes = np.asarray(window.scene.slot_nodes)
+    face_nodes = np.asarray(window.scene.face_nodes)
     face_ids = window.scene.face_ids
 
     assert not coloring.rgb
     assert coloring.title == "Temperature (hot case) [K]"
     for cell, face_id in enumerate(face_ids.tolist()):
-        node = int(slot_nodes[face_id])
+        node = int(face_nodes[face_id])
         if node in CASE_NODES:
             assert coloring.values[cell] == 300.0 + CASE_NODES.index(node) * 10
         else:
@@ -172,7 +172,7 @@ def test_scrubbing_does_not_move_the_scale(window: ViewerWindow) -> None:
     before = window.coloring().clim
     window.time_panel.go_next()
     # The other half of the same rule: hiding may rescale, time may not, or the
-    # same temperature would be a different colour at every instant.
+    # same temperature would be a different color at every instant.
     assert window.coloring().clim == before
 
 

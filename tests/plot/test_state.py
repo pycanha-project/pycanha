@@ -169,7 +169,7 @@ def test_no_filter_has_no_bounds(state: ViewState) -> None:
 
 
 # ── lighting ──────────────────────────────────────────────────────────────
-def test_lighting_is_off_and_notifies_as_a_colouring(
+def test_lighting_is_off_and_notifies_as_a_coloring(
     state: ViewState, changes: list[Change]
 ) -> None:
     assert not state.lighting

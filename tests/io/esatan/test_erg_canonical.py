@@ -1,9 +1,9 @@
 """The number format an ESATAN geometry file uses.
 
-Every expectation here is a value that ESATAN itself wrote, so the table is a
-record rather than a guess.  It matters more than it looks: the exporter's whole
-premise is that its output can be compared against a reference file as text, and
-a number rendered one digit differently makes every such comparison fail.
+Every expectation here is the format's own rendering of the number, stated
+rather than derived.  It matters more than it looks: the writer's whole premise
+is that its output can be compared against a canonical file as text, and a
+number rendered one digit differently makes every such comparison fail.
 """
 
 from __future__ import annotations

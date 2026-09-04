@@ -10,7 +10,7 @@ point array, so the whole model stays one actor and one draw call, which is
 what keeps rotating a large model smooth. The rebuild happens only on a
 discrete user action, never per frame.
 
-Nothing here imports Qt: the subset cell ids, the colouring inputs and the
+Nothing here imports Qt: the subset cell ids, the coloring inputs and the
 pick round-trip are all plain numpy and are tested directly.
 """
 
@@ -30,12 +30,12 @@ if TYPE_CHECKING:
     import pyvista as pv
 
 
-def slot_items(mesh: Any) -> npt.NDArray[np.int64]:
-    """Map every face slot of ``mesh`` to the geometry id that produced it.
+def face_items(mesh: Any) -> npt.NDArray[np.int64]:
+    """Map every face of ``mesh`` to the geometry id that produced it.
 
-    Slots no primitive claims get ``-1``. The ranges are given in side-1 (even)
-    slots, first and last, so the slice runs to ``last + 2`` to take in the odd
-    side-2 partner of the last face as well - both slots of a face belong to the
+    Faces no primitive claims get ``-1``. The ranges are given in side-1 (even)
+    faces, first and last, so the slice runs to ``last + 2`` to take in the odd
+    side-2 partner of the last face as well - both faces of a pair belong to the
     item that produced it.
 
     The ranges are written in order so that a later one wins. They can overlap:
@@ -50,18 +50,18 @@ def slot_items(mesh: Any) -> npt.NDArray[np.int64]:
     return items
 
 
-def slot_nodes(mesh: Any) -> npt.NDArray[np.int64]:
-    """The tmm node number of every face slot of ``mesh``, ``-1`` where unset.
+def face_nodes(mesh: Any) -> npt.NDArray[np.int64]:
+    """The tmm node number of every face of ``mesh``, ``-1`` where unset.
 
-    Indexed by slot, like every property array, rather than by cell: the two
-    sides of a face are two slots and carry two different nodes. A mesh that
+    Indexed by face, like every property array, rather than by cell: the two
+    faces of a pair carry two different nodes. A mesh that
     has not been given node numbers reports ``-1`` throughout rather than a
     short array.
     """
     numbers = np.asarray(mesh.node_numbers).astype(np.int64)
-    n_slots = int(mesh.nf())
-    if numbers.size != n_slots:
-        return np.full(n_slots, -1, dtype=np.int64)
+    n_faces = int(mesh.nf())
+    if numbers.size != n_faces:
+        return np.full(n_faces, -1, dtype=np.int64)
     return numbers
 
 
@@ -89,7 +89,7 @@ class Scene:
     """The master mesh of a model plus the indices the viewer selects with.
 
     ``both_sides`` doubles the cells so each ThermalMesh side carries its own
-    face slot, node and material (see
+    face, node and material (see
     :func:`pycanha.plot.polydata.to_polydata`); the two copies are coincident,
     so the actor drawing :meth:`visible_polydata` needs ``backface_culling``.
     """
@@ -124,10 +124,10 @@ class Scene:
         )
         self.sides = np.asarray(sides).astype(np.int64)
 
-        #: Geometry id owning each face slot (``-1`` when unclaimed).
-        self.slot_items = slot_items(self.mesh)
-        #: Tmm node number of each face slot (``-1`` when unassigned).
-        self.slot_nodes = slot_nodes(self.mesh)
+        #: Geometry id owning each face (``-1`` when unclaimed).
+        self.face_items = face_items(self.mesh)
+        #: Tmm node number of each face (``-1`` when unassigned).
+        self.face_nodes = face_nodes(self.mesh)
         #: Geometry id owning each cell (``-1`` when unclaimed).
         self.cell_items = self._resolve_cell_items()
         #: Master cell indices of each geometry id, for visibility and highlighting.
@@ -142,14 +142,14 @@ class Scene:
         self._subset: pv.PolyData | None = None
 
     def _resolve_cell_items(self) -> npt.NDArray[np.int64]:
-        """Geometry id of every cell, via its face slot."""
-        if self.n_cells == 0 or self.slot_items.size == 0:
+        """Geometry id of every cell, via its face."""
+        if self.n_cells == 0 or self.face_items.size == 0:
             return np.full(self.n_cells, -1, dtype=np.int64)
-        # Side-2 cells name the odd partner slot; clearing the low bit gives the
-        # side-1 slot the primitive ranges are expressed in.
+        # Side-2 cells name the odd partner face; clearing the low bit gives the
+        # side-1 face the primitive ranges are expressed in.
         base = self.face_ids & ~np.int64(1)
-        inside = base < self.slot_items.size
-        return np.where(inside, self.slot_items[np.where(inside, base, 0)], -1)
+        inside = base < self.face_items.size
+        return np.where(inside, self.face_items[np.where(inside, base, 0)], -1)
 
     # ── visibility ────────────────────────────────────────────────────────
     @property
@@ -213,7 +213,7 @@ class Scene:
         """Master cell index of cell ``subset_cell`` of :meth:`visible_polydata`.
 
         A pick reports a cell of the rendered subset; everything else in the
-        viewer - face slots, nodes, items, scalars - is indexed by master cell.
+        viewer - faces, nodes, items, scalars - is indexed by master cell.
         """
         if not 0 <= subset_cell < self.visible_cells.size:
             msg = f"cell index {subset_cell} out of range for {self.visible_cells.size} cells"
@@ -256,7 +256,7 @@ class Scene:
         """Where each of ``cells`` sits in the drawn subset.
 
         The inverse of :attr:`visible_cells`, which is what turns a set of
-        master cells into rows of a per-visible-cell array - the colours a
+        master cells into rows of a per-visible-cell array - the colors a
         highlight has to read to brighten what is on screen. Every cell must be
         visible; :meth:`restrict_to_visible` is what drops the ones that are not.
         """
@@ -286,11 +286,11 @@ class Scene:
         return self.item_cells.get(int(item_id), np.empty(0, dtype=np.intp))
 
     def cells_of_face(self, face_id: int) -> npt.NDArray[np.intp]:
-        """Master cells of face slot ``face_id`` - the triangles of one side of one face."""
+        """Master cells of face ``face_id`` - the triangles of one side of one face."""
         return np.flatnonzero(self.face_ids == int(face_id)).astype(np.intp)
 
     def cells_of_node(self, node_number: int) -> npt.NDArray[np.intp]:
-        """Master cells whose face slot belongs to tmm node ``node_number``."""
+        """Master cells whose face belongs to tmm node ``node_number``."""
         return np.flatnonzero(self.node_numbers == int(node_number)).astype(np.intp)
 
     def item_of_cell(self, cell: int) -> int:
@@ -300,7 +300,7 @@ class Scene:
     def node_range_mask(self, lo: int, hi: int) -> npt.NDArray[np.bool_]:
         """Per-master-cell mask of the cells whose node lies in ``[lo, hi]``.
 
-        The node filter greys rather than hides, so this is a colouring input
+        The node filter greys rather than hides, so this is a coloring input
         and deliberately not part of :attr:`visible_cells`.
         """
         return (self.node_numbers >= int(lo)) & (self.node_numbers <= int(hi))

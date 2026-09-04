@@ -1,31 +1,138 @@
 """Cutting tools, which STEP-TAS writes as solids rather than as surfaces.
 
-The feature model cuts with a cylinder and a box.  This one cuts with the other
-four shapes a tool can be, two of which pycanha cannot cut with at all -- and
-the interesting half of the fixture is that those two are reported and leave
-their target whole, rather than half-applied.
+The corpus cuts with a cylinder and a box.  This module covers the other shapes
+a tool can be, and it does so without a committed file: the model is built here,
+written, and read back, so a shape that has no `.erg` spelling is testable the
+same way as one that has.
+
+Two things are asserted, and they need different machinery.  That a tool
+*survives* is a round trip -- write, read, compare the shape that comes back.
+That a tool is written *the way the format says* is a statement about the file
+itself, so the entity and everything it refers to are written out here and
+compared against what the writer produced.  Reading a file back cannot catch a
+misunderstanding the writer and the reader share; stating the expected text can.
 """
 
 from __future__ import annotations
 
 import math
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pycanha_core as pcc
 import pytest
 
-from pycanha.gmm import GeometryGroupCutted, GeometryItem, GeometryModel
+from pycanha.gmm import (
+    Cone,
+    GeometryGroupCutted,
+    GeometryItem,
+    GeometryModel,
+    OpticalMaterial,
+    Paraboloid,
+    Rectangle,
+    Sphere,
+    ThermalMesh,
+    TriangularPrism,
+)
+from pycanha.io.part21 import Reference, read_part21
 
-FIXTURE = Path(__file__).resolve().parents[2] / "data" / "esatan" / "CUTTERS"
-CUTTERS = FIXTURE / "CUTTERS.stp"
-SOURCE = FIXTURE / "CUTTERS.erg"
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from pathlib import Path
+
+    from pycanha.io.diagnostics import DiagnosticCollector
+    from pycanha.io.part21 import Entity, Part21File, Value
+    from pycanha.io.steptas.mappings import Primitive
+
+#: The four points of the prism tool, in the order the primitive defines them.
+#:
+#: A right prism: the edge to the fourth corner runs along the base's own
+#: normal, which is what the format's prism is and all its validator accepts.
+PRISM_CORNERS = ((-0.2, -0.7, -0.2), (0.2, -0.7, -0.2), (0.0, -0.4, -0.2), (-0.2, -0.7, 0.4))
+
+
+def quiet(_note: object) -> None:
+    """Diagnostics are asserted on where they matter, not printed everywhere."""
+
+
+def point(*values: float) -> np.ndarray:
+    return np.ascontiguousarray(np.array(values, dtype=np.float64))
+
+
+def tools() -> Mapping[str, Primitive]:
+    """One tool of every solid shape a cut can be made with, less the two the corpus has.
+
+    A cone truncated to an apex, a whole sphere and a prism.  Each is placed so
+    that it meets the plate it cuts, because a tool that misses removes nothing
+    and a cut that removes nothing is not a cut anyone would notice breaking.
+    """
+    return {
+        "CONE_TOOL": Cone(
+            point(-0.5, 0.0, -0.2),
+            point(-0.5, 0.0, 0.1),
+            point(-0.4, 0.0, -0.2),
+            0.1,
+            0.3,
+            0.0,
+            math.tau,
+        ),
+        "SPHERE_TOOL": Sphere(
+            point(0.5, 0.0, 0.0),
+            point(0.5, 0.0, 1.0),
+            point(0.7, 0.0, 0.0),
+            0.2,
+            -0.2,
+            0.2,
+            0.0,
+            math.tau,
+        ),
+        "PRISM_TOOL": TriangularPrism(*(point(*corner) for corner in PRISM_CORNERS)),
+    }
+
+
+def plate(name: str, node: int) -> GeometryItem:
+    """A 2 x 2 plate for a tool to cut, carrying enough to be exchangeable."""
+    black = OpticalMaterial("Black", [0.9, 0.0, 0.0, 0.9, 0.0, 0.0])
+    mesh = ThermalMesh()
+    mesh.node1_start = node
+    mesh.node1_step = 1
+    mesh.side1_optical = black
+    mesh.side2_optical = black
+    return GeometryItem(
+        name,
+        Rectangle(point(-1.0, -1.0, 0.0), point(1.0, -1.0, 0.0), point(-1.0, 1.0, 0.0)),
+        mesh,
+    )
+
+
+def cut_model() -> GeometryModel:
+    """One plate per tool, each cut by its own.
+
+    Separately rather than as a chain: the format removes one solid per
+    difference surface either way, and one cut per plate keeps which tool did
+    what unambiguous when a shape fails to come back.
+    """
+    model = GeometryModel("CUTTERS")
+    for index, (name, primitive) in enumerate(tools().items()):
+        model.add(
+            GeometryGroupCutted(
+                f"CUT_{index}",
+                [plate(f"SLAB_{index}", 1000 + 100 * index)],
+                [GeometryItem(name, primitive, ThermalMesh())],
+            )
+        )
+    return model
 
 
 @pytest.fixture(scope="module")
-def cut() -> tuple[GeometryModel, object]:
-    model = GeometryModel("CUTTERS")
-    return model, model.io.read_steptas(CUTTERS, on_diagnostic=lambda _note: None)
+def round_trip(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[Path, GeometryModel, DiagnosticCollector]:
+    """The model written out and read back, with the file kept for inspection."""
+    target = tmp_path_factory.mktemp("cutters") / "cutters.stp"
+    cut_model().io.write_steptas(target, on_diagnostic=quiet)
+    reread = GeometryModel("back")
+    return target, reread, reread.io.read_steptas(target, on_diagnostic=quiet)
 
 
 def item(model: GeometryModel, name: str) -> GeometryItem:
@@ -48,80 +155,255 @@ def shape[T](item: GeometryItem, kind: type[T]) -> T:
     return primitive
 
 
-def test_a_cone_and_a_sphere_can_both_cut(cut: tuple) -> None:
+# -- the tools that come back ------------------------------------------------
+
+
+def test_a_cone_and_a_sphere_can_both_cut(round_trip: tuple) -> None:
     """Both enclose a volume, so both arrive as usable tools."""
-    model, _ = cut
-    cone = shape(item(model, "CUTTERS_CONE_TOOL"), pcc.gmm.Cone)
-    sphere = shape(item(model, "CUTTERS_SPHERE_TOOL"), pcc.gmm.Sphere)
-    assert (cone.radius1, cone.radius2) == pytest.approx(
-        (0.1 * math.tan(math.radians(30.0)), 0.4 * math.tan(math.radians(30.0)))
-    )
+    _, model, _ = round_trip
+    cone = shape(item(model, "CONE_TOOL"), pcc.gmm.Cone)
+    sphere = shape(item(model, "SPHERE_TOOL"), pcc.gmm.Sphere)
+    assert (cone.radius1, cone.radius2) == pytest.approx((0.1, 0.3))
     assert sphere.surface_area() == pytest.approx(4 * math.pi * 0.2**2)
 
 
-def test_a_tool_carries_its_own_placement(cut: tuple) -> None:
+def test_a_tool_carries_its_own_placement(round_trip: tuple) -> None:
     """The tool is written about its own origin and placed separately.
 
     Reading the shape and dropping the placement leaves a tool that cuts the
     middle of whatever it was aimed at, which is a hole in the right model in
     the wrong place -- so the placement is checked, not merely the shape.
     """
-    model, _ = cut
-    cone = item(model, "CUTTERS_CONE_TOOL")
-    assert list(cone.transform.apply(np.zeros(3))) == pytest.approx([-0.5, 0.0, -0.2])
-    sphere = item(model, "CUTTERS_SPHERE_TOOL")
-    assert list(sphere.transform.apply(np.zeros(3))) == pytest.approx([0.5, 0.0, 0.0])
+    _, model, _ = round_trip
+    cone = item(model, "CONE_TOOL")
+    assert list(cone.transform.apply(np.zeros(3))) == pytest.approx([0.0, 0.0, 0.0])
+    # Placement and shape together: the cone's own first end centre is where the
+    # model put it, whichever of the two carried the offset through the file.
+    first_end = np.ascontiguousarray(np.asarray(shape(cone, pcc.gmm.Cone).p1))
+    assert list(cone.transform.apply(first_end)) == pytest.approx([-0.5, 0.0, -0.2])
 
 
-def test_a_shape_that_encloses_nothing_cannot_cut(cut: tuple) -> None:
-    """A paraboloid is an open surface however it is written."""
-    _, diagnostics = cut
-    reported = [note for note in diagnostics if note.code == "TAS_CUTTER_NOT_SOLID"]
-    assert len(reported) == 1
-    assert "PARA_TOOL" in reported[0].message
+def test_a_prism_solid_cuts_rather_than_being_named_as_unreadable(round_trip: tuple) -> None:
+    """``MGM_SOLID_TRIANGULAR_PRISM`` has a closed prism to become since 0.20.
 
-
-def test_a_solid_with_no_reading_here_is_named_rather_than_guessed(cut: tuple) -> None:
-    _, diagnostics = cut
-    reported = [note for note in diagnostics if note.code == "TAS_CUTTER_UNSUPPORTED"]
-    assert len(reported) == 1
-    assert "MGM_SOLID_TRIANGULAR_PRISM" in reported[0].message
-
-
-def test_the_two_readers_refuse_the_same_two_tools(cut: tuple) -> None:
-    """The same model read from its own format reaches the same conclusion.
-
-    Which tools can cut is a question about pycanha, not about either file, so
-    the two readers must answer it the same way -- and they arrive at it from
-    entirely different descriptions of the same four shapes.
+    It carries its four corners in the file's own frame, so unlike the box
+    there is no placement split out of it.
     """
-    model, _ = cut
-    source = GeometryModel("source")
-    diagnostics = source.io.read_esatan_erg(SOURCE, on_diagnostic=lambda _note: None)
-    assert {"ERG_CUTTER_NOT_SOLID", "ERG_CUTTER_NOT_PRIMITIVE"} <= diagnostics.codes()
+    _, model, diagnostics = round_trip
+    assert not [note for note in diagnostics if note.code == "TAS_CUTTER_UNSUPPORTED"]
 
-    def cutters(built: GeometryModel) -> set[str]:
-        return {
-            child.name.removeprefix("CUTTERS_")
-            for group in built.children_recursive()
-            if isinstance(group, GeometryGroupCutted)
-            for child in group.cutters
-        }
-
-    assert cutters(model) == cutters(source) == {"CONE_TOOL", "SPHERE_TOOL"}
+    prism = shape(item(model, "PRISM_TOOL"), pcc.gmm.TriangularPrism)
+    assert list(prism.p1) == pytest.approx(PRISM_CORNERS[0])
+    assert list(prism.p4) == pytest.approx(PRISM_CORNERS[3])
 
 
-def test_a_refused_cut_leaves_its_target_whole(cut: tuple) -> None:
-    """Two cuts apply and two do not, so two cut groups and no more.
+def test_every_cut_survives_with_its_tool(round_trip: tuple) -> None:
+    """Three tools, three cut groups, and every plate still 2 x 2."""
+    _, model, _ = round_trip
+    groups = [
+        child for child in model.children_recursive() if isinstance(child, GeometryGroupCutted)
+    ]
+    assert len(groups) == 3
+    assert all(len(group.cutters) == 1 for group in groups)
+    for index in range(3):
+        assert item(model, f"SLAB_{index}").primitive.surface_area() == pytest.approx(4.0)
 
-    The alternative -- dropping the shape that could not be cut -- would lose
-    geometry the file has; leaving it uncut keeps it, with the difference
-    reported.
+
+def test_a_shape_that_encloses_nothing_cannot_cut() -> None:
+    """A paraboloid is an open surface however it is written.
+
+    Refused where the model is built, which is before any file exists: the
+    alternative -- accepting it and discovering on the way out that there is no
+    solid to write -- would leave a model claiming a cut that never happens.
     """
-    model, _ = cut
+    open_tool = GeometryItem(
+        "PARA_TOOL",
+        Paraboloid(
+            point(0.0, 0.5, -0.15),
+            point(0.0, 0.5, 0.15),
+            point(0.2, 0.5, -0.15),
+            0.2,
+            0.0,
+            math.tau,
+        ),
+        ThermalMesh(),
+    )
+    with pytest.raises(ValueError, match="closed solid"):
+        GeometryGroupCutted("HOLED", [plate("SLAB", 1000)], [open_tool])
+
+
+def test_a_solid_that_encloses_nothing_cannot_cut(round_trip: tuple, tmp_path: Path) -> None:
+    """The format has a solid paraboloid; pycanha refuses to cut with one.
+
+    No file pycanha writes can carry this, because a model refuses an open
+    cutter before a file is reached -- so the entity gets into one the only way
+    it ever does, from a producer that allowed it.  A solid paraboloid is
+    written exactly as a solid cone is, eight attributes in the same order, so
+    retyping the entity is the whole of the difference between the two files.
+
+    The plate has to survive whole rather than be dropped with the tool: the
+    file says it is there, and only the cut is impossible.
+    """
+    source, _, _ = round_trip
+    target = tmp_path / "open_tool.stp"
+    text = source.read_text(encoding="utf-8")
+    assert text.count("=MGM_SOLID_CONE(") == 1
+    target.write_text(text.replace("=MGM_SOLID_CONE(", "=MGM_SOLID_PARABOLOID("), encoding="utf-8")
+
+    model = GeometryModel("open")
+    diagnostics = model.io.read_steptas(target, on_diagnostic=quiet)
+    refusals = [note for note in diagnostics if note.code == "TAS_CUTTER_NOT_SOLID"]
+    assert len(refusals) == 1
+    assert "CONE_TOOL" in refusals[0].message
+    assert not model.get_item("CONE_TOOL")
+    # Two cuts applied and one did not, and the plate the third aimed at is
+    # still the whole 2 x 2.
     groups = [
         child for child in model.children_recursive() if isinstance(child, GeometryGroupCutted)
     ]
     assert len(groups) == 2
-    plate = item(model, "CUTTERS_SLAB")
-    assert plate.primitive.surface_area() == pytest.approx(4.0)
+    assert item(model, "SLAB_0").primitive.surface_area() == pytest.approx(4.0)
+
+
+# -- what the file says ------------------------------------------------------
+
+
+def numbers_of(entity: Entity) -> tuple[Value, ...]:
+    """The numbers an entity that a solid refers to actually carries.
+
+    A point is a name, three coordinates and the unit they are in; a quantity is
+    the unit, a one-element list holding the value, and an empty list of
+    qualifiers.  The units are the file's own, shared by everything in it and
+    asserted where the units are, so what is left in both cases is the numbers.
+    """
+    if entity.kind == "MGM_3D_CARTESIAN_POINT":
+        return tuple(entity.params[1:4])
+    if entity.kind == "NRF_REAL_QUANTITY_VALUE_LITERAL":
+        measure = entity.params[1]
+        assert isinstance(measure, tuple), entity.kind
+        return tuple(measure)
+    msg = f"a solid refers to an unexpected {entity.kind}"
+    raise AssertionError(msg)
+
+
+def solid(parsed: Part21File, kind: str) -> list[tuple[str, tuple[Value, ...]]]:
+    """The one entity of *kind* in *parsed*, with each reference resolved.
+
+    A reference is replaced by the kind of what it names and the numbers in it,
+    so an expectation can be written as the shape it describes rather than as
+    instance numbers, which are an artefact of how the file is laid out.
+    """
+    entities = parsed.of_kind(kind)
+    assert len(entities) == 1, f"expected one {kind}, found {len(entities)}"
+    resolved: list[tuple[str, tuple[Value, ...]]] = []
+    # The first parameter is the back-reference to the owning difference surface.
+    for index, parameter in enumerate(entities[0].params[1:], start=1):
+        assert isinstance(parameter, Reference), f"{kind}[{index}]: expected a reference"
+        named = parsed.entity(parameter)
+        assert named is not None, f"{kind}[{index}]: dangling reference"
+        resolved.append((named.kind, numbers_of(named)))
+    return resolved
+
+
+def assert_written(written: list[tuple[str, tuple[Value, ...]]], expected: list) -> None:
+    """*written* is *expected*, entity by entity and number by number.
+
+    The kinds have to match exactly; the numbers are compared as numbers.  A
+    corner the writer computes rather than copies -- a projection, a rebuilt
+    datum -- lands a bit-width away from the same corner written by hand, and
+    that difference says nothing about whether the file is right.
+    """
+    assert [kind for kind, _ in written] == [kind for kind, _ in expected]
+    for (kind, got), (_, want) in zip(written, expected, strict=True):
+        assert got == pytest.approx(want), kind
+
+
+def coordinates(*values: float) -> tuple[str, tuple[Value, ...]]:
+    """An ``MGM_3D_CARTESIAN_POINT``, as its three coordinates."""
+    return ("MGM_3D_CARTESIAN_POINT", values)
+
+
+def quantity(value: float) -> tuple[str, tuple[Value, ...]]:
+    """An ``NRF_REAL_QUANTITY_VALUE_LITERAL``, as the one number it carries."""
+    return ("NRF_REAL_QUANTITY_VALUE_LITERAL", (value,))
+
+
+def test_a_prism_is_written_as_its_four_corners(round_trip: tuple) -> None:
+    """The whole entity, stated rather than read back.
+
+    A prism has no placement of its own in the format, so the four points *are*
+    the shape and their order is the whole of its orientation: the base winds
+    p1-p2-p3 and the edge to p4 leaves the base on the side that winding points
+    to.  A file with them in another order describes a prism turned inside out,
+    which reads back as the same four points and is not the same solid.
+    """
+    target, _, _ = round_trip
+    written = solid(read_part21(target), "MGM_SOLID_TRIANGULAR_PRISM")
+    assert_written(written, [coordinates(*corner) for corner in PRISM_CORNERS])
+
+
+def test_a_cone_is_written_as_two_end_centres_and_the_radius_at_each(round_trip: tuple) -> None:
+    """The frustum spelling, including the datum the format requires.
+
+    The third point is the datum fixing where the angular sweep starts.  The
+    format wants it perpendicular to the axis and at unit distance, which is not
+    what the primitive carries, so the writer rebuilds it -- and that rebuilding
+    is the part an assertion about the file catches and a round trip does not.
+    """
+    target, _, _ = round_trip
+    written = solid(read_part21(target), "MGM_SOLID_CONE")
+    assert_written(
+        written,
+        [
+            coordinates(-0.5, 0.0, -0.2),
+            coordinates(-0.5, 0.0, 0.1),
+            coordinates(0.5, 0.0, -0.2),
+            quantity(0.1),
+            quantity(0.3),
+            quantity(0.0),
+            quantity(math.degrees(math.tau)),
+        ],
+    )
+
+
+def test_a_prism_that_leans_is_straightened_and_said_so(tmp_path: Path) -> None:
+    """The format's prism is a right one, and a file whose prism leans is invalid.
+
+    A ``TriangularPrism`` is under no such obligation -- it takes any fourth
+    point that leaves the base plane -- so one built that way in Python reaches
+    the writer with an extrusion that no ``MGM_SOLID_TRIANGULAR_PRISM`` can
+    carry.  Writing it out unchanged produces a file the format's own rules
+    reject, so the corner is dropped onto the base normal instead: the base, the
+    height and the direction survive and the walls stand up straight.
+
+    The projection is the whole of what is asserted here.  Its *height* is the
+    component along the normal, not the length of the leaning edge -- a 1.0 rise
+    reached 1.0 off-axis is a prism 1.0 tall, not sqrt(2) tall, and taking the
+    edge's length instead would stretch every wall by 41 %.
+    """
+    base = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+    leaning = GeometryItem(
+        "LEANING",
+        TriangularPrism(point(*base[0]), point(*base[1]), point(*base[2]), point(0.6, 0.8, 1.0)),
+        ThermalMesh(),
+    )
+    model = GeometryModel("LEAN")
+    model.add(GeometryGroupCutted("HOLED", [plate("SLAB", 1000)], [leaning]))
+
+    target = tmp_path / "leaning.stp"
+    diagnostics = model.io.write_steptas(target, name="LEAN", on_diagnostic=quiet)
+    straightened = [note for note in diagnostics if note.code == "TAS_WRITE_STRAIGHTENED_PRISM"]
+    assert len(straightened) == 1
+    assert "LEANING" in straightened[0].message
+
+    written = solid(read_part21(target), "MGM_SOLID_TRIANGULAR_PRISM")
+    assert_written(
+        written, [coordinates(*corner) for corner in base] + [coordinates(0.0, 0.0, 1.0)]
+    )
+
+
+def test_a_right_prism_is_written_without_a_word(tmp_path: Path) -> None:
+    """The mirror of the test above: straightening is reported only when it happens."""
+    target = tmp_path / "upright.stp"
+    diagnostics = cut_model().io.write_steptas(target, name="CUTTERS", on_diagnostic=quiet)
+    assert "TAS_WRITE_STRAIGHTENED_PRISM" not in diagnostics.codes()

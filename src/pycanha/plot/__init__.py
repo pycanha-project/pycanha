@@ -11,7 +11,7 @@ Two paths share one data layer:
 
 :mod:`~pycanha.plot.polydata` holds the mesh-to-pyvista conversion and the
 value-mapping helpers; :mod:`~pycanha.plot.picking` resolves a rendered triangle
-back to its face slot, node and geometry item. The viewer's own machinery is
+back to its face, node and geometry item. The viewer's own machinery is
 split so that everything except the widgets is testable without a display:
 :mod:`~pycanha.plot.state` holds what is being shown,
 :mod:`~pycanha.plot.scene` turns that into the cells VTK draws,

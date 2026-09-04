@@ -23,7 +23,7 @@ from pycanha.io.esatan.geometry.palette import (
     nearest_name,
 )
 
-FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES"
+FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES.erg"
 
 _PAINT = "OPTICAL Paint;\nDEFINE_OPTICAL (optical = Paint, ir_emiss = 0.8, solar_absorb = 0.3);\n"
 
@@ -222,13 +222,13 @@ def test_a_colour_that_was_chosen_is_written_even_next_to_defaults(tmp_path: Pat
 
 def test_the_feature_model_writes_no_colour_diagnostic() -> None:
     """Colour used to be dropped and reported; it is now written."""
-    model = GeometryModel("FEATURES_TAS")
-    model.io.read_esatan_erg(FEATURES / "FEATURES_TAS.erg", on_diagnostic=lambda _note: None)
+    model = GeometryModel("FEATURES")
+    model.io.read_esatan_erg(FEATURES, on_diagnostic=lambda _note: None)
 
     with tempfile.TemporaryDirectory() as directory:
         out = Path(directory) / "written.erg"
         diagnostics = model.io.write_esatan_erg(
-            out, name="FEATURES_TAS", on_diagnostic=lambda _note: None
+            out, name="FEATURES", on_diagnostic=lambda _note: None
         )
     assert "ERG_WRITE_NO_COLOUR" not in diagnostics.codes()
     assert not diagnostics.codes()

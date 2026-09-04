@@ -35,6 +35,7 @@ from pyvistaqt import QtInteractor
 
 from .. import log
 from . import edges, results
+from .depth import push_lines, push_surface
 from .icons import apply_window_icon
 from .panels.info_panel import InfoPanel
 from .panels.legend_panel import LegendPanel
@@ -61,7 +62,7 @@ if TYPE_CHECKING:
 #: Actor name of the geometry, so a rebuild replaces it instead of stacking.
 MESH_ACTOR = "_geometry"
 
-#: Cell-data name the current colouring is written to on the visible subset.
+#: Cell-data name the current coloring is written to on the visible subset.
 SCALARS_NAME = "_coloring"
 
 #: Actor names of the selection overlay: the brightened copy of what is
@@ -70,7 +71,7 @@ SELECTION_HIGHLIGHT = "_selection"
 SELECTION_OUTLINE = "_selection_outline"
 
 #: How far the selection is brightened towards white, as a fraction. The
-#: highlight is the geometry's *own* colour made brighter rather than a colour
+#: highlight is the geometry's *own* color made brighter rather than a color
 #: of its own: a flat wash replaces the data with the fact that it is selected.
 BRIGHTEN = 0.45
 
@@ -85,8 +86,8 @@ SELECTION_OUTLINE_WIDTH = 2.0
 FACE_EDGES = "_face_edges"
 PRIMITIVE_EDGES = "_primitive_edges"
 
-#: Colour of both edge overlays. The two are told apart by weight rather than
-#: by hue: they are a technical drawing over the colouring, and a second colour
+#: Color of both edge overlays. The two are told apart by weight rather than
+#: by hue: they are a technical drawing over the coloring, and a second color
 #: would read as a third piece of data.
 EDGE_COLOR = "black"
 
@@ -94,13 +95,20 @@ EDGE_COLOR = "black"
 FACE_EDGE_WIDTH = 1.0
 PRIMITIVE_EDGE_WIDTH = 3.0
 
-#: How far towards the camera a coincident overlay is pushed, in the units
-#: VTK's polygon offset takes (negative is towards the camera). Lines are
-#: pushed further than surfaces, so a line is never swallowed by the selection
-#: overlay lying on the same geometry - and every line uses the same value, so
-#: the mesh, the outlines and the selection ring cannot z-fight each other.
-SURFACE_OFFSET = -4.0
-LINE_OFFSET = -8.0
+#: How close to the camera the near plane may get, as a fraction of the
+#: distance to what the camera is looking at. Without it a single vertex that
+#: happens to drift in front of the camera - a strut the view has been pushed
+#: through, covering no pixels worth seeing - sets the near plane for the whole
+#: frame and costs every other surface its depth precision. Anything this much
+#: nearer than the subject is incidental, and is clipped instead. Being a
+#: fraction of the subject's distance it scales with the zoom, so what is being
+#: looked at is never the thing that gets cut.
+FOCAL_NEAR_FRACTION = 0.02
+
+#: The last-resort floor under the near plane, as a fraction of the far plane,
+#: for when even the subject is right against the camera. VTK's own value for a
+#: 24-bit depth buffer.
+NEAR_PLANE_FLOOR = 1e-3
 
 #: What a face outside the node filter is drawn in - greyed, never hidden.
 FILTERED_COLOR = "lightgray"
@@ -120,10 +128,10 @@ CLICK_SLOP = 4
 
 @dataclass(frozen=True)
 class Coloring:
-    """Everything the actor needs to draw one colour-by choice.
+    """Everything the actor needs to draw one color-by choice.
 
-    ``rgb`` distinguishes the two paths: categorical colourings are per-cell
-    RGB with no colour bar, because a node number is a label and a colormap
+    ``rgb`` distinguishes the two paths: categorical colorings are per-cell
+    RGB with no color bar, because a node number is a label and a colormap
     would suggest it is a magnitude; numeric ones go on a real colormap.
     """
 
@@ -180,7 +188,7 @@ class ViewerWindow(QMainWindow):
         self._drawn_edges = False
         self.time_history: TimeHistoryWindow | None = None
 
-        # Offered as one more colour-by option, so the legend, the colour scale
+        # Offered as one more color-by option, so the legend, the color scale
         # and the property table need to know nothing about results.
         self.has_results = bool(results.cases(thermal_model))
         if self.has_results:
@@ -208,19 +216,23 @@ class ViewerWindow(QMainWindow):
         self._add_dock("Appearance", self.legend_panel, Qt.DockWidgetArea.RightDockWidgetArea)
 
         # The results strip is always there so the window keeps its shape, and
-        # is live only while the geometry is coloured by a result: what it
-        # controls is which instant of that colouring is on screen.
+        # is live only while the geometry is colored by a result: what it
+        # controls is which instant of that coloring is on screen.
         self.time_panel = TimePanel(thermal_model, self.state, self)
         self._add_dock("Results", self.time_panel, Qt.DockWidgetArea.BottomDockWidgetArea)
 
         self.state.subscribe(self._on_state_change)
         self._enable_picking()
+        self._watch_the_clipping_range()
         # The panel published its default case while the window was still being
         # built, before anything was subscribed to hear it, so the result
-        # colouring is filled in here - ready for the moment it is chosen.
+        # coloring is filled in here - ready for the moment it is chosen.
         self.refresh_result()
         self._sync_results_strip()
         self.rebuild_geometry()
+        # Drawn once here because the overlays are only ever put up in response
+        # to a change, and an edge display that is on by default never gets one.
+        self._draw_edges()
 
     def _add_dock(self, title: str, widget: QWidget, area: Qt.DockWidgetArea) -> QDockWidget:
         dock = QDockWidget(title, self)
@@ -232,16 +244,16 @@ class ViewerWindow(QMainWindow):
         """Leave the strip live only while a result is what is being drawn."""
         self.time_panel.setEnabled(self.has_results and self.state.color_by == RESULT_KEY)
 
-    # ── colouring ─────────────────────────────────────────────────────────
+    # ── coloring ─────────────────────────────────────────────────────────
     def current_property(self) -> FaceProperty:
-        """The property the geometry is currently coloured by."""
+        """The property the geometry is currently colored by."""
         return self.properties[self.state.color_by]
 
     def coloring(self) -> Coloring:
-        """The colours of the currently visible cells, ready for the actor.
+        """The colors of the currently visible cells, ready for the actor.
 
         This is the array a headless test asserts on: it is what VTK would be
-        handed, and every colouring decision - categorical versus numeric,
+        handed, and every coloring decision - categorical versus numeric,
         the limits, the reversed colormap - has already been made in it.
         """
         prop = self.current_property()
@@ -249,8 +261,8 @@ class ViewerWindow(QMainWindow):
         filtered = self.filtered_out()
         lighting = self.state.lighting
         if prop.categorical:
-            # Colours resolved over *every* cell rather than the visible ones,
-            # so hiding something does not recolour what is left.
+            # Colors resolved over *every* cell rather than the visible ones,
+            # so hiding something does not recolor what is left.
             colors = self.scene.visible_scalars(prop.colors_of(master))
             if filtered is not None:
                 colors = colors.copy()
@@ -264,7 +276,7 @@ class ViewerWindow(QMainWindow):
             numbers = np.where(filtered, np.nan, numbers)
         title = f"{prop.label} [{prop.unit}]" if prop.unit else prop.label
         # A property that knows its own range says so - a frame of a time
-        # series is drawn on the scale of the whole series, or the colours
+        # series is drawn on the scale of the whole series, or the colors
         # would mean something different at every instant. Either way the range
         # covers only what is drawn: the property is rebuilt against the visible
         # nodes, and the values here are the visible cells'.
@@ -323,25 +335,25 @@ class ViewerWindow(QMainWindow):
     def visible_nodes(self) -> npt.NDArray[np.int64]:
         """The tmm nodes of the geometry currently drawn, ascending and distinct.
 
-        What the automatic colour scale of a result is spent on: a node no
-        longer on screen has no say in the range its colours are spread over.
+        What the automatic color scale of a result is spent on: a node no
+        longer on screen has no say in the range its colors are spread over.
         """
         return np.unique(self.scene.node_numbers[self.scene.visible_cells])
 
     def refresh_result(self) -> None:
-        """Rebuild the result colouring from the case, attribute and instant."""
+        """Rebuild the result coloring from the case, attribute and instant."""
         if not self.has_results:
             return
         selection = self.state.result
         series = self.current_series()
-        n_slots = int(self.scene.mesh.nf())
+        n_faces = int(self.scene.mesh.nf())
         if selection is None or series is None:
-            self.properties[RESULT_KEY] = results.empty_property(n_slots)
+            self.properties[RESULT_KEY] = results.empty_property(n_faces)
         else:
             self.properties[RESULT_KEY] = results.result_property(
                 series,
                 selection.time_index,
-                self.scene.slot_nodes,
+                self.scene.face_nodes,
                 visible_nodes=self.visible_nodes(),
             )
         if self.time_panel is not None:
@@ -365,7 +377,7 @@ class ViewerWindow(QMainWindow):
         Opens the window on first use and leaves it open in
         :attr:`time_history`: every node picked afterwards adds another curve,
         which is the whole point of plotting a history rather than reading one
-        number off the colour bar.
+        number off the color bar.
         """
         series = self.current_series()
         if series is None or not series.times.size:
@@ -510,10 +522,10 @@ class ViewerWindow(QMainWindow):
         return node.item_ids if node is not None else frozenset({int(geometry_id)})
 
     def highlight_colors(self) -> npt.NDArray[np.uint8]:
-        """What the highlighted cells are drawn in: their own colour, brighter.
+        """What the highlighted cells are drawn in: their own color, brighter.
 
         The selection keeps saying what it said - its material, its node, its
-        temperature - and adds only that it is selected. A wash of one colour
+        temperature - and adds only that it is selected. A wash of one color
         would take the answer away just as the answer is being asked for.
         """
         cells = self.highlight()
@@ -543,6 +555,71 @@ class ViewerWindow(QMainWindow):
         """How many triangles the master mesh holds, sides not counted twice."""
         return self.scene.n_cells // 2 if self.scene.both_sides else self.scene.n_cells
 
+    # ── depth ─────────────────────────────────────────────────────────────
+    def _watch_the_clipping_range(self) -> None:
+        """Put the near and far planes back on the geometry before every frame.
+
+        On the renderer's own start-of-frame event rather than on the camera or
+        the interactor: VTK resets the range from inside its interactor styles,
+        after the camera has moved and before it renders, so the only place
+        that is guaranteed to be after every reset - a rotate, a dolly, a
+        window resize, a reset view - is the frame itself.
+        """
+        if self.plotter is None:
+            return
+        self.plotter.renderer.AddObserver("StartEvent", self._on_start_frame)
+
+    def _on_start_frame(self, *args: object) -> None:
+        del args
+        self.tighten_clipping_range()
+
+    def tighten_clipping_range(self) -> None:
+        """Fit the near and far planes to the geometry, not to its bounding box.
+
+        The depth buffer's precision is spread over the near-far range, so how
+        far apart two surfaces must be before the renderer can tell which one
+        is in front is decided here. VTK's own reset gives that range the
+        bounding box inflated by half its own depth, which puts the near plane
+        behind the camera, where it is clamped to a thousandth of the far plane
+        - a ratio of 1000 from every viewpoint, whatever the model. Surfaces a
+        fraction of a percent of the model apart then land on the same depth
+        value and which one is drawn is decided by rounding, which is why
+        hidden edges came and went with the zoom.
+
+        The planes are fitted to the geometry's own extent along the view
+        direction instead, which from outside a model is a ratio of a few
+        rather than of a thousand. Two things keep one stray vertex from
+        undoing that: every point of the scene counts, including geometry
+        currently hidden, so the planes can only be more generous than they
+        need to be rather than tight enough to clip what is on screen; and the
+        near plane will not chase a vertex closer to the camera than
+        :data:`FOCAL_NEAR_FRACTION` of the distance to what is being looked at.
+        """
+        if self.plotter is None:
+            return
+        points = self.scene.points
+        if points.shape[0] == 0:
+            return
+        camera = self.plotter.camera
+        eye = np.asarray(camera.GetPosition(), dtype=np.float64)
+        direction = np.asarray(camera.GetFocalPoint(), dtype=np.float64) - eye
+        reach = float(np.linalg.norm(direction))
+        if reach == 0.0:
+            return
+        direction /= reach
+        # How far along the view direction each point lies, the camera at zero.
+        depths = points @ direction - float(eye @ direction)
+        far = float(depths.max())
+        if far <= 0.0:
+            # The whole model is behind the camera; there is nothing to fit to.
+            return
+        ahead = depths[depths > 0.0]
+        # A hair in front of the nearest point and behind the furthest, so
+        # neither is clipped by its own plane.
+        near = 0.99 * float(ahead.min()) if ahead.size else 0.0
+        far *= 1.01
+        camera.SetClippingRange(max(near, FOCAL_NEAR_FRACTION * reach, NEAR_PLANE_FLOOR * far), far)
+
     # ── edges ─────────────────────────────────────────────────────────────
     def visible_triangles(self) -> npt.NDArray[np.intp]:
         """The side-1 cells currently drawn - one entry per rendered triangle.
@@ -561,7 +638,7 @@ class ViewerWindow(QMainWindow):
         triangles rather than filtered afterwards, so hiding half a model
         outlines what is left rather than leaving the removed part's outline
         hanging in space. Cached, since the pass is the one O(n log n) step in
-        the viewer and neither hiding nor a colour change happens per frame.
+        the viewer and neither hiding nor a color change happens per frame.
         """
         cached = self._edge_cache.get(kind)
         if cached is not None:
@@ -594,13 +671,12 @@ class ViewerWindow(QMainWindow):
     ) -> None:
         """Put one set of lines over the geometry, or take it away.
 
-        The lines lie exactly on the surface they outline, so they are pushed
-        towards the camera by more than any surface is (:data:`LINE_OFFSET`
-        against :data:`SURFACE_OFFSET`). Without that ordering the selection
-        overlay - itself a surface pushed forward - swallows whichever lines
-        happen to land behind it, which is a stripe of the mesh here and a
-        piece of a face outline there rather than anything that reads as a
-        rule.
+        The lines lie exactly on the surface they outline, so they need the
+        depth offsetting switched on to sit clear of it - see :mod:`.depth` for
+        the ladder they end up in. Without it the selection overlay, itself a
+        surface pushed forward, swallows whichever lines happen to land behind
+        it: a stripe of the mesh here and a piece of a face outline there
+        rather than anything that reads as a rule.
         """
         if self.plotter is None:
             return
@@ -617,9 +693,7 @@ class ViewerWindow(QMainWindow):
             show_scalar_bar=False,
             name=name,
         )
-        mapper = actor.mapper
-        mapper.SetResolveCoincidentTopologyToPolygonOffset()
-        mapper.SetRelativeCoincidentTopologyLineOffsetParameters(LINE_OFFSET, LINE_OFFSET)
+        push_lines(actor.mapper)
 
     def _draw_highlight(self) -> None:
         """Draw the selection: the same cells, brighter, ringed in one line."""
@@ -647,9 +721,7 @@ class ViewerWindow(QMainWindow):
         )
         # Coincident with the surface it covers, so it is pushed towards the
         # camera - but by less than the lines, which have to stay on top of it.
-        mapper = actor.mapper
-        mapper.SetResolveCoincidentTopologyToPolygonOffset()
-        mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(SURFACE_OFFSET, SURFACE_OFFSET)
+        push_surface(actor.mapper)
         self._draw_lines(
             SELECTION_OUTLINE,
             self.highlight_outline(),
@@ -852,7 +924,7 @@ class ViewerWindow(QMainWindow):
     def category_mask(self) -> npt.NDArray[np.bool_] | None:
         """Per-master-cell mask of the categories the legend leaves switched on.
 
-        ``None`` when nothing is switched off, or when the current colouring is
+        ``None`` when nothing is switched off, or when the current coloring is
         numeric and so has no categories to switch off.
         """
         hidden = self.state.hidden_categories
@@ -876,8 +948,8 @@ class ViewerWindow(QMainWindow):
                 f"{len(self.state.hidden_categories)} categor(ies) hidden"
             )
         elif change is Change.COLORING:
-            # Switching the colouring resets the legend's hidden categories, so
-            # what is drawn changes along with what colour it is drawn in.
+            # Switching the coloring resets the legend's hidden categories, so
+            # what is drawn changes along with what color it is drawn in.
             self.apply_visibility()
             self._sync_results_strip()
             self.rebuild_geometry()
@@ -890,8 +962,8 @@ class ViewerWindow(QMainWindow):
             self._draw_highlight()
             self._draw_edges()
         elif change is Change.FILTER:
-            # The filter greys rather than hides, so it is a recolour - and the
-            # highlight is drawn in the colours it just changed.
+            # The filter greys rather than hides, so it is a recolor - and the
+            # highlight is drawn in the colors it just changed.
             self.rebuild_geometry()
             self._draw_highlight()
         elif change is Change.RESULTS:
@@ -947,7 +1019,7 @@ def _colormap_colors(
 
 
 def brighten(colors: npt.ArrayLike, fraction: float = BRIGHTEN) -> npt.NDArray[np.uint8]:
-    """Move colours ``fraction`` of the way to white.
+    """Move colors ``fraction`` of the way to white.
 
     Towards white in both directions: a dark face lightens a lot and a pale one
     a little, so the selection always reads as *more* of what it already was.

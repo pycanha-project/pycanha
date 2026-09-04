@@ -11,11 +11,21 @@ import pyvista as pv
 
 from ..plot import picking, polydata, properties
 from ..plot.render import render
-from ..plot.scene import slot_items
+from ..plot.scene import face_items
 from .io import GeometryIo
 
 #: Actor name of the time readout, so each frame replaces the previous one.
 _TIME_LABEL = "_time_label"
+
+#: Default chordal deviation tolerance, in model length units, for every model
+#: this package builds. Only the curved meshers read it - disc, cylinder, cone,
+#: sphere, paraboloid - and it refines *within* each ThermalMesh face, so it
+#: changes how round a curve looks and how accurately its area is measured
+#: without touching the face or node structure. The core ships 1e-3, which draws
+#: a 20 mm optic as a 10-sided polygon and under-measures a model's area by
+#: ~0.1%; 1e-4 costs roughly twice the triangles and converges the area to
+#: within 0.01%.
+DEFAULT_DEVIATION_TOLERANCE = 1e-4
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -81,7 +91,16 @@ class GeometryModel(pcc.gmm.GeometryModel):
     (:meth:`plot`, :meth:`to_polydata`, :meth:`plot_node_range`), geometry
     import/export through :attr:`io`, plus a textual view of the scene
     hierarchy (:meth:`format_tree` / :meth:`print_tree`).
+
+    Also starts from :data:`DEFAULT_DEVIATION_TOLERANCE` rather than the core's
+    coarser meshing default.
     """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.default_mesh_options = pcc.gmm.MeshOptions(
+            deviation_tolerance=DEFAULT_DEVIATION_TOLERANCE
+        )
 
     # ── import / export ───────────────────────────────────────────────────
     @property
@@ -101,7 +120,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
         ``nan`` where unknown).
 
         With ``both_sides=True`` each triangle is emitted once per ThermalMesh
-        side (see :func:`pycanha.plot.polydata.to_polydata`), so side-2 slots get their
+        side (see :func:`pycanha.plot.polydata.to_polydata`), so side-2 faces get their
         own cells instead of the geometry describing side 1 alone.
         """
         poly = polydata.to_polydata(self, both_sides=both_sides)
@@ -140,7 +159,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
         Pass ``show_edges=False`` to hide the triangular mesh edges.
 
         ``pick`` (default) makes right-clicking a face print its properties -
-        face slot, side, node, item, optical material and color - to the console;
+        face, side, node, item, optical material and color - to the console;
         pass ``pick=False`` to leave the mouse buttons alone.
         """
         poly = self.to_polydata(emissivity=scalars == "emissivity", both_sides=both_sides)
@@ -153,7 +172,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
             elif scalars == "item":
                 # Geometry ids, resolved through the mesh's primitive ranges: two
                 # items that share node numbers are still two items.
-                ids = slot_items(self.mesh)[face_ids.astype(np.intp)]
+                ids = face_items(self.mesh)[face_ids.astype(np.intp)]
             else:
                 ids = np.asarray(poly.cell_data["node_number"])
             # Node numbers (100, 200, 300...) and geometry ids are sparse and would
@@ -183,7 +202,7 @@ class GeometryModel(pcc.gmm.GeometryModel):
         """Open the interactive viewer on this model and block until it closes.
 
         A desktop window with the geometry tree, hide / show, switchable
-        colouring and a property pane - the same model :meth:`plot` renders in
+        coloring and a property pane - the same model :meth:`plot` renders in
         one fixed way. Returns the window, so a script can read back what was
         selected. See :func:`pycanha.plot.explore`.
         """
@@ -277,11 +296,11 @@ class GeometryModel(pcc.gmm.GeometryModel):
         pick: bool = True,
         **kwargs: Any,
     ) -> pv.Plotter:
-        """Color the geometry by a ``{face slot: value}`` mapping.
+        """Color the geometry by a ``{face: value}`` mapping.
 
-        Like :meth:`plot_node_data`, but keyed by face slot rather than node, so
-        the two sides of a face can show different values (side 1 slots are even,
-        side 2 odd). Slot numbers are what :meth:`plot` shows as ``"face_id"`` and
+        Like :meth:`plot_node_data`, but keyed by face rather than node, so
+        the two faces of a pair can show different values (side 1 faces are even,
+        side 2 odd). Face numbers are what :meth:`plot` shows as ``"face_id"`` and
         what a pick reports.
         """
         return self._plot_mapped(
@@ -348,10 +367,10 @@ class GeometryModel(pcc.gmm.GeometryModel):
         times: npt.ArrayLike,
         **kwargs: Any,
     ) -> pv.Plotter:
-        """Scrub a transient ``{face slot: value}`` result with a time slider.
+        """Scrub a transient ``{face: value}`` result with a time slider.
 
         Like :meth:`plot_node_series`, but the columns of ``values`` are face
-        slots rather than nodes (side 1 slots are even, side 2 odd).
+        faces rather than nodes (side 1 faces are even, side 2 odd).
         """
         return self.plot_data_series(values, faces, times, key="face_id", **kwargs)
 
@@ -451,9 +470,9 @@ class GeometryModel(pcc.gmm.GeometryModel):
         return super().mesh_parts(list(split))
 
     def material_table(self) -> pcc.radiative.MaterialTable:
-        """Build the per-face-slot ``MaterialTable`` from the ThermalMesh data.
+        """Build the per-face ``MaterialTable`` from the ThermalMesh data.
 
-        Collects each face slot's optical material and radiative activity (from
+        Collects each face's optical material and radiative activity (from
         the per-side ThermalMesh optical properties and
         ``radiative_active_side``) into the table the raytracer consumes
         alongside :meth:`mesh_parts`.  A side that conducts but does not radiate

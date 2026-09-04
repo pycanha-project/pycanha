@@ -34,8 +34,7 @@ if TYPE_CHECKING:
     from pycanha.io.part21 import Value
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "esatan"
-FEATURES = DATA / "FEATURES" / "FEATURES_TAS.erg"
-CUTTERS = DATA / "CUTTERS" / "CUTTERS.erg"
+FEATURES = DATA / "FEATURES.erg"
 
 #: Areas match to this fraction; the shapes are rebuilt, not copied.
 TOLERANCE = 1e-9
@@ -89,6 +88,23 @@ def items(model: GeometryModel) -> dict[str, GeometryItem]:
     }
 
 
+def cutters(model: GeometryModel) -> set[str]:
+    """The items used as cutting tools, found rather than named.
+
+    A tool becomes a solid in the format, and a solid has no faces: no node
+    numbers, no per-side materials, nothing but its shape and where it is.  So
+    every comparison of what survives a round trip has to leave them out -- and
+    reading which items they are off the model is what stops that exemption
+    quietly covering a surface as well, or missing a tool nobody renamed.
+    """
+    return {
+        cutter.name
+        for group in model.children_recursive()
+        if isinstance(group, GeometryGroupCutted)
+        for cutter in group.cutters
+    }
+
+
 def written(source: Path, target: Path, name: str) -> tuple[GeometryModel, GeometryModel]:
     """The model from *source*, and the model its written file reads back as."""
     original = GeometryModel(name)
@@ -103,8 +119,8 @@ def written(source: Path, target: Path, name: str) -> tuple[GeometryModel, Geome
 def feature_round_trip(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> tuple[Path, GeometryModel, GeometryModel]:
-    target = tmp_path_factory.mktemp("steptas") / "FEATURES_TAS.stp"
-    original, reread = written(FEATURES, target, "FEATURES_TAS")
+    target = tmp_path_factory.mktemp("steptas") / "FEATURES.stp"
+    original, reread = written(FEATURES, target, "FEATURES")
     return target, original, reread
 
 
@@ -152,8 +168,9 @@ def test_every_node_numbering_survives(
     """
     _, original, reread = feature_round_trip
     before, after = items(original), items(reread)
+    tools = cutters(original)
     for name in sorted(before):
-        if name.endswith("_CUTTER"):
+        if name in tools:
             continue
         one, two = before[name].thermal_mesh, after[name].thermal_mesh
         for side in (1, 2):
@@ -196,11 +213,12 @@ def test_materials_and_thicknesses_survive_where_the_format_keeps_them(
     """A bulk needs a thickness beside it, and only then does either survive."""
     _, original, reread = feature_round_trip
     before, after = items(original), items(reread)
+    tools = cutters(original)
     for name in sorted(before):
         one, two = before[name].thermal_mesh, after[name].thermal_mesh
         for side in (1, 2):
             optical = getattr(one, f"side{side}_optical")
-            if optical is not None and name != "CYL_CUTTER":
+            if optical is not None and name not in tools:
                 assert getattr(two, f"side{side}_optical").name == optical.name, (name, side)
             bulk = getattr(one, f"side{side}_material")
             thick = getattr(one, f"side{side}_thick")
@@ -215,10 +233,11 @@ def test_optical_values_survive_the_specularity_conversion(
     """The format states a specular *share*; the value has to come back whole."""
     _, original, reread = feature_round_trip
     before, after = items(original), items(reread)
+    tools = cutters(original)
     checked = 0
     for name in sorted(before):
         optical = before[name].thermal_mesh.side1_optical
-        if optical is None or name == "CYL_CUTTER":
+        if optical is None or name in tools:
             continue
         other = after[name].thermal_mesh.side1_optical
         assert list(other.th_optical_properties) == pytest.approx(
@@ -228,20 +247,30 @@ def test_optical_values_survive_the_specularity_conversion(
     assert checked > 0
 
 
-def test_a_cut_survives_with_its_tools(tmp_path: Path) -> None:
-    """A plate cut by four tools, of which two have a solid to be written as.
+def test_a_cut_survives_with_its_tools(
+    feature_round_trip: tuple[Path, GeometryModel, GeometryModel],
+) -> None:
+    """Three targets cut by six tools between them, all still there afterwards.
 
     The format removes one solid per difference surface, so a shape cut by
     several becomes a chain of them -- and reading that chain back gives one
-    cut group per tool rather than one holding them all.
+    cut group per tool rather than one holding them all.  A group holding two
+    would mean the chain had been flattened, which is a different model with
+    the same silhouette.
+
+    One of the three targets is a combination rather than a single surface, and
+    it goes through the format the same way: the difference is taken against the
+    compound, so it still arrives back as one cut group with one tool.
     """
-    original, reread = written(CUTTERS, tmp_path / "cutters.stp", "CUTTERS")
+    _, original, reread = feature_round_trip
     before, after = items(original), items(reread)
     assert sorted(before) == sorted(after)
+    assert cutters(original) == cutters(reread)
+    assert len(cutters(original)) == 6
     cuts = [
         child for child in reread.children_recursive() if isinstance(child, GeometryGroupCutted)
     ]
-    assert len(cuts) == 2
+    assert len(cuts) == 6
     assert all(len(cut.cutters) == 1 for cut in cuts)
 
 

@@ -11,7 +11,7 @@ tree, visibility control and switchable coloring.
 The convenient entry points are the ``plot*`` methods on
 :class:`~pycanha.gmm.GeometryModel`, documented on the :doc:`pycanha.gmm` page.
 Use the functions here when you have a bare ``TriMesh``, or when you want to
-build the dataset and colour it yourself.
+build the dataset and color it yourself.
 
 Datasets
 --------
@@ -42,7 +42,7 @@ Mapping values onto cells
 Picking
 -------
 
-Resolving a rendered triangle back to the face slot, node and geometry item
+Resolving a rendered triangle back to the face, node and geometry item
 behind it.
 
 .. autoclass:: FaceInfo
@@ -57,7 +57,7 @@ The interactive viewer
 ----------------------
 
 :func:`explore` opens a desktop window on a model — geometry tree, hide/show,
-switchable colouring, picking, results with a time slider, edge overlays and a
+switchable coloring, picking, results with a time slider, edge overlays and a
 property pane — and returns when it is closed. It is also reachable as
 ``tm.explore()`` and ``tm.gmm.explore()``. See
 :ref:`the user guide <the-interactive-viewer>` for what the window offers.
@@ -73,7 +73,7 @@ The viewer keeps everything except its widgets free of Qt, so what it shows can
 be inspected — and tested — without a display.
 :class:`~pycanha.plot.state.ViewState` holds what is currently shown,
 :class:`~pycanha.plot.scene.Scene` turns that into the cells VTK draws, and
-:func:`face_properties` supplies the values they are coloured by.
+:func:`face_properties` supplies the values they are colored by.
 
 .. autoclass:: ViewState
    :members:
@@ -114,7 +114,7 @@ Results
 
 Where the numbers painted on the geometry come from: the ``DataModel``\ s
 already stored in ``tm.tmm.thermal_data.models``, and the live node state. A
-series becomes an ordinary :class:`FaceProperty`, so the legend, the colour
+series becomes an ordinary :class:`FaceProperty`, so the legend, the color
 scale and the property table need to know nothing about results.
 
 .. currentmodule:: pycanha.plot.results
@@ -133,7 +133,7 @@ scale and the property table need to know nothing about results.
    :members:
    :exclude-members: __dict__, __weakref__, __module__
 
-.. autofunction:: slot_values
+.. autofunction:: face_values
 
 .. autofunction:: result_property
 
@@ -142,7 +142,7 @@ Edges
 
 .. currentmodule:: pycanha.plot.edges
 
-One vectorised half-edge pass over the triangulation, grouped by face slot or
+One vectorised half-edge pass over the triangulation, grouped by face or
 by geometry item. See the module documentation for the seam and crease cases a
 welded mesh cannot supply.
 

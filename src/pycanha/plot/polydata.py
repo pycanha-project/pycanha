@@ -30,8 +30,8 @@ _TriMesh = (pcc.gmm.TriMeshD, pcc.gmm.TriMeshF)
 #: Cell-data name used to stash the per-face RGB colors for categorical plots.
 RGB_NAME = "_rgb"
 
-#: What a category the model has nothing to assign is drawn in - a face slot
-#: with no material, no colour, no node. Grey, so it reads as "nothing here"
+#: What a category the model has nothing to assign is drawn in - a face
+#: with no material, no color, no node. Grey, so it reads as "nothing here"
 #: rather than as one more value.
 MISSING_RGB: tuple[int, int, int] = (153, 153, 153)
 
@@ -52,15 +52,16 @@ def to_polydata(obj: object, *, both_sides: bool = False) -> pv.PolyData:
     Cell data ``face_id`` (per triangle) and ``node_number`` (tmm node of each
     triangle's face, ``-1`` when unassigned) are attached.
 
-    A ThermalMesh face has two sides, each with its own face slot, node number
-    and optical material, but the mesh carries only **one** sheet of triangles
-    per face and its ``face_ids`` always name the side-1 slot. So the default
+    A ThermalMesh face pair has two sides, and each of its two faces carries
+    its own node number and optical material, but the mesh carries only **one**
+    sheet of triangles per pair and its ``face_ids`` always name the side-1
+    face. So the default
     single-sided polydata describes side 1 only, and looking at the geometry from
     behind still shows side-1 data.
 
     With ``both_sides=True`` every triangle is emitted twice - once as-is for
     side 1 and once with reversed winding (so it faces the other way) carrying
-    the side-2 slot's data - and a ``side`` cell array (1 or 2) is added. The two
+    the side-2 face's data - and a ``side`` cell array (1 or 2) is added. The two
     copies are coincident, so render them with ``backface_culling=True`` to see
     exactly the side that faces the camera.
     """
@@ -76,7 +77,7 @@ def to_polydata(obj: object, *, both_sides: bool = False) -> pv.PolyData:
     if both_sides:
         # Reversed winding flips the normal, so the copy faces the other way.
         triangles = np.vstack([triangles, triangles[:, ::-1]])
-        # Slots are interleaved per face as [side 1, side 2], so the partner slot
+        # Faces are interleaved per pair as [side 1, side 2], so the partner
         # of an even side-1 id is id + 1; XOR keeps that pairing symmetric.
         face_ids = np.concatenate([face_ids, face_ids ^ 1])
         n_cells = 2 * n_tri
@@ -171,10 +172,10 @@ def map_face_data(
     *,
     default: float = np.nan,
 ) -> npt.NDArray[np.float64]:
-    """Spread a ``{face slot: value}`` mapping over the cells of ``poly``.
+    """Spread a ``{face: value}`` mapping over the cells of ``poly``.
 
-    Like :func:`map_node_data` but keyed by face slot, so the two sides of a face
-    can carry different values (side 1 slots are even, side 2 odd).
+    Like :func:`map_node_data` but keyed by face, so the two faces of a pair
+    can carry different values (side 1 faces are even, side 2 odd).
     """
     return _map_cell_data(poly, data, "face_id", default)
 

@@ -11,7 +11,7 @@ with a diagnostic wherever it is not.  Two decisions shape the output:
   rotation matrix has to be decomposed into angles.  It is also the only
   spelling that covers a quadrilateral.
 * **A model does not record which spelling it was read from.**  A file written
-  here will therefore differ from that model's own export wherever the source
+  here will therefore differ from the file it was read from wherever that one
   used the other spelling.  That is a difference of expression, not of geometry.
 
 Everything the model cannot supply -- a label, a sub-model name, a criticality
@@ -53,6 +53,10 @@ __all__ = ["write_erg_from"]
 
 #: Attribute name for each surface side, in the order ESATAN writes them.
 _SIDES = (1, 2)
+
+#: How far a prism's extrusion may lean off the base normal before it is worth
+#: saying that writing it straightened it up.
+_PRISM_SLANT_TOL = 1e-9
 
 #: A placement taking primitive-local coordinates into model coordinates.
 type Placement = pcc.gmm.CoordinateTransformation
@@ -263,7 +267,7 @@ class _Writer:
         rest.extend(self._attributes(item))
         # Points lead, in the order the shape defines them; everything else goes
         # into the order the format writes it, so a file can be compared against
-        # an ESATAN export without the difference being one of arrangement.
+        # a canonical file without the difference being one of arrangement.
         attributes = [*points, *sort_attributes(rest)]
         self.primitives.append(f"GEOMETRY {name};")
         self.primitives.extend(indent_arguments(f"{name} = {function}", attributes))
@@ -513,6 +517,51 @@ def _sphere(primitive: pcc.gmm.Sphere, transform: Placement, _d: DiagnosticColle
     return "SHELL_SPHERE", points
 
 
+def _prism(
+    primitive: pcc.gmm.TriangularPrism, transform: Placement, diagnostics: DiagnosticCollector
+) -> Spelling:
+    """A prism, as its three base corners and the point the base extrudes to.
+
+    A ``TriangularPrism`` only ever exists as a cutting tool -- as geometry a
+    prism is three wall rectangles and no end caps, and those are separate items
+    by the time anything reaches here -- so this is always written with
+    ``sense = -1`` and read back as the closed solid it was.
+
+    The three base corners go out in the primitive's own order, which already
+    holds the format's requirement that the edge to the fourth point leave the
+    base plane on the side its winding normal points to.  Reordering them
+    describes a prism turned inside out, which is a different solid from the
+    same points.
+
+    The format's prism is a **right** one: the fourth point supplies the height
+    along the base's own normal and nothing else, so a prism that leans cannot
+    be said here at all.  Writing its fourth corner out unchanged would produce
+    a file that reads back as a different, straighter solid without a word, so
+    the corner is put on the normal and the difference is reported.
+    """
+    base = [
+        np.asarray(corner, dtype=np.float64)
+        for corner in (primitive.p1, primitive.p2, primitive.p3)
+    ]
+    apex = np.asarray(primitive.p4, dtype=np.float64)
+    normal = np.cross(base[1] - base[0], base[2] - base[0])
+    axis = normal / np.linalg.norm(normal)
+    extrusion = apex - base[0]
+    height = float(np.dot(extrusion, axis))
+    slant = float(np.linalg.norm(extrusion - axis * height))
+    if slant > _PRISM_SLANT_TOL:
+        diagnostics.warning(
+            "ERG_WRITE_STRAIGHTENED_PRISM",
+            f"the prism's extrusion leans {slant:.3g} off the base normal; the format has no "
+            "oblique prism, so the fourth corner was put on the normal",
+        )
+    corners = [*base, base[0] + axis * height]
+    return "SHELL_TRIANGULAR_PRISM", [
+        (f"point{index}", format_vector(_placed(corner, transform)))
+        for index, corner in enumerate(corners, start=1)
+    ]
+
+
 def _box(primitive: pcc.gmm.Cube, transform: Placement, _d: DiagnosticCollector) -> Spelling:
     """A box, as one corner and the three corners adjacent to it."""
     extent = np.asarray(primitive.extent, dtype=np.float64)
@@ -538,6 +587,7 @@ def _spellings() -> tuple[tuple[type, PrimitiveWriter], ...]:
         (pcc.gmm.Paraboloid, _paraboloid),
         (pcc.gmm.Cone, _cone_arguments),
         (pcc.gmm.Cube, _box),
+        (pcc.gmm.TriangularPrism, _prism),
     )
 
 

@@ -7,7 +7,7 @@ between two of them - and play, prev and next move between the same instants.
 
 The panel only writes a :class:`~pycanha.plot.state.ResultSelection` into the
 shared state. Reading the values out of the model and turning them into a
-colouring is :mod:`pycanha.plot.results`' job, and painting them is the
+coloring is :mod:`pycanha.plot.results`' job, and painting them is the
 window's.
 """
 
@@ -39,7 +39,7 @@ class TimePanel(QWidget):
 
     Always built, so the window keeps its shape whatever it was opened on, and
     left **disabled** by the window until a result is what the geometry is
-    coloured by: what this strip controls is which instant of that colouring is
+    colored by: what this strip controls is which instant of that coloring is
     on screen, so with anything else drawn there is nothing for it to move. A
     model with nothing solved simply offers no cases, and it never enables.
     """
@@ -64,7 +64,7 @@ class TimePanel(QWidget):
         self.case_combo.currentIndexChanged.connect(self._on_case_changed)
 
         self.attribute_combo = QComboBox(self)
-        self.attribute_combo.setToolTip("Which stored attribute colours the geometry")
+        self.attribute_combo.setToolTip("Which stored attribute colors the geometry")
         self.attribute_combo.currentIndexChanged.connect(self._on_attribute_changed)
 
         self.prev_button = self._button("<", "Previous instant", self.go_previous)
@@ -177,7 +177,7 @@ class TimePanel(QWidget):
     def set_series(self, series: ResultSeries | None) -> None:
         """Tell the panel what the window read, so the slider can span it.
 
-        The window owns the reading: it needs the series for the colouring
+        The window owns the reading: it needs the series for the coloring
         anyway, and reading a hundred-megabyte transient twice is the one place
         this panel could cost anything.
         """

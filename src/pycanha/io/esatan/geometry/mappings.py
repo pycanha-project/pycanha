@@ -39,6 +39,7 @@ from pycanha.gmm.primitives import (
     Rectangle,
     Sphere,
     Triangle,
+    TriangularPrism,
 )
 
 from ..lang.evaluate import EvaluationError, as_float, as_int, as_sequence, as_vector
@@ -73,7 +74,16 @@ Note = tuple[str, str]
 """A (diagnostic code, message) pair recorded while converting one construct."""
 
 Primitive = (
-    Triangle | Rectangle | Quadrilateral | Disc | Cylinder | Cone | Sphere | Paraboloid | Cube
+    Triangle
+    | Rectangle
+    | Quadrilateral
+    | Disc
+    | Cylinder
+    | Cone
+    | Sphere
+    | Paraboloid
+    | Cube
+    | TriangularPrism
 )
 
 #: How far a box's edges may stray from mutually perpendicular before it is
@@ -148,8 +158,11 @@ class Arguments:
             raise EvaluationError(msg)
         return value
 
-    def angle(self, name: str, default: float) -> float:
-        """An angular argument, converted from ESATAN's degrees to radians."""
+    def angle(self, name: str, default: float | None = None) -> float:
+        """An angular argument, converted from ESATAN's degrees to radians.
+
+        With no *default* the argument is mandatory, like :meth:`real`.
+        """
         return math.radians(self.real(name, default))
 
     def point(self, name: str) -> npt.NDArray[np.float64]:
@@ -379,6 +392,39 @@ def _scs_rectangle(args: Arguments, notes: list[Note]) -> Primitive:
     )
 
 
+def _scs_trapezoid(args: Arguments, notes: list[Note]) -> Primitive:
+    """A trapezoid parallel to the XY-plane with two edges parallel to X.
+
+    ``beta_min`` and ``beta_max`` are the Y coordinates of those two edges; the
+    slanted edges are rays from the local origin making ``gamma_min`` and
+    ``gamma_max`` with +X, so a ray at angle gamma meets ``y = beta`` at
+    ``x = beta * cot(gamma)``.  Cotangent decreases over (0, 180) degrees and
+    ``gamma_min < gamma_max``, so the ``gamma_min`` edge is always the one at
+    larger X.
+
+    **Direction 1 runs along the ``gamma_min`` slanted edge**, direction 2 along
+    the ``y = beta_min`` edge, and the winding normal falls on +Z, which is
+    side 1.  Which corner comes first is what fixes those directions, and it
+    cannot be recovered from the shape: every rotation of the four corners
+    describes the same trapezoid with the same area, and differs only in how a
+    meshed one numbers its nodes.  The order here is the one the ``.stp`` form
+    of the same surface uses, which is why ``SCS_TRAP`` is in the feature model
+    -- the cross-format tests compare the two readings and would show a
+    permutation as a node-number mismatch.
+    """
+    _ = notes
+    height = args.real("height", 0.0)
+    beta_min = args.real("beta_min")
+    beta_max = args.real("beta_max")
+    cot_min, cot_max = (1.0 / math.tan(args.angle(name)) for name in ("gamma_min", "gamma_max"))
+    return Quadrilateral(
+        np.array([beta_min * cot_min, beta_min, height]),
+        np.array([beta_max * cot_min, beta_max, height]),
+        np.array([beta_max * cot_max, beta_max, height]),
+        np.array([beta_min * cot_max, beta_min, height]),
+    )
+
+
 def _scs_paraboloid(args: Arguments, notes: list[Note]) -> Primitive:
     """``flength`` is the focal length: the surface is ``z = r**2 / (4 * flength)``.
 
@@ -419,18 +465,39 @@ def _triangle(args: Arguments, notes: list[Note]) -> Primitive:
 
 
 def _rectangle(args: Arguments, notes: list[Note]) -> Primitive:
-    """The three given corners are named 1, 2 and **4** -- corner 3 is implied."""
+    """The three given corners are named 1, 2 and **4** -- corner 3 is implied.
+
+    ``point4`` fixes the width only: ESATAN slides it parallel to P1P2 until
+    P1P4 is perpendicular to P1P2, so any component along P1P2 carries no
+    meaning.  Taken literally the corner would make a parallelogram instead --
+    of the same area, since sliding a corner along the opposite edge does not
+    change it, so only the shape and position give the mistake away.
+    """
     _ = notes
-    return Rectangle(args.point("point1"), args.point("point2"), args.point("point4"))
+    origin = args.point("point1")
+    length = args.point("point2")
+    width = _perpendicular(args.point("point4") - origin, length - origin)
+    return Rectangle(origin, length, origin + width)
 
 
 def _quadrilateral(args: Arguments, notes: list[Note]) -> Primitive:
+    """Four coplanar corners; ESATAN drops ``point4`` onto the plane of the rest."""
     _ = notes
+    point1 = args.point("point1")
+    point2 = args.point("point2")
+    point3 = args.point("point3")
+    normal = np.cross(point2 - point1, point3 - point1)
+    if float(np.linalg.norm(normal)) == 0.0:
+        # The plane to drop point4 onto is the one the first three corners span,
+        # so collinear ones leave nothing to project against.  ESATAN refuses
+        # the same case at definition time.
+        msg = "points 1, 2 and 3 of a quadrilateral are collinear and span no plane"
+        raise EvaluationError(msg)
     return Quadrilateral(
-        args.point("point1"),
-        args.point("point2"),
-        args.point("point3"),
-        args.point("point4"),
+        point1,
+        point2,
+        point3,
+        point1 + _perpendicular(args.point("point4") - point1, normal),
     )
 
 
@@ -577,6 +644,7 @@ PRIMITIVES: dict[str, PrimitiveBuilder] = {
     "SHELL_SCS_CONE": _scs_cone,
     "SHELL_SCS_SPHERE": _scs_sphere,
     "SHELL_SCS_RECTANGLE": _scs_rectangle,
+    "SHELL_SCS_TRAPEZOID": _scs_trapezoid,
     "SHELL_SCS_PARABOLOID": _scs_paraboloid,
     "SHELL_TRIANGLE": _triangle,
     "SHELL_RECTANGLE": _rectangle,
@@ -685,20 +753,101 @@ def box_faces(axes: BoxAxes) -> list[SolidFace]:
     ]
 
 
-def _prism_faces(args: Arguments) -> list[SolidFace]:
+class PrismCorners(NamedTuple):
+    """A prism as its three base corners and its extrusion target.
+
+    The base vertices are ordered so that ``P1P2 x P1P3`` points along
+    ``P1P4``, which makes ``edge x height`` the outward normal of each wall.
+    Kept as the corners rather than as either reading, because which reading is
+    right depends on where the prism is used -- exactly as for a box.
+    """
+
+    point1: npt.NDArray[np.float64]
+    point2: npt.NDArray[np.float64]
+    point3: npt.NDArray[np.float64]
+    point4: npt.NDArray[np.float64]
+
+    @property
+    def base(self) -> tuple[npt.NDArray[np.float64], ...]:
+        return (self.point1, self.point2, self.point3)
+
+    @property
+    def height(self) -> npt.NDArray[np.float64]:
+        return self.point4 - self.point1
+
+
+def _prism_corners(args: Arguments) -> PrismCorners:
+    """``SHELL_TRIANGULAR_PRISM`` names the base corners and the extrusion.
+
+    The prism is a **right** one.  The fourth point gives the extrusion *height*
+    -- how far the base travels along its own normal -- and whatever it says
+    across the base is no part of the shape, so a point given off the normal
+    describes the same prism as its projection onto it.
+
+    Reading it as an oblique extrusion instead slants all three walls at once,
+    which both moves them and invents area: a unit right triangle extruded 1.0
+    has walls of 1, 1 and sqrt(2), and reading the same declaration obliquely
+    where the point is 1.0 off the axis gives 1.17, 1.28 and 1.99 -- 30 % more
+    surface than the model has, on walls facing the wrong way.
+    """
+    point1, point2, point3, point4 = (args.point(f"point{index}") for index in (1, 2, 3, 4))
+    normal = np.cross(point2 - point1, point3 - point1)
+    length = float(np.linalg.norm(normal))
+    if length == 0.0:
+        msg = "a prism needs a non-degenerate base triangle"
+        raise EvaluationError(msg)
+    axis = normal / length
+    height = float(np.dot(point4 - point1, axis))
+    return PrismCorners(point1, point2, point3, point1 + axis * height)
+
+
+def _scs_prism_corners(args: Arguments) -> PrismCorners:
+    """``SHELL_SCS_TRIANGULAR_PRISM`` has its ends parallel to the XY-plane.
+
+    The apex of the base triangle is the local origin and its two slanted edges
+    are rays at ``gamma_min`` and ``gamma_max`` from +X, so each meets the third
+    edge ``y = beta`` at ``x = beta * cot(gamma)``.  Cotangent decreases over
+    (0, 180) degrees and ``gamma_min < gamma_max``, so taking ``gamma_min`` as
+    the second corner is what makes ``P1P2 x P1P3`` point along the extrusion:
+    its Z component works out as
+    ``beta**2 * (cot(gamma_min) - cot(gamma_max))``, which is positive.
+    """
+    beta = args.real("beta")
+    hmin = args.real("hmin", 0.0)
+    hmax = args.real("hmax")
+    x_min, x_max = (beta / math.tan(args.angle(name)) for name in ("gamma_min", "gamma_max"))
+    return PrismCorners(
+        np.array([0.0, 0.0, hmin]),
+        np.array([x_min, beta, hmin]),
+        np.array([x_max, beta, hmin]),
+        np.array([0.0, 0.0, hmax]),
+    )
+
+
+#: The two ways a prism's corners are given.
+#:
+#: Like a box, a prism has a second reading as a closed solid -- see
+#: :func:`prism_solid` -- which is used only where it cuts.
+PRISMS: dict[str, Callable[[Arguments], PrismCorners]] = {
+    "SHELL_TRIANGULAR_PRISM": _prism_corners,
+    "SHELL_SCS_TRIANGULAR_PRISM": _scs_prism_corners,
+}
+
+
+def prism_faces(corners: PrismCorners) -> list[SolidFace]:
     """Split a triangular prism into its three side walls.
 
     The prism's **triangular ends do not exist**: a shell prism is three
     rectangles and no triangles, so a decomposition that added the end caps
-    would invent surface area that the source does not have.
+    would invent surface area that the source does not have.  The ends exist
+    only in :func:`prism_solid`, where they close a volume that is never meshed.
 
     Of the prism's four parametric directions, 1, 2 and 3 run along the three
     base edges and 4 along the height, so each wall spans one base edge and the
-    height.  The base vertices are ordered so that ``P1P2 x P1P3`` points along
-    ``P1P4``, which makes ``edge x height`` the outward normal of that wall.
+    height.
     """
-    base = [args.point("point1"), args.point("point2"), args.point("point3")]
-    height = args.point("point4") - base[0]
+    base = list(corners.base)
+    height = corners.height
     walls = []
     for index, (start, end) in enumerate(zip(base, [*base[1:], base[0]], strict=True)):
         wall = Rectangle(start, end, start + height)
@@ -706,10 +855,26 @@ def _prism_faces(args: Arguments) -> list[SolidFace]:
     return walls
 
 
-#: Primitives that decompose into flat faces, with no closed-solid reading.
-PRISMS: dict[str, Callable[[Arguments], list[SolidFace]]] = {
-    "SHELL_TRIANGULAR_PRISM": _prism_faces,
-}
+def prism_solid(corners: PrismCorners) -> Primitive:
+    """Build the closed-solid reading of a prism, for use as a cutting tool.
+
+    The two triangular ends exist ONLY here.  As geometry a prism is three walls
+    and no caps -- its ``.stp`` form is three ``MGM_RECTANGLE`` and no triangles
+    -- so the caps must never reach the geometry reading, where they would
+    invent surface area.  A cutting tool is never meshed, radiated or conducted,
+    so closing the volume here changes nothing but the subtraction.
+
+    Unlike a box this needs no placement of its own: ``TriangularPrism`` takes
+    its four corners in whatever frame they were given in.
+    """
+    prism = TriangularPrism(corners.point1, corners.point2, corners.point3, corners.point4)
+    if not prism.is_valid():
+        msg = (
+            "a prism needs a non-degenerate base triangle and an extrusion that "
+            "leaves the base plane"
+        )
+        raise EvaluationError(msg)
+    return prism
 
 
 def box_solid(axes: BoxAxes, notes: list[Note]) -> BoxSolid:
@@ -748,8 +913,6 @@ _PIPE_REASON = "pipes generate fluid nodes and convective links, which are not m
 #: Listing them is what turns "we have never heard of this" into a specific
 #: explanation, so the reason travels with the diagnostic.
 UNSUPPORTED_PRIMITIVES: dict[str, str] = {
-    "SHELL_SCS_TRIANGULAR_PRISM": "a prism would have to be decomposed into its faces",
-    "SHELL_SCS_TRAPEZOID": "there is no trapezoid primitive",
     "SHELL_TORUS": "there is no torus primitive",
     "SHELL_SCS_TORUS": "there is no torus primitive",
     "SHELL_HALF_SPACE": "an infinite planar cutter has no equivalent",

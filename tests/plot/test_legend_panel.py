@@ -1,4 +1,4 @@
-"""The appearance column: colour-by, the colour scale, and the interactive legend."""
+"""The appearance column: color-by, the color scale, and the interactive legend."""
 
 from collections.abc import Iterator
 from dataclasses import replace
@@ -68,13 +68,13 @@ def test_a_swatch_is_a_solid_square(qtbot: object) -> None:
     assert not icon.isNull()
 
 
-# ── colour-by ─────────────────────────────────────────────────────────────
+# ── color-by ─────────────────────────────────────────────────────────────
 def test_the_combo_offers_every_property(window: ViewerWindow, panel: LegendPanel) -> None:
     assert panel.color_by_combo.count() == len(window.properties)
     assert panel.color_by_combo.itemText(0) == window.properties["color"].label
 
 
-def test_choosing_a_property_recolours_the_geometry(
+def test_choosing_a_property_recolors_the_geometry(
     window: ViewerWindow, panel: LegendPanel
 ) -> None:
     panel.color_by_combo.setCurrentIndex(panel.color_by_combo.findData("emissivity_ir"))
@@ -82,7 +82,7 @@ def test_choosing_a_property_recolours_the_geometry(
     assert not window.coloring().rgb
 
 
-def test_the_scale_controls_are_off_for_a_categorical_colouring(
+def test_the_scale_controls_are_off_for_a_categorical_coloring(
     window: ViewerWindow, panel: LegendPanel
 ) -> None:
     window.state.color_by = "item"
@@ -96,7 +96,7 @@ def test_the_scale_controls_are_off_for_a_categorical_colouring(
     assert not panel.legend_list.isEnabled()
 
 
-# ── the colour scale ──────────────────────────────────────────────────────
+# ── the color scale ──────────────────────────────────────────────────────
 def test_the_scale_widgets_write_through_to_the_state(
     window: ViewerWindow, panel: LegendPanel
 ) -> None:
@@ -148,7 +148,7 @@ def test_the_legend_lists_one_row_per_category(window: ViewerWindow, panel: Lege
     assert sorted(labels) == ["-", "black", "white"]
 
 
-def test_the_swatch_colours_match_what_is_drawn(window: ViewerWindow) -> None:
+def test_the_swatch_colors_match_what_is_drawn(window: ViewerWindow) -> None:
     window.state.color_by = "node_number"
     prop = window.properties["node_number"]
     entries = categories(prop, window.scene.face_ids)
@@ -198,11 +198,11 @@ def test_the_legend_checkboxes_show_what_is_hidden(
     assert states[110] is Qt.CheckState.Checked
 
 
-def test_hiding_a_category_does_not_recolour_the_rest(
+def test_hiding_a_category_does_not_recolor_the_rest(
     window: ViewerWindow, panel: LegendPanel
 ) -> None:
     # The ranked palette is built over every cell, not the visible ones, or
-    # switching one category off would shift every other colour.
+    # switching one category off would shift every other color.
     window.state.color_by = "node_number"
     before = {
         entry.value: entry.color
@@ -225,14 +225,14 @@ def test_show_all_categories_puts_everything_back(window: ViewerWindow, panel: L
     assert window.scene.visible_cells.size == window.scene.n_cells
 
 
-def test_switching_the_colouring_clears_the_hidden_categories(
+def test_switching_the_coloring_clears_the_hidden_categories(
     window: ViewerWindow, panel: LegendPanel
 ) -> None:
     window.state.color_by = "node_number"
     panel.set_category_hidden(100, hidden=True)
     assert window.scene.visible_cells.size == 12
 
-    # Category 100 means nothing under a different colouring, so it cannot
+    # Category 100 means nothing under a different coloring, so it cannot
     # survive the switch.
     window.state.color_by = "item"
     assert window.state.hidden_categories == frozenset()
@@ -250,13 +250,13 @@ def test_geometry_and_category_hiding_compose(window: ViewerWindow, panel: Legen
     assert window.scene.visible_cells.size == window.scene.n_cells
 
 
-def test_a_numeric_colouring_has_no_categories(window: ViewerWindow, panel: LegendPanel) -> None:
+def test_a_numeric_coloring_has_no_categories(window: ViewerWindow, panel: LegendPanel) -> None:
     window.state.color_by = "area"
     assert panel.entries() == []
     assert window.category_mask() is None
 
 
-def test_the_scale_survives_a_colour_by_change(window: ViewerWindow, panel: LegendPanel) -> None:
+def test_the_scale_survives_a_color_by_change(window: ViewerWindow, panel: LegendPanel) -> None:
     window.state.scale = replace(window.state.scale, colormap="turbo")
     window.state.color_by = "emissivity_ir"
     assert panel.colormap_combo.currentData() == "turbo"

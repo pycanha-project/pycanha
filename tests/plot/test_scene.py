@@ -6,7 +6,7 @@ import pytest
 import pycanha as pc
 from pycanha import gmm
 from pycanha.plot.picking import item_map, owning_item
-from pycanha.plot.scene import Scene, slot_items
+from pycanha.plot.scene import Scene, face_items
 
 
 def _two_panel_model() -> pc.ThermalModel:
@@ -32,7 +32,7 @@ def _cut_away_model() -> pc.ThermalModel:
     """A rectangle cut away entirely by a cube, followed by an untouched one.
 
     The cut item keeps a primitive range, collapsed onto the offset where the
-    next item starts - so both ranges claim slot 0 and only the later one is
+    next item starts - so both ranges claim face 0 and only the later one is
     right about it.
     """
     tm = pc.ThermalModel("cut")
@@ -66,7 +66,7 @@ def test_master_arrays_cover_both_sides(scene: Scene) -> None:
     assert scene.triangles.shape == (16, 3)
     # The first half is side 1, the second the reversed-winding side-2 copies.
     assert np.array_equal(scene.sides, np.repeat([1, 2], 8))
-    # Side-2 cells name the odd partner of the side-1 slot the triangle carries.
+    # Side-2 cells name the odd partner of the side-1 face the triangle carries.
     assert np.array_equal(scene.face_ids[8:], scene.face_ids[:8] ^ 1)
     assert set(scene.node_numbers.tolist()) == {100, 110, 200, 210}
 
@@ -82,8 +82,8 @@ def test_item_index_matches_the_owning_item_scan(scene: Scene) -> None:
     mesh = scene.mesh
     items = item_map(scene.model)
     for cell in range(scene.n_cells):
-        base_slot = int(scene.face_ids[cell]) & ~1
-        expected = owning_item(mesh, base_slot, items)
+        base_face = int(scene.face_ids[cell]) & ~1
+        expected = owning_item(mesh, base_face, items)
         assert scene.item_of_cell(cell) == expected.id
 
 
@@ -96,10 +96,10 @@ def test_item_cells_partition_the_master_cells(scene: Scene) -> None:
     assert all(scene.cells_of_item(item_id).size == 8 for item_id in scene.item_ids)
 
 
-def test_slot_items_claims_both_slots_of_every_face(scene: Scene) -> None:
-    # The primitive ranges are expressed in side-1 slots, so the side-2 partner
+def test_face_items_claims_both_faces_of_every_face(scene: Scene) -> None:
+    # The primitive ranges are expressed in side-1 faces, so the side-2 partner
     # of the last face of a range is only covered because the slice runs past it.
-    assert not np.any(scene.slot_items < 0)
+    assert not np.any(scene.face_items < 0)
 
 
 def test_a_cut_away_item_owns_no_cells() -> None:
@@ -110,7 +110,7 @@ def test_a_cut_away_item_owns_no_cells() -> None:
 
     assert scene.cells_of_item(target.id).size == 0
     assert scene.item_ids == [plain.id]
-    # Both ranges claim slot 0; the later one is the one that actually made it.
+    # Both ranges claim face 0; the later one is the one that actually made it.
     assert np.all(scene.cell_items == plain.id)
     assert set(scene.node_numbers.tolist()) == {500, 600}
 
@@ -123,11 +123,11 @@ def test_empty_model_yields_no_cells() -> None:
     assert scene.visible_cells.size == 0
 
 
-def test_slot_items_of_a_bare_mesh() -> None:
+def test_face_items_of_a_bare_mesh() -> None:
     # Geometry ids come from a global counter, so read them off the model.
     model = _two_panel_model().gmm
     expected = [model.get_item(name).id for name in ("a", "b")]
-    assert np.array_equal(slot_items(model.mesh), np.repeat(expected, 4))
+    assert np.array_equal(face_items(model.mesh), np.repeat(expected, 4))
 
 
 # ── visibility ────────────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ def test_cells_of_face_are_the_triangles_of_one_side_of_one_face(scene: Scene) -
     assert cells.size == 2
     assert np.all(scene.face_ids[cells] == 0)
     assert np.all(scene.sides[cells] == 1)
-    # The odd partner slot is the same face seen from the other side.
+    # The odd partner face is the same face seen from the other side.
     assert np.all(scene.sides[scene.cells_of_face(1)] == 2)
 
 

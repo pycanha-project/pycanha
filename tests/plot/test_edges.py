@@ -6,17 +6,27 @@ have been handed to VTK.
 """
 
 from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import pytest
 from PySide6.QtWidgets import QWidget
+from vtkmodules.vtkCommonCore import reference
 
 import pycanha as pc
 from pycanha import gmm
 from pycanha.plot.edges import face_edges, group_boundary_edges, primitive_edges
 from pycanha.plot.polydata import polydata_from_lines
-from pycanha.plot.state import EdgeDisplay
-from pycanha.plot.window import FACE_EDGES, PRIMITIVE_EDGES, ViewerWindow
+from pycanha.plot.state import EdgeDisplay, Selection
+from pycanha.plot.window import (
+    FACE_EDGES,
+    MESH_ACTOR,
+    PRIMITIVE_EDGES,
+    SELECTION_HIGHLIGHT,
+    ViewerWindow,
+)
+
+from .offscreen import OffscreenView, skip_without_a_renderer
 
 #: Two triangles making a unit square, sharing the diagonal 1-2.
 SQUARE = np.array([[0, 1, 2], [1, 3, 2]])
@@ -165,6 +175,9 @@ def test_a_full_revolution_shows_no_seam(qtbot: object) -> None:
 
 # ── the toggles ───────────────────────────────────────────────────────────
 def test_the_toolbar_drives_the_three_toggles(window: ViewerWindow) -> None:
+    window.toolbar.face_edges_action.setChecked(False)
+    assert window.state.edges == EdgeDisplay(faces=False)
+
     window.toolbar.face_edges_action.setChecked(True)
     assert window.state.edges == EdgeDisplay(faces=True)
 
@@ -177,7 +190,9 @@ def test_the_toolbar_drives_the_three_toggles(window: ViewerWindow) -> None:
 
 
 def test_the_toggles_echo_state_set_elsewhere(window: ViewerWindow) -> None:
-    window.state.edges = EdgeDisplay(triangles=True, primitives=True)
+    # Every field named, so the assertions below read against what this set
+    # rather than against whichever way EdgeDisplay's defaults happen to fall.
+    window.state.edges = EdgeDisplay(triangles=True, faces=False, primitives=True)
     assert window.toolbar.triangle_edges_action.isChecked()
     assert not window.toolbar.face_edges_action.isChecked()
     assert window.toolbar.primitive_edges_action.isChecked()
@@ -189,3 +204,71 @@ def test_drawing_edges_without_a_plotter_is_a_no_op(window: ViewerWindow) -> Non
     # The overlay names exist for the live path to manage; nothing to assert
     # here but that turning them on did not raise.
     assert FACE_EDGES != PRIMITIVE_EDGES
+
+
+def test_the_toggles_open_showing_what_the_state_says(window: ViewerWindow) -> None:
+    """A toggle that opens unchecked over an on-by-default state does nothing.
+
+    Its first click would set what is already set, emit no change, and read as
+    a button that has gone blue and done nothing.
+    """
+    assert window.state.edges.faces
+    assert window.toolbar.face_edges_action.isChecked()
+    assert window.toolbar.primitive_edges_action.isChecked() == window.state.edges.primitives
+    assert window.toolbar.triangle_edges_action.isChecked() == window.state.edges.triangles
+
+
+def test_the_first_click_on_a_default_on_toggle_turns_it_off(window: ViewerWindow) -> None:
+    window.toolbar.face_edges_action.trigger()
+    assert not window.state.edges.faces
+
+
+# ── what actually reaches the renderer ────────────────────────────────────
+@pytest.fixture
+def drawn(qtbot: object) -> Iterator[ViewerWindow]:
+    del qtbot
+    skip_without_a_renderer()
+    viewer = ViewerWindow(two_panel_model(), view=OffscreenView())
+    yield viewer
+    viewer.close()
+
+
+def test_the_default_edges_are_up_as_soon_as_the_window_opens(drawn: ViewerWindow) -> None:
+    """The overlays are only ever drawn in response to a change, and a default
+    that is on never produces one - so opening the window has to draw them."""
+    assert drawn.state.edges.faces
+    assert FACE_EDGES in drawn.plotter.renderer.actors
+    assert PRIMITIVE_EDGES not in drawn.plotter.renderer.actors
+
+
+def _offset(mapper: object, kind: str) -> tuple[float, float]:
+    """The polygon offset a mapper ends up with: slope factor, then constant."""
+    # The getters take their two results as out-parameters. Held as ``Any``
+    # because the runtime class behind ``reference`` is a numeric subclass
+    # whose ``get`` the type stub does not carry.
+    factor: Any = reference(0.0)
+    units: Any = reference(0.0)
+    getattr(mapper, f"GetCoincidentTopology{kind}OffsetParameters")(factor, units)
+    return float(factor.get()), float(units.get())
+
+
+def test_the_overlays_are_pushed_forward_by_a_constant_only(drawn: ViewerWindow) -> None:
+    """No slope term, and the ladder in the order :mod:`pycanha.plot.depth` sets out.
+
+    The slope term scales with how steeply a surface recedes from the camera,
+    so with one an outline lifts off distant, edge-on geometry far enough to
+    show through whatever is in front of it - and does it only from some
+    directions, which is what made it look like a rendering lottery.
+    """
+    drawn.state.selection = Selection(item_id=drawn.scene.item_ids[0])
+    actors = drawn.plotter.renderer.actors
+    outline = _offset(actors[FACE_EDGES].mapper, "Line")
+    wash = _offset(actors[SELECTION_HIGHLIGHT].mapper, "Polygon")
+    geometry = _offset(actors[MESH_ACTOR].mapper, "Line")
+
+    assert outline[0] == wash[0] == 0.0
+    # Negative is towards the camera. The outlines take the same push as the
+    # triangle edges the geometry actor draws itself - VTK's own, the least
+    # that keeps a line clear of its surface - and both sit over the wash, so
+    # that a selection cannot eat a line that falls on it.
+    assert outline[1] == geometry[1] < wash[1] < 0.0

@@ -25,7 +25,7 @@ Vulkan with ray queries on Windows and Linux, and since pycanha-core 0.18 Metal
 on macOS, where it needs GPU family Apple9 (M3 / M4 / A17 Pro) or newer.
 
 A view-factor or exchange matrix has ``num_virtual_columns`` more columns than
-face slots: the three trailing columns account for energy that leaves the face
+faces: the three trailing columns account for energy that leaves the face
 set rather than reaching another face -- to space, to an inactive face, or lost
 to absorption -- at ``space_column_offset``, ``inactive_column_offset`` and
 ``lost_column_offset`` past the last real face. A caller slicing a matrix by

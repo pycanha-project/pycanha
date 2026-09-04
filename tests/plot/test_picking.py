@@ -66,7 +66,7 @@ def test_face_info_both_sides_reports_each_side() -> None:
     side2 = face_info(mesh, n_tri, both_sides=True, items=items)
 
     assert (side1.side, side1.node_number, side1.face_id) == (1, 5, 0)
-    # The side-2 slot is the odd partner of the side-1 slot the triangle names.
+    # The side-2 face is the odd partner of the side-1 face the triangle names.
     assert (side2.side, side2.node_number, side2.face_id) == (2, 6, 1)
 
     # Only side 1 was given an optical material, and the sides carry their own colors.

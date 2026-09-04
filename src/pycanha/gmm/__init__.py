@@ -34,6 +34,7 @@ from .primitives import (
     Rectangle,
     Sphere,
     Triangle,
+    TriangularPrism,
 )
 from .scene import Geometry, GeometryGroup, GeometryGroupCutted, GeometryItem
 from .thermalmesh import ActiveSide, ThermalMesh, active_side, active_sides, with_side
@@ -75,6 +76,7 @@ __all__ = [
     "TriMeshD",
     "TriMeshF",
     "Triangle",
+    "TriangularPrism",
     "UvMesher",
     "active_side",
     "active_sides",

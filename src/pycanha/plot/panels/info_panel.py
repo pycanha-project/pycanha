@@ -1,7 +1,7 @@
 """The properties of whatever is selected.
 
 A two-column table describing the current selection - the geometry it belongs
-to, the face slot and node behind it, and every colour-by property's value
+to, the face and node behind it, and every color-by property's value
 there - which is the detail the tree deliberately leaves out of its one column.
 
 What it shows follows the **picker granularity**, not what the pick happened to
@@ -49,8 +49,8 @@ def selection_rows(
     """The key/value rows describing ``selection``, in display order.
 
     A tree selection names a geometry and nothing else, so it gets the geometry
-    rows alone. A pick also names a face slot, and everything the colour-by
-    properties can say about that slot follows - unless ``face_detail`` is off,
+    rows alone. A pick also names a face, and everything the color-by
+    properties can say about that face follows - unless ``face_detail`` is off,
     which is what an item-granularity selection asks for.
     """
     if selection is None:
@@ -66,14 +66,14 @@ def selection_rows(
     if selection.face_id is None or not face_detail:
         return rows
 
-    slot = int(selection.face_id)
+    face = int(selection.face_id)
     node = selection.node_number
-    rows.append(("Face slot", str(slot)))
-    # Side 1 slots are even, side 2 odd - the parity is the side.
-    rows.append(("Side", str(1 + slot % 2)))
+    rows.append(("Face", str(face)))
+    # Side 1 faces are even, side 2 odd - the parity is the side.
+    rows.append(("Side", str(1 + face % 2)))
     rows.append(("TMM node", MISSING if node is None else str(node)))
     rows += [
-        (prop.label, prop.format(slot))
+        (prop.label, prop.format(face))
         for key, prop in properties.items()
         if key not in _HEADER_KEYS
     ]

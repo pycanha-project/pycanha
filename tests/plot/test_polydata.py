@@ -49,7 +49,7 @@ def test_to_polydata_both_sides_resolves_side2() -> None:
     mesh = tm.gmm.mesh
 
     single = plot.to_polydata(mesh)
-    # The mesh has one sheet of triangles and its face_ids name side-1 slots, so
+    # The mesh has one sheet of triangles and its face_ids name side-1 faces, so
     # the single-sided polydata cannot show side 2 at all.
     assert single.n_cells == mesh.nt()
     assert set(np.asarray(single.cell_data["node_number"]).tolist()) == {5}
@@ -99,7 +99,7 @@ def test_categorical_colors_rank_separates_sparse_labels() -> None:
 def test_categorical_colors_rank_keeps_missing_grey() -> None:
     colors = plot.categorical_colors([100, -1, 200], rank=True)
     assert colors[1].tolist() == [153, 153, 153]
-    # The unassigned entry must not consume a palette slot of its own.
+    # The unassigned entry must not consume a palette face of its own.
     assert colors[0].tolist() != colors[2].tolist()
 
 
@@ -139,7 +139,7 @@ def test_map_face_data_distinguishes_the_two_sides() -> None:
     tm = _panel_model()
     poly = plot.to_polydata(tm.gmm, both_sides=True)
 
-    # Slot 0 is side 1 of the face, slot 1 is side 2.
+    # Face 0 is side 1 of the face, face 1 is side 2.
     values = plot.map_face_data(poly, {0: 1.0, 1: 2.0})
     face_ids = np.asarray(poly.cell_data["face_id"])
     np.testing.assert_array_equal(values[face_ids == 0], 1.0)

@@ -46,7 +46,7 @@ def test_material_table_shapes() -> None:
     table = model.material_table()
     nf = model.mesh.nf()
     assert isinstance(table, rad.MaterialTable)
-    assert table.num_face_slots() == nf
+    assert table.num_faces() == nf
     assert np.asarray(table.properties).shape[1] == 6
     assert np.asarray(table.face_material).shape[0] == nf
     assert np.asarray(table.face_active).shape[0] == nf
@@ -62,7 +62,7 @@ def test_view_factor_end_to_end() -> None:
     device = rad.Device.create()
 
     scene = rad.RadiativeScene(device, model.mesh_parts(), model.material_table())
-    nf = scene.num_face_slots()
+    nf = scene.num_faces()
     assert nf == model.mesh.nf()
 
     acc = rad.VfAccumulator(scene)

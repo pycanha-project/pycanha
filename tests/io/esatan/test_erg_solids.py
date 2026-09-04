@@ -1,8 +1,9 @@
 """ESATAN solids that become several flat surfaces here.
 
 A box has two readings and only the statement that *uses* it says which: six
-faces as geometry, one closed solid as a cutting tool.  A prism has just one,
-three side walls -- its triangular ends genuinely do not exist.
+faces as geometry, one closed solid as a cutting tool.  A prism has the same
+two: three side walls as geometry -- its triangular ends genuinely do not
+exist there -- and a closed solid, ends included, as a cutting tool.
 
 These tests pin the readings and the numbers that separate a correct
 decomposition from a plausible-looking wrong one.
@@ -67,6 +68,25 @@ P = SHELL_TRIANGULAR_PRISM(
     point4 = [0.0, 0.0, 2.0],
     nbase1 = 3000,
     ndelta1 = 1);
+"""
+
+
+#: A prism straddling a plate, positioned to punch a clean triangular hole.
+#:
+#: The base triangle (1,1)-(3,1)-(1,3) sits well inside the 4 x 4 plate, so the
+#: hole is an interior one and its area is the triangle's own.
+PLATE_AND_PRISM = """
+GEOMETRY P;
+P = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0);
+GEOMETRY T;
+T = SHELL_TRIANGULAR_PRISM(
+    point1 = [1.0, 1.0, -1.0],
+    point2 = [3.0, 1.0, -1.0],
+    point3 = [1.0, 3.0, -1.0],
+    point4 = [1.0, 1.0, 1.0],
+    sense = -1);
+GEOMETRY X;
+X = P - T;
 """
 
 
@@ -177,12 +197,67 @@ def test_prism_walls_continue_one_node_sequence(tmp_path: Path) -> None:
     assert starts == [3000, 3001, 3002]
 
 
-def test_a_prism_cannot_be_used_as_a_cutter(tmp_path: Path) -> None:
-    """A prism has no closed-solid reading, so it is refused rather than guessed at."""
-    _, diagnostics = build(
-        tmp_path,
-        "GEOMETRY R;\nR = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0);\n"
-        + PRISM
-        + "GEOMETRY X;\nX = R - P;",
-    )
-    assert "ERG_CUTTER_NOT_PRIMITIVE" in diagnostics.codes()
+def test_a_prism_used_as_a_cutter_becomes_one_closed_solid(tmp_path: Path) -> None:
+    """The second reading, which the walls alone could never give.
+
+    A group of surfaces cannot cut, and the three walls are not a closed volume
+    even taken together -- the ends are missing.  The cutter reading closes it.
+    """
+    model, diagnostics = build(tmp_path, PLATE_AND_PRISM)
+    cut = model.get_cut_group("X")
+    assert isinstance(cut, GeometryGroupCutted)
+
+    cutter = cut.cutters[0]
+    assert cutter.name == "T"
+    assert isinstance(cutter.primitive, pcc.gmm.TriangularPrism)
+    # Given in the frame the file used, so no placement transformation is needed.
+    assert cutter.primitive.p1 == pytest.approx([1.0, 1.0, -1.0])
+    assert cutter.primitive.p4 == pytest.approx([1.0, 1.0, 1.0])
+
+    assert "ERG_PRISM_CUTTER" in diagnostics.codes()
+    assert "ERG_CUTTER_NOT_PRIMITIVE" not in diagnostics.codes()
+    # The walls were never built, so reporting them would be a lie.
+    assert "ERG_PRISM_DECOMPOSED" not in diagnostics.codes()
+
+
+def test_a_prism_cutter_removes_exactly_its_own_footprint(tmp_path: Path) -> None:
+    """Against the closed form: a 4 x 4 plate less the base triangle's 2."""
+    model, _ = build(tmp_path, PLATE_AND_PRISM)
+    area = float(mesh_ops.compute_areas(model.get_cut_group("X").mesh).sum())
+    assert area == pytest.approx((4.0 * 4.0) - (0.5 * 2.0 * 2.0))
+
+
+#: A plate a paraboloid is aimed at.  A paraboloid is an open surface, so there
+#: is nothing there to be inside of and it cannot be a tool.
+PLATE_AND_PARABOLOID = """
+GEOMETRY P;
+P = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0);
+GEOMETRY B;
+B = SHELL_SCS_PARABOLOID(
+    flength = 0.5,
+    hmin = 0.0,
+    hmax = 2.0,
+    sense = -1);
+GEOMETRY X;
+X = P - B;
+"""
+
+
+def test_a_shape_that_encloses_nothing_cannot_cut(tmp_path: Path) -> None:
+    """The refusal is about the shape, not about the statement asking for it.
+
+    A paraboloid is written exactly as a cone is and asks to cut in exactly the
+    same words; what separates them is that one bounds a volume and the other
+    does not.  The plate has to survive whole rather than be dropped with the
+    tool: leaving it uncut keeps geometry the file has, with the difference
+    reported.
+    """
+    model, diagnostics = build(tmp_path, PLATE_AND_PARABOLOID)
+    refusals = [note for note in diagnostics if note.code == "ERG_CUTTER_NOT_SOLID"]
+    assert len(refusals) == 1
+    assert "B" in refusals[0].message
+    assert "ERG_CUTTER_NOT_PRIMITIVE" not in diagnostics.codes()
+    assert not [
+        child for child in model.children_recursive() if isinstance(child, GeometryGroupCutted)
+    ]
+    assert model.get_item("P").primitive.surface_area() == pytest.approx(16.0)

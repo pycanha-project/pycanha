@@ -10,13 +10,13 @@ last solve left behind.
 Loading a result file from inside the viewer is deliberately not offered; the
 model is loaded before the window opens.
 
-A series is turned into a colouring by
-:func:`result_property`, which resolves the values onto **face slots** through
+A series is turned into a coloring by
+:func:`result_property`, which resolves the values onto **faces** through
 the mesh's own node numbers - so the result becomes an ordinary
-:class:`~pycanha.plot.properties.FaceProperty` and the legend, the colour
+:class:`~pycanha.plot.properties.FaceProperty` and the legend, the color
 scale, the property table and the node filter all keep working unchanged.
 
-Nothing here imports Qt: the discovery, the frame lookup and the slot mapping
+Nothing here imports Qt: the discovery, the frame lookup and the face mapping
 are plain numpy, and are what the tests assert on.
 """
 
@@ -34,7 +34,7 @@ from .properties import FaceProperty
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-#: Key of the synthesised colour-by option a result is shown through.
+#: Key of the synthesised color-by option a result is shown through.
 RESULT_KEY = "result"
 
 #: Case key of the live node state, which is not a stored ``DataModel``.
@@ -46,7 +46,7 @@ LIVE_LABEL = "Current (live)"
 #: The dense attributes a ``DataModel`` can hold, as ``name: (label, unit)``.
 #: Keyed by the ``DataModelAttribute`` name, which is also what the combo
 #: stores. The sparse and matrix attributes (coupling and Jacobian histories)
-#: are not per-node values and so cannot colour a face.
+#: are not per-node values and so cannot color a face.
 ATTRIBUTES: dict[str, tuple[str, str]] = {
     "T": ("Temperature", "K"),
     "C": ("Thermal capacity", "J/K"),
@@ -130,8 +130,8 @@ class ResultSeries:
     def clim(self, nodes: npt.ArrayLike | None = None) -> tuple[float, float] | None:
         """Range over the **whole** series, so frames stay comparable.
 
-        A colour scale recomputed per frame would repaint the same temperature
-        a different colour at every instant, which makes an animation
+        A color scale recomputed per frame would repaint the same temperature
+        a different color at every instant, which makes an animation
         unreadable.
 
         ``nodes`` restricts it to the nodes still on screen, which is the other
@@ -249,20 +249,20 @@ def _live_series(thermal_model: Any, attribute: str, label: str, unit: str) -> R
     )
 
 
-def slot_values(
+def face_values(
     result: ResultSeries, index: int, node_numbers: npt.ArrayLike
 ) -> npt.NDArray[np.float64]:
-    """The frame's value at every face slot of ``node_numbers``.
+    """The frame's value at every face of ``node_numbers``.
 
-    ``node_numbers`` is the mesh's own per-slot node array, so a slot with no
+    ``node_numbers`` is the mesh's own per-face node array, so a face with no
     node, or with a node the series never carried, comes out ``nan`` - which
     the actor draws in its ``nan_color`` rather than as a zero.
     """
-    slots = np.asarray(node_numbers, dtype=np.int64)
+    faces = np.asarray(node_numbers, dtype=np.int64)
     frame = result.frame(index)
     if frame.size == 0:
-        return np.full(slots.size, np.nan)
-    columns, found = key_columns(slots, result.node_numbers)
+        return np.full(faces.size, np.nan)
+    columns, found = key_columns(faces, result.node_numbers)
     return np.where(found, frame[columns], np.nan)
 
 
@@ -273,39 +273,39 @@ def result_property(
     *,
     visible_nodes: npt.ArrayLike | None = None,
 ) -> FaceProperty:
-    """Turn one instant of a series into a colour-by option.
+    """Turn one instant of a series into a color-by option.
 
     The label names the attribute and the case but deliberately **not** the
-    instant: it is the colour bar's title, and a title that changed on every
-    frame would leave a trail of colour bars behind an animation. Which instant
+    instant: it is the color bar's title, and a title that changed on every
+    frame would leave a trail of color bars behind an animation. Which instant
     is on screen is the time panel's line to say.
 
-    ``visible_nodes`` narrows the automatic colour scale to the geometry still
+    ``visible_nodes`` narrows the automatic color scale to the geometry still
     drawn - hidden geometry is not what the scale should be spent on - while
     keeping it spread over the whole series.
 
-    The key is fixed, so the colour-by combo keeps one stable entry for
+    The key is fixed, so the color-by combo keeps one stable entry for
     "whatever result is selected".
     """
     return FaceProperty(
         key=RESULT_KEY,
         label=f"{result.label} ({result.case})",
-        values=slot_values(result, index, node_numbers),
+        values=face_values(result, index, node_numbers),
         categorical=False,
         unit=result.unit,
         clim=result.clim(visible_nodes),
     )
 
 
-def empty_property(n_slots: int) -> FaceProperty:
-    """The placeholder colouring shown before any case has been read.
+def empty_property(n_faces: int) -> FaceProperty:
+    """The placeholder coloring shown before any case has been read.
 
     All ``nan``, so the geometry draws in the ``nan_color`` grey rather than
-    all one colour off an empty scale.
+    all one color off an empty scale.
     """
     return FaceProperty(
         key=RESULT_KEY,
         label="Result",
-        values=np.full(int(n_slots), np.nan),
+        values=np.full(int(n_faces), np.nan),
         categorical=False,
     )

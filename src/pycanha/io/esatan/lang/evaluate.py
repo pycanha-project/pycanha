@@ -122,13 +122,20 @@ def _evaluate(expr: ast.Expr, variables: Mapping[str, Value]) -> Value:
         return expr.value
     if isinstance(expr, ast.Vector | ast.Array):
         return tuple(_evaluate(item, variables) for item in expr.items)
-    if isinstance(expr, ast.Ref):
-        return _evaluate_ref(expr, variables)
+    if isinstance(expr, ast.Ref | ast.Index):
+        return _evaluate_reference(expr, variables)
     if isinstance(expr, ast.UnaryOp):
         return _evaluate_unary(expr, variables)
     if isinstance(expr, ast.BinOp):
         return _evaluate_binary(expr, variables)
     return _evaluate_call(expr, variables)
+
+
+def _evaluate_reference(expr: ast.Ref | ast.Index, variables: Mapping[str, Value]) -> Value:
+    """Resolve a name, or one element of the array a name holds."""
+    if isinstance(expr, ast.Index):
+        return _evaluate_index(expr, variables)
+    return _evaluate_ref(expr, variables)
 
 
 def _evaluate_ref(expr: ast.Ref, variables: Mapping[str, Value]) -> Value:
@@ -140,6 +147,26 @@ def _evaluate_ref(expr: ast.Ref, variables: Mapping[str, Value]) -> Value:
     except KeyError:
         msg = f"unknown symbol: {expr.name}"
         raise EvaluationError(msg) from None
+
+
+def _evaluate_index(expr: ast.Index, variables: Mapping[str, Value]) -> Value:
+    """Read one element of an array, counting from one as the language does."""
+    container = _evaluate_ref(expr.target, variables)
+    if not isinstance(container, tuple):
+        msg = f"{expr.name} is not an array and cannot be indexed"
+        raise EvaluationError(msg)
+    if len(expr.indices) != 1:
+        msg = (
+            f"{expr.name} is indexed with {len(expr.indices)} subscripts; "
+            "only one-dimensional arrays are supported"
+        )
+        raise EvaluationError(msg)
+
+    position = as_int(_evaluate(expr.indices[0], variables))
+    if not 1 <= position <= len(container):
+        msg = f"index {position} is outside {expr.name}[1..{len(container)}]"
+        raise EvaluationError(msg)
+    return container[position - 1]
 
 
 def _evaluate_unary(expr: ast.UnaryOp, variables: Mapping[str, Value]) -> Value:
