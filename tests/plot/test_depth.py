@@ -19,7 +19,7 @@ import pycanha as pc
 from pycanha import gmm
 from pycanha.plot.window import FOCAL_NEAR_FRACTION, NEAR_PLANE_FLOOR, ViewerWindow
 
-from .offscreen import OffscreenView
+from .offscreen import OffscreenView, skip_without_a_renderer
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -46,6 +46,7 @@ def stacked_model() -> gmm.GeometryModel:
 @pytest.fixture
 def drawn(qtbot: object) -> Iterator[ViewerWindow]:
     del qtbot
+    skip_without_a_renderer()
     viewer = ViewerWindow(stacked_model(), view=OffscreenView())
     yield viewer
     viewer.close()

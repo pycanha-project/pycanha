@@ -8,8 +8,12 @@ rather than in CI keeps a local ``pytest`` run identical to the runner's.
 wins - that is how you run the ``gui``-marked tests against a real window.
 
 Note that ``offscreen`` provides no OpenGL context: plain Qt widgets work, but a
-``pyvistaqt.QtInteractor`` segfaults under it. No test in this repo renders; the
-arrays that would be handed to VTK are asserted directly instead.
+``pyvistaqt.QtInteractor`` segfaults under it. Almost every test here asserts the
+arrays that would be handed to VTK directly rather than drawing anything. The few
+that do draw go through :class:`tests.plot.offscreen.OffscreenView`, whose plotter
+is VTK's own off-screen path and owes nothing to Qt's platform - but which still
+needs an OpenGL implementation on the machine, and skips itself where there is
+none.
 """
 
 from __future__ import annotations

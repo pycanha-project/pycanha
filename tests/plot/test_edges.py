@@ -26,7 +26,7 @@ from pycanha.plot.window import (
     ViewerWindow,
 )
 
-from .offscreen import OffscreenView
+from .offscreen import OffscreenView, skip_without_a_renderer
 
 #: Two triangles making a unit square, sharing the diagonal 1-2.
 SQUARE = np.array([[0, 1, 2], [1, 3, 2]])
@@ -227,6 +227,7 @@ def test_the_first_click_on_a_default_on_toggle_turns_it_off(window: ViewerWindo
 @pytest.fixture
 def drawn(qtbot: object) -> Iterator[ViewerWindow]:
     del qtbot
+    skip_without_a_renderer()
     viewer = ViewerWindow(two_panel_model(), view=OffscreenView())
     yield viewer
     viewer.close()

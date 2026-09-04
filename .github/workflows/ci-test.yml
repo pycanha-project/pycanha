@@ -66,10 +66,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      # Windows has no OpenGL of its own past the generic 1.1 renderer, and
+      # VTK's backend needs 3.2: the first frame the viewer tests draw does not
+      # raise there, it takes the interpreter down with an access violation and
+      # the whole session with it. Mesa3D supplies a software implementation
+      # and the osmesa.dll behind vtkOSOpenGLRenderWindow, which the action
+      # then names in VTK_DEFAULT_OPENGL_WINDOW - a render window that needs no
+      # window at all, which is what a runner with no desktop can offer. The
+      # other two runners need nothing: the VTK wheel picks EGL over Mesa's
+      # llvmpipe on Linux, which arrives with the Qt libraries above, and Cocoa
+      # on macOS. ``pyvista: false`` because the tests ask for off-screen
+      # plotters themselves; PYVISTA_OFF_SCREEN would make this one runner's
+      # defaults differ from the rest.
+      - name: "Software OpenGL (Windows only)"
+        if: runner.os == 'Windows'
+        uses: pyvista/setup-headless-display-action@b0bf9f57d62d2b3fee9f1c0e0c7e390f05e97a4e # v5.0.0
+        with:
+          pyvista: false
       - run: uv sync --locked
       - name: "pytest with coverage"
         env:
           JUNIT_XML: junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
+          # Every runner has a renderer, so a viewer test that cannot draw is a
+          # failure here rather than the skip a developer without one gets.
+          PYCANHA_REQUIRE_RENDERER: "1"
         run: >
           uv run pytest
           --cov=src/pycanha
