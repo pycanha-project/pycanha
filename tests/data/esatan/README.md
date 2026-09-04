@@ -10,7 +10,7 @@ numeric reference the solvers are checked against.
 | File | What it is |
 |---|---|
 | `FEATURES.erg` | The corpus: every construct the reader supports, each attribute combination on its own surface, and both spellings wherever the language has two |
-| `FEATURES.stp` | The same model in STEP-TAS — the frozen anchor for the `.stp` reader |
+| `FEATURES.stp` | The corpus in STEP-TAS — the frozen anchor for the `.stp` reader, and the one file here pycanha did not write |
 | `expected_faces.csv` | `node,item,area,x,y,z` for every face of the corpus's face-geometry block |
 | `DISC/` | The realistic model: geometry, two solved thermal models, and their results |
 
@@ -42,17 +42,16 @@ In the order the file presents them:
 - **Placement** — `ROTATE` about all three axes, `TRANSLATE`, and the `clear`
   form that discards the accumulated placement.
 - **Structure** — `+` chains, `SINGLE_COMBINATION`, a static assembly and a
-  kinematic one, and `-` cuts by a cylinder, a box, a cone and a sphere.
+  kinematic one, and `-` cuts by each shape that can be a tool: a cylinder, a
+  box, a cone, a sphere and a triangular prism.
 - **Overrides** — `DEFINE_GEOMETRY_ATTRIBUTES`, `SET_ATTRIBUTE_RECURSIVE` and
   dotted attribute assignment.
 - **Arrays** (`PT_ARRAY`, node base 60 000) — a `POINT` array and a `REAL`
   vector, both filled element by element and both read as primitive corners.
   The array declared with an initializer list is up with the variables, so both
   spellings are present.
-- **Cutting tools** (`HOLED`, 61 000) — one plate cut by a cone and by a
-  sphere, each with `sense = -1`. A prism cutter is not here: the `.erg` writer
-  has no spelling for one, and this model has to survive being written back
-  out. Cutting with a prism is covered inline in `test_erg_solids.py`.
+- **Cutting tools** (`HOLED`, 61 000) — one plate cut by a cone, a sphere and
+  a triangular prism, each with `sense = -1`.
 - **Face geometry** (`FACES`, 62 000) — a trapezoid, a quadrilateral, a
   rectangle, a triangle and an annulus sector, each with a node per face and
   per side, so that one node names exactly one face. `expected_faces.csv` gives
@@ -75,8 +74,21 @@ carrying them would be a different model from one that does not, and only one
 of the two can have a `.stp` twin. Each is written inline instead, in
 `tests/io/esatan/test_erg_features.py` and `test_erg_solids.py`.
 
-`FEATURES.stp` describes the same geometry, so the two are a cross-check on
-both readers — the strongest one available, since the two formats state the
-shapes in almost entirely different terms. It never grows on its own account:
-new STEP-TAS capability is tested against files pycanha writes into `tmp_path`
-and against part-21 text written inline.
+## `FEATURES.stp`
+
+The corpus in STEP-TAS, and the one file here pycanha did not write. Its job is
+to anchor how the entities are read against a description that came from
+somewhere else: our reader and our writer agreeing with each other proves
+nothing on its own, and this is what stops a shared misunderstanding passing
+unnoticed. It carries every entity the reader maps but one, and it is the reason
+the two readers can be compared at all.
+
+It is **frozen**. Nothing obliges it to keep describing the whole corpus: the
+corpus grows with the ESATAN-TMS language, and a construct that has no bearing
+on STEP-TAS still belongs in it. `test_stp_matches_erg` therefore compares only
+the surfaces the two files share, and holds a floor under how many that is.
+Refresh it when the overlap has thinned enough to be worth the trouble, and
+raise the floor when you do.
+
+New STEP-TAS capability does not need it: those are tested against files pycanha
+writes into `tmp_path` and against part-21 text written inline.

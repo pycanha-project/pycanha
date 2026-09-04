@@ -1,11 +1,18 @@
-"""The same model, read from two formats, has to come out the same.
+"""A surface described in two formats has to come out the same either way.
 
-The language corpus exists both as ESATAN geometry and as STEP-TAS.  The two
-files describe the same shapes in almost entirely different terms -- one by
-parameters about a local origin, the other by points and quantities in the
-model frame -- so reading both and comparing is the strongest check available
-on either reader.  A parametrisation misread in one of them shows up here as an
-area that does not match.
+The committed `.stp` and the corpus **overlap**; they are not the same model and
+are not meant to become one.  The corpus grows with the ESATAN-TMS language, and
+a construct that has no bearing on STEP-TAS still belongs in it; the `.stp` is
+frozen and describes what it describes.  So the relation checked here is
+one-directional -- every surface the `.stp` names is one the corpus names too,
+and the two readings of it must agree.
+
+That overlap is worth having because the two files state the same shapes in
+almost entirely different terms -- one by parameters about a local origin, the
+other by points and quantities in the model frame -- and the two readers reach
+them through entirely separate tables.  Comparing them is the strongest check
+available on either, and it is the check that found a cone parametrised wrongly
+for every truncated cone.
 
 Three differences are *expected* and are named below.  Anything else failing
 means one of the two readers is wrong.
@@ -48,12 +55,26 @@ REFINED = {"DROPPED_ATTRS": (2, 2)}
 #: STEP-TAS form gives them rather than the ones this reader invents.
 SPLIT_GROUPS = ("SCS_BOX_", "PT_BOX_", "PT_PRISM_", "SCS_PRISM_")
 
+#: How many surfaces the two files name alike, as a floor rather than a count.
+#:
+#: A ratchet: the corpus may add surfaces the frozen `.stp` knows nothing about,
+#: and the number only goes up.  It going *down* means a surface stopped being
+#: compared, which is the one thing this module exists to prevent.
+SHARED_SURFACES = 51
+
 #: The sides whose node numbers the `.erg` states and the STEP-TAS form omits.
 #:
-#: Neither has anything to hang a number on in STEP-TAS: one side is inactive
-#: and takes no part in the thermal model, and a cutting tool becomes a solid
-#: with no faces of its own at all.
-UNNUMBERED_IN_STEPTAS = ["ATTRS:surface2", "CYL_CUTTER:surface1"]
+#: Two reasons, and no others: a side that is inactive takes no part in the
+#: thermal model, and a cutting tool becomes a solid with no faces of its own at
+#: all.  Neither has anything left to hang a number on.  Listed rather than
+#: derived, so a surface joining them for a third reason has to be explained
+#: before this passes again.
+UNNUMBERED_IN_STEPTAS = [
+    "ATTRS:surface2",
+    "CONE_TOOL:surface1",
+    "CYL_CUTTER:surface1",
+    "SPHERE_TOOL:surface1",
+]
 
 
 def items(model: GeometryModel) -> dict[str, GeometryItem]:
@@ -76,15 +97,22 @@ def shared(both: tuple[dict[str, GeometryItem], ...]) -> list[str]:
     return sorted(set(in_erg) & set(in_steptas))
 
 
-def test_the_two_readings_hold_the_same_surfaces(
+def test_the_stp_names_no_surface_the_corpus_has_lost(
     both: tuple[dict[str, GeometryItem], dict[str, GeometryItem]],
 ) -> None:
-    """Same count, and the same names but for the groups that were split."""
+    """The overlap is the point, and it only ever loses surfaces one way.
+
+    The corpus may carry surfaces the `.stp` does not -- that is what its being
+    the wider of the two means.  The other direction is a defect: a surface the
+    `.stp` names and the corpus does not is one the corpus dropped, and with it
+    every comparison below that used to reach it.  The floor is the second half
+    of the same guard: renaming the corpus's surfaces one at a time would
+    satisfy the first assertion all the way down to comparing nothing.
+    """
     in_erg, in_steptas = both
-    assert len(in_erg) == len(in_steptas)
-    only_erg = {name for name in in_erg if name not in in_steptas}
     only_steptas = {name for name in in_steptas if name not in in_erg}
-    assert all(name.startswith(SPLIT_GROUPS) for name in only_erg | only_steptas)
+    assert all(name.startswith(SPLIT_GROUPS) for name in only_steptas), sorted(only_steptas)
+    assert len(shared(both)) >= SHARED_SURFACES
 
 
 def test_every_surface_has_the_same_area_either_way(

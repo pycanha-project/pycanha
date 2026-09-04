@@ -756,13 +756,28 @@ class PrismCorners(NamedTuple):
 
 
 def _prism_corners(args: Arguments) -> PrismCorners:
-    """``SHELL_TRIANGULAR_PRISM`` names the base corners and the extrusion."""
-    return PrismCorners(
-        args.point("point1"),
-        args.point("point2"),
-        args.point("point3"),
-        args.point("point4"),
-    )
+    """``SHELL_TRIANGULAR_PRISM`` names the base corners and the extrusion.
+
+    The prism is a **right** one.  The fourth point gives the extrusion *height*
+    -- how far the base travels along its own normal -- and whatever it says
+    across the base is no part of the shape, so a point given off the normal
+    describes the same prism as its projection onto it.
+
+    Reading it as an oblique extrusion instead slants all three walls at once,
+    which both moves them and invents area: a unit right triangle extruded 1.0
+    has walls of 1, 1 and sqrt(2), and reading the same declaration obliquely
+    where the point is 1.0 off the axis gives 1.17, 1.28 and 1.99 -- 30 % more
+    surface than the model has, on walls facing the wrong way.
+    """
+    point1, point2, point3, point4 = (args.point(f"point{index}") for index in (1, 2, 3, 4))
+    normal = np.cross(point2 - point1, point3 - point1)
+    length = float(np.linalg.norm(normal))
+    if length == 0.0:
+        msg = "a prism needs a non-degenerate base triangle"
+        raise EvaluationError(msg)
+    axis = normal / length
+    height = float(np.dot(point4 - point1, axis))
+    return PrismCorners(point1, point2, point3, point1 + axis * height)
 
 
 def _scs_prism_corners(args: Arguments) -> PrismCorners:

@@ -660,11 +660,10 @@ GEOMETRY PT_ARRAY;
 PT_ARRAY = T1 + T2;
 
 /* ------------------------------------------------------------------ */
-/* One plate cut by two more of the shapes a tool can be.  The         */
-/* cylinder and the box are further up; a cone and a sphere are here.  */
-/* Each removes what it encloses, which is `sense = -1`.  A prism      */
-/* cutter is not here because the writer has no spelling for one, and  */
-/* this model has to survive being written back out.                   */
+/* One plate cut by each of the remaining shapes a tool can be.  The   */
+/* cylinder and the box are further up; a cone, a sphere and a         */
+/* triangular prism are here.  Each removes what it encloses, which is */
+/* `sense = -1`.                                                       */
 /* ------------------------------------------------------------------ */
 
 GEOMETRY SLAB;
@@ -703,8 +702,20 @@ SPHERE_TOOL = SHELL_SCS_SPHERE(
     opt2 = Black);
 SPHERE_TOOL = TRANSLATE(object_name = SPHERE_TOOL, x_dist = 0.50000000);
 
+GEOMETRY PRISM_TOOL;
+PRISM_TOOL = SHELL_TRIANGULAR_PRISM(
+    point1 = [-0.20000000, -0.70000000, -0.20000000],
+    point2 = [0.20000000, -0.70000000, -0.20000000],
+    point3 = [0.00000000, -0.40000000, -0.20000000],
+    point4 = [0.00000000, 0.00000000, 0.40000000],
+    sense = -1,
+    nbase1 = 61300,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
 GEOMETRY HOLED;
-HOLED = SLAB - CONE_TOOL - SPHERE_TOOL;
+HOLED = SLAB - CONE_TOOL - SPHERE_TOOL - PRISM_TOOL;
 
 /* ------------------------------------------------------------------ */
 /* Every face with a node of its own, on both sides, so that one node  */

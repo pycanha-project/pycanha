@@ -783,7 +783,7 @@ def solid_of(
     if isinstance(primitive, pcc.gmm.Cube):
         return _write_solid_box(primitive, placement)
     if isinstance(primitive, pcc.gmm.TriangularPrism):
-        return _write_solid_prism(primitive, placement)
+        return _write_solid_prism(primitive, placement, notes)
     surface = shape_of(primitive, placement, notes)
     if surface is None:
         return None
@@ -810,15 +810,40 @@ def _write_solid_box(primitive: pcc.gmm.Cube, placement: pcc.gmm.CoordinateTrans
 
 
 def _write_solid_prism(
-    primitive: pcc.gmm.TriangularPrism, placement: pcc.gmm.CoordinateTransformation
+    primitive: pcc.gmm.TriangularPrism,
+    placement: pcc.gmm.CoordinateTransformation,
+    notes: list[Note],
 ) -> Shape:
     """A prism, as its three base corners and the point the base extrudes to.
 
     The corners go out in the primitive's own order, which already satisfies the
     format's requirement that the edge to the fourth point lie on the side of the
     base plane its winding normal points to -- the same rule the reader relies on.
+
+    The format goes further and requires that edge to lie *along* that normal, so
+    the format's prism is a right one.  A model's need not be, and an oblique one
+    written out unchanged is a file the format's own validator rejects, so the
+    fourth corner is dropped onto the normal.  That keeps the base, the height
+    and the direction, and straightens the walls.
     """
-    corners = (primitive.p1, primitive.p2, primitive.p3, primitive.p4)
+    base = tuple(
+        np.asarray(corner, dtype=np.float64)
+        for corner in (primitive.p1, primitive.p2, primitive.p3)
+    )
+    apex = np.asarray(primitive.p4, dtype=np.float64)
+    axis = _unit(np.cross(base[1] - base[0], base[2] - base[0]))
+    extrusion = apex - base[0]
+    height = float(np.dot(extrusion, axis))
+    slant = float(np.linalg.norm(extrusion - axis * height))
+    if slant > _PLANARITY_TOL:
+        notes.append(
+            (
+                "TAS_WRITE_STRAIGHTENED_PRISM",
+                f"the extrusion leans {slant:.3g} off the base normal; the format has no "
+                "oblique prism, so the fourth corner was dropped onto the normal",
+            )
+        )
+    corners = (*base, base[0] + axis * height)
     return Shape(
         "MGM_SOLID_TRIANGULAR_PRISM", tuple(_placed(corner, placement) for corner in corners)
     )

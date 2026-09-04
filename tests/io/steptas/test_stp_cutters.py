@@ -41,11 +41,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from pycanha.io.diagnostics import DiagnosticCollector
-    from pycanha.io.part21 import Part21File, Value
+    from pycanha.io.part21 import Entity, Part21File, Value
     from pycanha.io.steptas.mappings import Primitive
 
 #: The four points of the prism tool, in the order the primitive defines them.
-PRISM_CORNERS = ((-0.2, -0.7, -0.2), (0.2, -0.7, -0.2), (0.0, -0.4, -0.2), (0.0, 0.0, 0.4))
+#:
+#: A right prism: the edge to the fourth corner runs along the base's own
+#: normal, which is what the format's prism is and all its validator accepts.
+PRISM_CORNERS = ((-0.2, -0.7, -0.2), (0.2, -0.7, -0.2), (0.0, -0.4, -0.2), (-0.2, -0.7, 0.4))
 
 
 def quiet(_note: object) -> None:
@@ -265,16 +268,22 @@ def test_a_solid_that_encloses_nothing_cannot_cut(round_trip: tuple, tmp_path: P
 # -- what the file says ------------------------------------------------------
 
 
-#: How much of each entity a solid refers to is the entity itself.
-#:
-#: A point is a name, three coordinates and the unit they are in; a quantity is
-#: the unit, the value and an empty list of qualifiers.  The units are the
-#: file's own, shared by everything in it and asserted where the units are, so
-#: what is left in both cases is the numbers.
-_MEANING = {
-    "MGM_3D_CARTESIAN_POINT": slice(1, 4),
-    "NRF_REAL_QUANTITY_VALUE_LITERAL": slice(1, 2),
-}
+def numbers_of(entity: Entity) -> tuple[Value, ...]:
+    """The numbers an entity that a solid refers to actually carries.
+
+    A point is a name, three coordinates and the unit they are in; a quantity is
+    the unit, a one-element list holding the value, and an empty list of
+    qualifiers.  The units are the file's own, shared by everything in it and
+    asserted where the units are, so what is left in both cases is the numbers.
+    """
+    if entity.kind == "MGM_3D_CARTESIAN_POINT":
+        return tuple(entity.params[1:4])
+    if entity.kind == "NRF_REAL_QUANTITY_VALUE_LITERAL":
+        measure = entity.params[1]
+        assert isinstance(measure, tuple), entity.kind
+        return tuple(measure)
+    msg = f"a solid refers to an unexpected {entity.kind}"
+    raise AssertionError(msg)
 
 
 def solid(parsed: Part21File, kind: str) -> list[tuple[str, tuple[Value, ...]]]:
@@ -292,9 +301,21 @@ def solid(parsed: Part21File, kind: str) -> list[tuple[str, tuple[Value, ...]]]:
         assert isinstance(parameter, Reference), f"{kind}[{index}]: expected a reference"
         named = parsed.entity(parameter)
         assert named is not None, f"{kind}[{index}]: dangling reference"
-        assert named.kind in _MEANING, f"{kind}[{index}]: unexpected {named.kind}"
-        resolved.append((named.kind, tuple(named.params[_MEANING[named.kind]])))
+        resolved.append((named.kind, numbers_of(named)))
     return resolved
+
+
+def assert_written(written: list[tuple[str, tuple[Value, ...]]], expected: list) -> None:
+    """*written* is *expected*, entity by entity and number by number.
+
+    The kinds have to match exactly; the numbers are compared as numbers.  A
+    corner the writer computes rather than copies -- a projection, a rebuilt
+    datum -- lands a bit-width away from the same corner written by hand, and
+    that difference says nothing about whether the file is right.
+    """
+    assert [kind for kind, _ in written] == [kind for kind, _ in expected]
+    for (kind, got), (_, want) in zip(written, expected, strict=True):
+        assert got == pytest.approx(want), kind
 
 
 def coordinates(*values: float) -> tuple[str, tuple[Value, ...]]:
@@ -304,7 +325,7 @@ def coordinates(*values: float) -> tuple[str, tuple[Value, ...]]:
 
 def quantity(value: float) -> tuple[str, tuple[Value, ...]]:
     """An ``NRF_REAL_QUANTITY_VALUE_LITERAL``, as the one number it carries."""
-    return ("NRF_REAL_QUANTITY_VALUE_LITERAL", ((value,),))
+    return ("NRF_REAL_QUANTITY_VALUE_LITERAL", (value,))
 
 
 def test_a_prism_is_written_as_its_four_corners(round_trip: tuple) -> None:
@@ -318,7 +339,7 @@ def test_a_prism_is_written_as_its_four_corners(round_trip: tuple) -> None:
     """
     target, _, _ = round_trip
     written = solid(read_part21(target), "MGM_SOLID_TRIANGULAR_PRISM")
-    assert written == [coordinates(*corner) for corner in PRISM_CORNERS]
+    assert_written(written, [coordinates(*corner) for corner in PRISM_CORNERS])
 
 
 def test_a_cone_is_written_as_two_end_centres_and_the_radius_at_each(round_trip: tuple) -> None:
@@ -331,12 +352,58 @@ def test_a_cone_is_written_as_two_end_centres_and_the_radius_at_each(round_trip:
     """
     target, _, _ = round_trip
     written = solid(read_part21(target), "MGM_SOLID_CONE")
-    assert written == [
-        coordinates(-0.5, 0.0, -0.2),
-        coordinates(-0.5, 0.0, 0.1),
-        coordinates(0.5, 0.0, -0.2),
-        quantity(0.1),
-        quantity(0.3),
-        quantity(0.0),
-        quantity(math.degrees(math.tau)),
-    ]
+    assert_written(
+        written,
+        [
+            coordinates(-0.5, 0.0, -0.2),
+            coordinates(-0.5, 0.0, 0.1),
+            coordinates(0.5, 0.0, -0.2),
+            quantity(0.1),
+            quantity(0.3),
+            quantity(0.0),
+            quantity(math.degrees(math.tau)),
+        ],
+    )
+
+
+def test_a_prism_that_leans_is_straightened_and_said_so(tmp_path: Path) -> None:
+    """The format's prism is a right one, and a file whose prism leans is invalid.
+
+    A ``TriangularPrism`` is under no such obligation -- it takes any fourth
+    point that leaves the base plane -- so one built that way in Python reaches
+    the writer with an extrusion that no ``MGM_SOLID_TRIANGULAR_PRISM`` can
+    carry.  Writing it out unchanged produces a file the format's own rules
+    reject, so the corner is dropped onto the base normal instead: the base, the
+    height and the direction survive and the walls stand up straight.
+
+    The projection is the whole of what is asserted here.  Its *height* is the
+    component along the normal, not the length of the leaning edge -- a 1.0 rise
+    reached 1.0 off-axis is a prism 1.0 tall, not sqrt(2) tall, and taking the
+    edge's length instead would stretch every wall by 41 %.
+    """
+    base = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+    leaning = GeometryItem(
+        "LEANING",
+        TriangularPrism(point(*base[0]), point(*base[1]), point(*base[2]), point(0.6, 0.8, 1.0)),
+        ThermalMesh(),
+    )
+    model = GeometryModel("LEAN")
+    model.add(GeometryGroupCutted("HOLED", [plate("SLAB", 1000)], [leaning]))
+
+    target = tmp_path / "leaning.stp"
+    diagnostics = model.io.write_steptas(target, name="LEAN", on_diagnostic=quiet)
+    straightened = [note for note in diagnostics if note.code == "TAS_WRITE_STRAIGHTENED_PRISM"]
+    assert len(straightened) == 1
+    assert "LEANING" in straightened[0].message
+
+    written = solid(read_part21(target), "MGM_SOLID_TRIANGULAR_PRISM")
+    assert_written(
+        written, [coordinates(*corner) for corner in base] + [coordinates(0.0, 0.0, 1.0)]
+    )
+
+
+def test_a_right_prism_is_written_without_a_word(tmp_path: Path) -> None:
+    """The mirror of the test above: straightening is reported only when it happens."""
+    target = tmp_path / "upright.stp"
+    diagnostics = cut_model().io.write_steptas(target, name="CUTTERS", on_diagnostic=quiet)
+    assert "TAS_WRITE_STRAIGHTENED_PRISM" not in diagnostics.codes()

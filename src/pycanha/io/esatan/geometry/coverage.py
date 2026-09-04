@@ -97,7 +97,9 @@ _INVENTORY: Mapping[str, _Entry] = {
     "SHELL_PARABOLOID": _Entry("primitive"),
     "SHELL_BOX": _Entry("primitive", _BOX_NOTE),
     "SHELL_TRIANGULAR_PRISM": _Entry(
-        "primitive", "three side walls; the triangular ends do not exist"
+        "primitive",
+        "three side walls; the triangular ends do not exist. point4 gives the "
+        "height along the base normal, so the prism is a right one",
     ),
     "SHELL_TORUS": _Entry("primitive"),
     "SHELL_HALF_SPACE": _Entry("primitive", "an infinite cutter; cannot be displayed"),

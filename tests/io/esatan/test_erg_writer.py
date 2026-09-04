@@ -26,7 +26,9 @@ from pycanha.gmm import (
     GeometryGroupCutted,
     GeometryItem,
     GeometryModel,
+    ThermalMesh,
 )
+from pycanha.gmm.mesh import ops as mesh_ops
 
 FEATURES = Path(__file__).resolve().parents[2] / "data" / "esatan" / "FEATURES.erg"
 
@@ -280,6 +282,111 @@ def test_a_cutter_is_written_with_the_sense_that_removes_material(tmp_path: Path
     again = GeometryModel("BACK")
     diagnostics = again.io.read_esatan_erg(out, on_diagnostic=lambda _note: None)
     assert "ERG_CUTTER_SENSE" not in diagnostics.codes()
+
+
+#: A 4 x 4 plate with a prism straddling it, base triangle 2 x 2 at the corner.
+PLATE_AND_PRISM = (
+    "GEOMETRY P;\nP = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0, "
+    "opt1 = Paint, opt2 = Paint);\n"
+    "GEOMETRY T;\nT = SHELL_TRIANGULAR_PRISM(\n"
+    "    point1 = [1.0, 1.0, -1.0],\n"
+    "    point2 = [3.0, 1.0, -1.0],\n"
+    "    point3 = [1.0, 3.0, -1.0],\n"
+    "    point4 = [1.0, 1.0, 1.0],\n"
+    "    sense = -1);\n"
+    "GEOMETRY X;\nX = P - T;\nM = X;\n"
+)
+
+
+def test_a_prism_cutter_is_written_as_the_four_points_that_define_it(tmp_path: Path) -> None:
+    """A prism is the one solid whose points are simply the primitive's own.
+
+    A box has to be taken apart into a corner and three edges before it can be
+    written, and put back together on the way in; a prism carries its four
+    corners in the model frame either way.  So the points in the file are the
+    points in the model, and anything else means the frame was applied twice or
+    not at all.
+    """
+    source = tmp_path / "source.erg"
+    source.write_text(f"BEGIN_MODEL M\n{_PAINT}{PLATE_AND_PRISM}\nEND_MODEL\n", encoding="utf-8")
+    out = tmp_path / "written.erg"
+    diagnostics = read(source).io.write_esatan_erg(out, name="M", on_diagnostic=lambda _note: None)
+    assert "ERG_WRITE_UNSUPPORTED_PRIMITIVE" not in diagnostics.codes()
+
+    text = out.read_text(encoding="utf-8")
+    assert "SHELL_TRIANGULAR_PRISM" in text
+    for corner in ("[1.0, 1.0, -1.0]", "[3.0, 1.0, -1.0]", "[1.0, 3.0, -1.0]", "[1.0, 1.0, 1.0]"):
+        assert corner in text, corner
+    # Written as a tool, not as geometry: the default sense keeps what the
+    # cutter encloses, and reading that back is refused.
+    assert "sense = -1" in text
+
+
+def test_a_prism_cutter_removes_the_same_material_after_a_round_trip(tmp_path: Path) -> None:
+    """The corner *order* is the prism's orientation, and only area shows it.
+
+    Reordering the base corners describes a prism extruded the other way, which
+    reads back from the same four points and cuts nothing where this one cuts.
+    A 4 x 4 plate less the base triangle's 2 is 14 either way round.
+    """
+    first, second = round_trip(tmp_path, PLATE_AND_PRISM)
+    cut = next(iter(second.children))
+    assert isinstance(cut, GeometryGroupCutted)
+    tool = cut.cutters[0]
+    assert isinstance(tool.primitive, pcc.gmm.TriangularPrism)
+
+    before = float(mesh_ops.compute_areas(first.get_cut_group("X").mesh).sum())
+    after = float(mesh_ops.compute_areas(cut.mesh).sum())
+    assert before == pytest.approx(4.0 * 4.0 - 0.5 * 2.0 * 2.0)
+    assert after == pytest.approx(before, rel=FORMAT_PRECISION)
+
+
+def corner(*values: float) -> np.ndarray:
+    return np.ascontiguousarray(np.array(values, dtype=np.float64))
+
+
+def test_a_prism_that_leans_is_straightened_and_said_so(tmp_path: Path) -> None:
+    """The format's prism is right, so a leaning one cannot be written as it is.
+
+    A ``TriangularPrism`` takes any fourth point that leaves the base plane; the
+    format takes only the height along the base's own normal.  Written out
+    unchanged the file reads back as a straighter solid -- walls in different
+    places and a third more area -- with nothing saying so.
+
+    The height is the component along the normal, not the length of the leaning
+    edge: a unit right triangle raised 1.0 while sliding 1.0 sideways is a prism
+    1.0 tall, so the fourth corner comes back at the top of the normal.
+    """
+    prism = pcc.gmm.TriangularPrism(
+        corner(0.0, 0.0, 0.0), corner(1.0, 0.0, 0.0), corner(0.0, 1.0, 0.0), corner(0.6, 0.8, 1.0)
+    )
+    plate = GeometryItem(
+        "P",
+        pcc.gmm.Rectangle(corner(-2.0, -2.0, 0.5), corner(2.0, -2.0, 0.5), corner(-2.0, 2.0, 0.5)),
+        ThermalMesh(),
+    )
+    model = GeometryModel("LEAN")
+    model.add(GeometryGroupCutted("X", [plate], [GeometryItem("T", prism, ThermalMesh())]))
+
+    out = tmp_path / "leaning.erg"
+    diagnostics = model.io.write_esatan_erg(out, name="LEAN", on_diagnostic=lambda _note: None)
+    straightened = [note for note in diagnostics if note.code == "ERG_WRITE_STRAIGHTENED_PRISM"]
+    assert len(straightened) == 1
+
+    cut = next(iter(read(out, "BACK").children))
+    assert isinstance(cut, GeometryGroupCutted)
+    tool = shape(cut.cutters[0], pcc.gmm.TriangularPrism)
+    assert list(tool.p4) == pytest.approx([0.0, 0.0, 1.0])
+
+
+def test_a_right_prism_is_written_without_a_word(tmp_path: Path) -> None:
+    """The mirror: straightening is reported only where it actually happens."""
+    source = tmp_path / "source.erg"
+    source.write_text(f"BEGIN_MODEL M\n{_PAINT}{PLATE_AND_PRISM}\nEND_MODEL\n", encoding="utf-8")
+    diagnostics = read(source).io.write_esatan_erg(
+        tmp_path / "written.erg", name="M", on_diagnostic=lambda _note: None
+    )
+    assert "ERG_WRITE_STRAIGHTENED_PRISM" not in diagnostics.codes()
 
 
 # -- attributes survive ----------------------------------------------------
