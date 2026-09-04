@@ -173,6 +173,52 @@ def test_point_rectangle_uses_corners_one_two_and_four(tmp_path: Path) -> None:
     assert model.get_item("R").primitive.surface_area() == pytest.approx(6.0)
 
 
+def test_rectangle_point4_is_slid_back_onto_the_perpendicular(tmp_path: Path) -> None:
+    """``point4`` fixes the width, not a corner: ESATAN slides it along P1P2.
+
+    Read as a corner instead, this is a 2 x 3.606 parallelogram leaning 56
+    degrees over -- and one of the *same area*, because sliding a corner along
+    the opposite edge does not change it, so only the shape gives it away.
+    ESATAN's own STEP-TAS export of this shape puts point4 at [0, 3, 0].
+    """
+    model, _ = build(
+        tmp_path,
+        "GEOMETRY R;\nR = SHELL_RECTANGLE(point1 = [0, 0, 0], point2 = [2, 0, 0], "
+        "point4 = [2, 3, 0]);",
+    )
+    rectangle = model.get_item("R").primitive
+    assert rectangle.p1 == pytest.approx(np.array([0.0, 0.0, 0.0]))
+    assert rectangle.p2 == pytest.approx(np.array([2.0, 0.0, 0.0]))
+    assert rectangle.p3 == pytest.approx(np.array([0.0, 3.0, 0.0]))
+    assert rectangle.is_valid()
+    assert rectangle.surface_area() == pytest.approx(6.0)
+
+
+def test_quadrilateral_point4_is_dropped_onto_the_plane_of_the_others(tmp_path: Path) -> None:
+    """The four corners are coplanar; ESATAN moves ``point4`` normal to P1P2P3."""
+    model, _ = build(
+        tmp_path,
+        "GEOMETRY Q;\nQ = SHELL_QUADRILATERAL(point1 = [0, 0, 0], point2 = [2, 0, 0], "
+        "point3 = [2, 1, 0], point4 = [0, 1, 0.5]);",
+    )
+    quadrilateral = model.get_item("Q").primitive
+    assert quadrilateral.p4 == pytest.approx(np.array([0.0, 1.0, 0.0]))
+    assert quadrilateral.is_valid()
+    assert quadrilateral.surface_area() == pytest.approx(2.0)
+
+
+def test_a_quadrilateral_whose_first_three_corners_are_collinear_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Collinear corners span no plane, so there is nothing to drop point4 onto."""
+    _, diagnostics = build(
+        tmp_path,
+        "GEOMETRY Q;\nQ = SHELL_QUADRILATERAL(point1 = [0, 0, 0], point2 = [1, 0, 0], "
+        "point3 = [2, 0, 0], point4 = [0, 1, 0]);",
+    )
+    assert "ERG_BAD_PRIMITIVE" in diagnostics.codes()
+
+
 def test_point_disc_takes_centre_axis_and_rim(tmp_path: Path) -> None:
     model, _ = build(
         tmp_path,
@@ -355,6 +401,71 @@ def test_cut_with_sense_minus_one_builds_a_cut_group(tmp_path: Path) -> None:
     assert [target.name for target in cut.targets] == ["P"]
     assert [cutter.name for cutter in cut.cutters] == ["C"]
     assert "ERG_CUTTER_SENSE" not in diagnostics.codes()
+
+
+MIXED_COMPOSITION = """
+GEOMETRY A;
+A = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0);
+GEOMETRY B;
+B = SHELL_SCS_RECTANGLE(xmax = 4.0, ymax = 4.0);
+B = TRANSLATE(object_name = B, x_dist = 4.0);
+GEOMETRY C;
+C = SHELL_SCS_CYLINDER(radius = 0.5, hmin = -1.0, hmax = 1.0, sense = -1);
+C = TRANSLATE(object_name = C, x_dist = 1.0, y_dist = 1.0);
+GEOMETRY X;
+X = A + B - C;
+"""
+
+
+def test_a_combination_and_a_cut_in_one_expression_cut_the_whole_combination(
+    tmp_path: Path,
+) -> None:
+    """``A + B - C`` is one node: the cut takes the combination, not its first term.
+
+    ESATAN reaches this form by adding to an existing cut -- its own
+    documentation writes ``c = a - b; c = c + d;`` back out as ``c = a + d - b``
+    -- and its STEP-TAS export of such a node is a single difference whose base
+    is a compound of every added operand. So both plates are targets, and the
+    cylinder is punched through the one it actually overlaps.
+    """
+    model, diagnostics = build(tmp_path, MIXED_COMPOSITION)
+
+    cut = model.get_cut_group("X")
+    assert isinstance(cut, GeometryGroupCutted)
+    assert [target.name for target in cut.targets] == ["A", "B"]
+    assert [cutter.name for cutter in cut.cutters] == ["C"]
+    # Nothing is left over at the root: an operand that stayed unconsumed would
+    # be attached there instead, which is how this used to fail.
+    assert [child.name for child in model.children] == ["X"]
+
+    # Two 4 x 4 plates less one radius-0.5 hole, against the closed form.
+    area = float(mesh_ops.compute_areas(cut.mesh).sum())
+    assert area == pytest.approx(2 * 4.0 * 4.0 - math.pi * 0.5**2, rel=1e-3)
+    assert not diagnostics.codes()
+
+
+def test_a_mixed_expression_is_split_by_operator_not_by_position(tmp_path: Path) -> None:
+    """ESATAN normalises to all-added-then-all-cut, so position carries nothing."""
+    model, _ = build(
+        tmp_path,
+        MIXED_COMPOSITION.replace("X = A + B - C;", "X = A - C + B;"),
+    )
+    cut = model.get_cut_group("X")
+    assert [target.name for target in cut.targets] == ["A", "B"]
+    assert [cutter.name for cutter in cut.cutters] == ["C"]
+
+
+def test_a_mixed_expression_whose_targets_all_went_missing_is_an_error(
+    tmp_path: Path,
+) -> None:
+    """A cut group with no target is not a shape; the refusal has to be reported."""
+    _, diagnostics = build(
+        tmp_path,
+        "GEOMETRY T;\nT = SHELL_SCS_TORUS(radius = 1.0);\n"
+        "GEOMETRY C;\nC = SHELL_SCS_CYLINDER(radius = 0.5, hmax = 1.0, sense = -1);\n"
+        "GEOMETRY X;\nX = T - C;",
+    )
+    assert "ERG_NO_CUT_TARGET" in diagnostics.codes()
 
 
 CHAINED_CUT = """

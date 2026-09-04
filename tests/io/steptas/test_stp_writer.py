@@ -250,23 +250,27 @@ def test_optical_values_survive_the_specularity_conversion(
 def test_a_cut_survives_with_its_tools(
     feature_round_trip: tuple[Path, GeometryModel, GeometryModel],
 ) -> None:
-    """Two plates cut by five tools between them, all still there afterwards.
+    """Three targets cut by six tools between them, all still there afterwards.
 
     The format removes one solid per difference surface, so a shape cut by
     several becomes a chain of them -- and reading that chain back gives one
     cut group per tool rather than one holding them all.  A group holding two
     would mean the chain had been flattened, which is a different model with
     the same silhouette.
+
+    One of the three targets is a combination rather than a single surface, and
+    it goes through the format the same way: the difference is taken against the
+    compound, so it still arrives back as one cut group with one tool.
     """
     _, original, reread = feature_round_trip
     before, after = items(original), items(reread)
     assert sorted(before) == sorted(after)
     assert cutters(original) == cutters(reread)
-    assert len(cutters(original)) == 5
+    assert len(cutters(original)) == 6
     cuts = [
         child for child in reread.children_recursive() if isinstance(child, GeometryGroupCutted)
     ]
-    assert len(cuts) == 5
+    assert len(cuts) == 6
     assert all(len(cut.cutters) == 1 for cut in cuts)
 
 

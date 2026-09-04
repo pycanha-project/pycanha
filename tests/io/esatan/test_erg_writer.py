@@ -264,6 +264,35 @@ def test_a_cut_survives_with_its_cutters(tmp_path: Path) -> None:
     assert [c.name for c in cut.cutters] == ["C"]
 
 
+def test_a_cut_with_several_targets_survives_as_one_expression(tmp_path: Path) -> None:
+    """A cut group of several targets is written ``A + B - C`` and read back as one.
+
+    The writer always joined the targets with ``+``, so this is the expression it
+    has been emitting all along; the reader used to refuse it, which left pycanha
+    writing a file it could not read. The round trip is what holds the two
+    together.
+    """
+    body = (
+        "GEOMETRY A;\nA = SHELL_SCS_RECTANGLE(xmin = -2.0, xmax = 2.0, ymin = -2.0, "
+        "ymax = 2.0, opt1 = Paint, opt2 = Paint);\n"
+        "GEOMETRY B;\nB = SHELL_SCS_RECTANGLE(xmin = -2.0, xmax = 2.0, ymin = -2.0, "
+        "ymax = 2.0, opt1 = Paint, opt2 = Paint);\n"
+        "B = TRANSLATE(object_name = B, z_dist = 1.0);\n"
+        "GEOMETRY C;\nC = SHELL_SCS_CYLINDER(radius = 0.5, hmin = -1.0, hmax = 1.0, "
+        "sense = -1, opt1 = Paint, opt2 = Paint);\n"
+        "GEOMETRY X;\nX = A + B - C;\nM = X;\n"
+    )
+    first, second = round_trip(tmp_path, body)
+    for model in (first, second):
+        cut = next(iter(model.children))
+        assert isinstance(cut, GeometryGroupCutted)
+        assert [target.name for target in cut.targets] == ["A", "B"]
+        assert [cutter.name for cutter in cut.cutters] == ["C"]
+    assert mesh_ops.compute_areas(second.children[0].mesh).sum() == pytest.approx(
+        float(mesh_ops.compute_areas(first.children[0].mesh).sum()), rel=1e-6
+    )
+
+
 def test_a_cutter_is_written_with_the_sense_that_removes_material(tmp_path: Path) -> None:
     """The format's default keeps what the cutter encloses, which is refused here."""
     body = (

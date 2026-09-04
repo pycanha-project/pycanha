@@ -526,6 +526,53 @@ BOX_CUTTER = SHELL_SCS_BOX(
 GEOMETRY DRILLED;
 DRILLED = CUT_TARGET - CYL_CUTTER - BOX_CUTTER;
 
+/* Combining and cutting in one expression.  The cut takes the whole
+   combination, so the cylinder is punched through the plate it overlaps and
+   the other plate comes through whole.  ESATAN writes this form itself, by
+   adding an operand to a geometry that is already a cut. */
+
+GEOMETRY MIXED_LEFT;
+MIXED_LEFT = SHELL_SCS_RECTANGLE(
+    xmin = -0.30000000,
+    xmax = 0.30000000,
+    ymin = -0.30000000,
+    ymax = 0.30000000,
+    height = 4.00000000,
+    nodes1 = 4,
+    nodes2 = 4,
+    nbase1 = 63000,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY MIXED_RIGHT;
+MIXED_RIGHT = SHELL_SCS_RECTANGLE(
+    xmin = 0.70000000,
+    xmax = 1.30000000,
+    ymin = -0.30000000,
+    ymax = 0.30000000,
+    height = 4.00000000,
+    nodes1 = 4,
+    nodes2 = 4,
+    nbase1 = 63100,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY MIXED_CUTTER;
+MIXED_CUTTER = SHELL_SCS_CYLINDER(
+    radius = 0.08000000,
+    hmin = 3.90000000,
+    hmax = 4.10000000,
+    sense = -1,
+    nbase1 = 63200,
+    ndelta1 = 1,
+    opt1 = Black,
+    opt2 = Black);
+
+GEOMETRY MIXED;
+MIXED = MIXED_LEFT + MIXED_RIGHT - MIXED_CUTTER;
+
 GEOMETRY SOLO;
 SOLO = SINGLE_COMBINATION(geometry = PT_TRIANGLE);
 
@@ -1043,7 +1090,7 @@ BANK = BANK_IMPLICIT + BANK_EXPLICIT + BANK_INACTIVE + BANK_ACTIVITIES + BANK_SI
 
 /* ------------------------------------------------------------------ */
 
-FEATURES = STATIC_ASM + KINEMATIC_ASM + SOLO + ATTRS + SPLIT_DELTA + AUTO_NUM +
+FEATURES = STATIC_ASM + KINEMATIC_ASM + SOLO + MIXED + ATTRS + SPLIT_DELTA + AUTO_NUM +
     MOVED + CLEARED + DROPPED_ATTRS + INSULATED + LATE_CONE + PT_ARRAY + HOLED + FACES +
     BANK;
 

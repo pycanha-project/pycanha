@@ -1054,30 +1054,46 @@ class _Builder:
     # -- composition -------------------------------------------------------
 
     def _assign_composition(self, name: str, expr: ast.BinOp, line: int) -> None:
+        """Build one ``a + b - c`` expression: everything added, less everything cut.
+
+        The two operators may be mixed, and a mixed expression cuts the *whole*
+        combination rather than only its first operand -- ESATAN's own
+        documentation reaches that form by adding to an existing cut, writing
+        ``c = a - b; c = c + d;`` back out as ``c = a + d - b``.  So the
+        operands are split by their operator and not by their position.
+        """
         terms, operators = _flatten(expr)
-        if "+" in operators and "-" in operators:
-            self.diagnostics.error(
-                "ERG_MIXED_COMPOSITION",
-                f"'{name}' mixes combination and cutting in one expression, which the format "
-                "does not allow; the statement was skipped",
-                line=line,
-            )
-            return
+        # The leading term has no operator of its own; it is always combined.
+        signs = ["+", *operators]
         # A term that cannot be resolved -- most often a primitive this reader
         # skipped -- must not take its siblings down with it: the surviving
         # operands are still combined, and only the missing one is reported.
-        pairs = [(term, self._geometry_operand(term, name, line)) for term in terms]
-        kept = [(term, child) for term, child in pairs if child is not None]
+        triples = [
+            (sign, term, self._geometry_operand(term, name, line))
+            for sign, term in zip(signs, terms, strict=True)
+        ]
+        kept = [(sign, term, child) for sign, term, child in triples if child is not None]
         if not kept:
             return
-        for term, _ in kept:
+        for _, term, _child in kept:
             if isinstance(term, ast.Ref):
                 self.consumed.add(term.name)
-        resolved = [child for _, child in kept]
-        if operators[0] == "+":
-            self._combine(name, resolved, line)
-        else:
-            self._cut(name, resolved, [term for term, _ in kept], line)
+        targets = [child for sign, _, child in kept if sign == "+"]
+        cutters = [(term, child) for sign, term, child in kept if sign == "-"]
+        if not cutters:
+            self._combine(name, targets, line)
+            return
+        if not targets:
+            # Every added operand went missing, so there is nothing left for the
+            # cutters to act on and a cut group would be registered with no
+            # target at all.  The reason each one went is already reported.
+            self.diagnostics.error(
+                "ERG_NO_CUT_TARGET",
+                f"'{name}' has no geometry left to cut; the statement was skipped",
+                line=line,
+            )
+            return
+        self._cut(name, targets, cutters, line)
 
     def _geometry_operand(
         self, expr: ast.Expr, owner: str, line: int
@@ -1133,14 +1149,18 @@ class _Builder:
     def _cut(
         self,
         name: str,
-        resolved: Sequence[GeometryItem | GeometryGroup | GeometryGroupCutted],
-        terms: Sequence[ast.Expr],
+        targets: Sequence[GeometryItem | GeometryGroup | GeometryGroupCutted],
+        candidates: Sequence[tuple[ast.Expr, GeometryItem | GeometryGroup | GeometryGroupCutted]],
         line: int,
     ) -> None:
-        """Build a cut group, rejecting the cutter modes that are not representable."""
-        target, *candidates = resolved
+        """Build a cut group, rejecting the cutter modes that are not representable.
+
+        Every added operand is a target: the cut takes the combination, and a
+        cut group holds the several targets that expresses directly, so the
+        expression survives a round trip through the writer unchanged.
+        """
         cutters: list[GeometryItem] = []
-        for candidate, term in zip(candidates, terms[1:], strict=True):
+        for term, candidate in candidates:
             cutter_name = term.name if isinstance(term, ast.Ref) else "<expression>"
             # A box arrives here as its six faces and a prism as its three walls;
             # a group cannot cut, so it is re-read as the closed solid the same
@@ -1177,9 +1197,9 @@ class _Builder:
                 continue
             cutters.append(cutter)
         if not cutters:
-            self._register(name, GeometryGroup(name, [target]))
+            self._combine(name, targets, line)
             return
-        self._register(name, GeometryGroupCutted(name, [target], cutters))
+        self._register(name, GeometryGroupCutted(name, list(targets), cutters))
 
     def _solid_form(self, name: str, line: int) -> GeometryItem | None:
         """Re-read a decomposed shape as a closed solid, since a group cannot cut.

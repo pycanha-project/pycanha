@@ -465,18 +465,39 @@ def _triangle(args: Arguments, notes: list[Note]) -> Primitive:
 
 
 def _rectangle(args: Arguments, notes: list[Note]) -> Primitive:
-    """The three given corners are named 1, 2 and **4** -- corner 3 is implied."""
+    """The three given corners are named 1, 2 and **4** -- corner 3 is implied.
+
+    ``point4`` fixes the width only: ESATAN slides it parallel to P1P2 until
+    P1P4 is perpendicular to P1P2, so any component along P1P2 carries no
+    meaning.  Taken literally the corner would make a parallelogram instead --
+    of the same area, since sliding a corner along the opposite edge does not
+    change it, so only the shape and position give the mistake away.
+    """
     _ = notes
-    return Rectangle(args.point("point1"), args.point("point2"), args.point("point4"))
+    origin = args.point("point1")
+    length = args.point("point2")
+    width = _perpendicular(args.point("point4") - origin, length - origin)
+    return Rectangle(origin, length, origin + width)
 
 
 def _quadrilateral(args: Arguments, notes: list[Note]) -> Primitive:
+    """Four coplanar corners; ESATAN drops ``point4`` onto the plane of the rest."""
     _ = notes
+    point1 = args.point("point1")
+    point2 = args.point("point2")
+    point3 = args.point("point3")
+    normal = np.cross(point2 - point1, point3 - point1)
+    if float(np.linalg.norm(normal)) == 0.0:
+        # The plane to drop point4 onto is the one the first three corners span,
+        # so collinear ones leave nothing to project against.  ESATAN refuses
+        # the same case at definition time.
+        msg = "points 1, 2 and 3 of a quadrilateral are collinear and span no plane"
+        raise EvaluationError(msg)
     return Quadrilateral(
-        args.point("point1"),
-        args.point("point2"),
-        args.point("point3"),
-        args.point("point4"),
+        point1,
+        point2,
+        point3,
+        point1 + _perpendicular(args.point("point4") - point1, normal),
     )
 
 

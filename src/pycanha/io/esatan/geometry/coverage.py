@@ -121,6 +121,9 @@ _INVENTORY: Mapping[str, _Entry] = {
     "cut with a box": _Entry(
         "structure", "re-read as a closed solid when it appears after a -", status="supported"
     ),
+    "combine and cut in one expression": _Entry(
+        "structure", "the cut takes the whole combination", status="supported"
+    ),
     "SINGLE_COMBINATION": _Entry("structure", status="supported"),
     "ROTATE": _Entry(
         "transform",
@@ -261,6 +264,10 @@ _PATTERNS: Mapping[str, str] = {
         r"(?s)\b(\w+)\s*=\s*[\w.]+\s*\(\s*(?:[^()]*?,)?\s*sense\s*=\s*1\b.*?-\s*\1\b"
     ),
     "cut with a planar cutter": r"SHELL_HALF_SPACE",
+    # Both operators in one assignment, which says the cut applies to the
+    # combination.  Matched from the `=` to the statement's semicolon so that a
+    # `+` and a `-` in two neighbouring statements cannot pass for one.
+    "combine and cut in one expression": r"=[^;=]*\+[^;=]*-[^;=]*;",
     # The same shape either way, and only the subtraction says which reading is
     # meant, so the box has to be found as the operand of one.
     "cut with a box": r"(?s)\b(\w+)\s*=\s*SHELL_(?:SCS_)?BOX\s*\(.*?-\s*\1\b",
