@@ -133,6 +133,24 @@ Model structure
    :special-members: __init__
    :exclude-members: __dict__, __weakref__, __module__
 
+Face-pair geometry
+------------------
+
+Exact area and centroid of each face pair of a primitive under its thermal
+mesh, from the primitive's definition rather than its triangulation. The
+conduction builder takes its thermal capacities from these areas.
+
+.. autoclass:: FacePairGeometryEvaluator
+   :members:
+   :special-members: __init__, __call__
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: FacePairGeometry
+   :members:
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autofunction:: face_pair_geometry
+
 Transformations
 ---------------
 

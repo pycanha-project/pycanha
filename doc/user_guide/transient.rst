@@ -24,6 +24,31 @@ Setting up the integration
 ``output_stride`` sets how often results are stored. A large stride keeps the
 output small when the timestep is short.
 
+Factorisation
+-------------
+
+TSCNRLDS takes the same ``engine`` and ``solver_type`` as SSLU (see
+:doc:`steady_state`), except ``LDLT``: the transient matrix is factorised with
+LU. The default factorises every changed matrix completely, so every step is
+exact.
+
+Because the matrix changes little from one step to the next, an iterative step
+preconditioned by the previous factorisation saves most of the work per step.
+It needs the ``ONE_LEVEL`` or ``MIN_DEGREE`` type (MKL only):
+
+.. code-block:: python
+
+   from pycanha.solvers import DirectSolverType
+
+   solver = tm.solvers.tscnrlds
+   solver.solver_type = DirectSolverType.MIN_DEGREE
+   solver.pardiso_iparm_3 = 61     # iterate to a relative residual of 1e-6
+   solver.initialize()
+
+``pardiso_iparm_3 = 10 * L + 1`` stops the iteration at a relative residual of
+:math:`10^{-L}`, and that residual stays in every step. ``0`` (the default)
+switches the iteration off.
+
 Initial conditions
 ------------------
 

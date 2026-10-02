@@ -28,49 +28,37 @@ Lx, Ly = 1.0, 1.0  # plate dimensions [m]
 t_plate = 1e-2  # thickness [m]
 k_Al = 180.0  # thermal conductivity [W/(m·K)]
 
-# Mesh
+# Mesh: node i + (j - 1) * Nx sits at column i, row j (1-based).
 Nx, Ny = 10, 10
+i, j = np.meshgrid(np.arange(1, Nx + 1), np.arange(1, Ny + 1))
+numbers = (i + (j - 1) * Nx).astype(np.int32)
+edge = (i == 1) | (j == 1)
 
 tm = pc.ThermalModel(name="AluPlate")
 tmm = tm.tmm
 
-for j in range(1, Ny + 1):
-    for i in range(1, Nx + 1):
-        node_num = i + (j - 1) * Nx
-        node = pm.Node(node_num)
-        if i == 1 or j == 1:
-            node.type = pm.NodeType.BOUNDARY
-        tmm.add_node(node)
+# One call per node type, straight from the arrays. Boundary nodes carry their
+# fixed temperature: 300 K on the left edge, 100 K on the bottom one.
+tmm.add_nodes(numbers[~edge], type=pm.NodeType.DIFFUSIVE)
+tmm.add_nodes(
+    numbers[edge],
+    type=pm.NodeType.BOUNDARY,
+    T=np.where(i == 1, 300.0, 100.0)[edge],
+)
 
 # %%
 # Conductive couplings
 # --------------------
+#
+# Every horizontal and vertical neighbour pair, in one call. A call sorted by
+# (smaller node, larger node) is appended as it is; any other order is sorted
+# on the way in.
 
 coupling_value = k_Al * t_plate / (Lx / (Nx - 1))
 
-# Horizontal
-for j in range(1, Ny + 1):
-    for i in range(1, Nx):
-        tmm.conductive_couplings.add_coupling(
-            i + (j - 1) * Nx, (i + 1) + (j - 1) * Nx, coupling_value
-        )
-
-# Vertical
-for j in range(1, Ny):
-    for i in range(1, Nx + 1):
-        tmm.conductive_couplings.add_coupling(i + (j - 1) * Nx, i + j * Nx, coupling_value)
-
-# %%
-# Boundary temperatures
-# ---------------------
-
-for j in range(1, Ny + 1):
-    for i in range(1, Nx + 1):
-        node_num = i + (j - 1) * Nx
-        if i == 1:
-            tmm.nodes.set_T(node_num, 300.0)
-        elif j == 1:
-            tmm.nodes.set_T(node_num, 100.0)
+node_1 = np.concatenate([numbers[:, :-1].ravel(), numbers[:-1, :].ravel()])
+node_2 = np.concatenate([numbers[:, 1:].ravel(), numbers[1:, :].ravel()])
+tmm.conductive_couplings.add_couplings(node_1, node_2, np.full(node_1.size, coupling_value))
 
 # %%
 # Solve and plot
@@ -80,10 +68,7 @@ solver = tm.solvers.sslu
 solver.initialize()
 solver.solve()
 
-temp_matrix = np.zeros((Ny, Nx))
-for j in range(1, Ny + 1):
-    for i in range(1, Nx + 1):
-        temp_matrix[j - 1, i - 1] = tmm.nodes.get_T(i + (j - 1) * Nx)
+temp_matrix = tmm.nodes.get_values(pm.NodeAttribute.T, numbers.ravel()).reshape(Ny, Nx)
 
 plt.figure(figsize=(6, 5))
 plt.imshow(

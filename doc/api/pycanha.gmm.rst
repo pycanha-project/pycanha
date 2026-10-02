@@ -12,8 +12,11 @@ Several names here are re-exported from :mod:`pycanha_core.gmm` unchanged:
 :class:`~pycanha_core.gmm.OpticalMaterial`,
 :class:`~pycanha_core.gmm.BulkMaterial`, :class:`~pycanha_core.gmm.Color`,
 :class:`~pycanha_core.gmm.MeshOptions`, :class:`~pycanha_core.gmm.UvMesher`,
-:class:`~pycanha_core.gmm.Geometry`, :class:`~pycanha_core.gmm.TriMeshD` and
-:class:`~pycanha_core.gmm.TriMeshF`. They are documented on the
+:class:`~pycanha_core.gmm.Geometry`, :class:`~pycanha_core.gmm.TriMeshD`,
+:class:`~pycanha_core.gmm.TriMeshF`,
+:class:`~pycanha_core.gmm.FacePairGeometryEvaluator`,
+:class:`~pycanha_core.gmm.FacePairGeometry` and
+:func:`~pycanha_core.gmm.face_pair_geometry`. They are documented on the
 :doc:`pycanha_core.gmm` page.
 
 Model
