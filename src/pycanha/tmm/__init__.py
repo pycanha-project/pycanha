@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pycanha_core.tmm import (
+        BulkReport,
+        CouplingMerge,
         DataModel,
         DataModelAttribute,
         DataModelStore,
@@ -17,6 +19,7 @@ if TYPE_CHECKING:
         LookupTable1D,
         LookupTableVec1D,
         NamedConstants,
+        NodeAttribute,
         SparseTimeSeries,
         TemperatureVariable,
         TimeVariable,
@@ -35,9 +38,11 @@ if TYPE_CHECKING:
     from .thermalnetwork import ThermalNetwork
 
 __all__ = [
+    "BulkReport",
     "ConductiveCouplings",
     "Coupling",
     "CouplingMatrices",
+    "CouplingMerge",
     "Couplings",
     "DataModel",
     "DataModelAttribute",
@@ -52,6 +57,7 @@ __all__ = [
     "LookupTableVec1D",
     "NamedConstants",
     "Node",
+    "NodeAttribute",
     "NodeType",
     "Nodes",
     "RadiativeCouplings",
@@ -65,10 +71,12 @@ __all__ = [
 ]
 
 # Types re-exported verbatim from the compiled pycanha_core.tmm module
-# (time-dependent variables, lookup tables, interpolation enums, and the
-# transient ESATAN reader).
+# (time-dependent variables, lookup tables, interpolation enums, the
+# transient ESATAN reader, and the bulk-call report and selectors).
 _CORE_TMM_EXPORTS = frozenset(
     {
+        "BulkReport",
+        "CouplingMerge",
         "DataModel",
         "DataModelAttribute",
         "DataModelStore",
@@ -81,6 +89,7 @@ _CORE_TMM_EXPORTS = frozenset(
         "LookupTable1D",
         "LookupTableVec1D",
         "NamedConstants",
+        "NodeAttribute",
         "SparseTimeSeries",
         "TemperatureVariable",
         "TimeVariable",

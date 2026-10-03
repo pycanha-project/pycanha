@@ -10,11 +10,18 @@ has to import ``pycanha_core`` directly::
     report = model.build_tmm_from_gmm()
     print(pc.conduction.summary(report))
 
-The builder walks the geometry model and, for every conductively active face
-face that carries a node number, creates one thermal node plus the in-plane and
-through-thickness conductors those faces imply.  Whether a side takes part is
+The builder walks the geometry model and, for every active face that carries a
+node number, creates one thermal node plus the in-plane and through-thickness
+conductors those faces imply.  Whether a side conducts is
 ``ThermalMesh.conductive_active_side``, which is independent of the radiative
 one: a surface can conduct without radiating and the other way round.
+
+Every geometry item builds its own :class:`NetworkPart` from its definition --
+exact capacities, never a triangulation unless the item is cut -- and the parts
+are written with the bulk calls.  :func:`build_network_part` and
+:func:`commit_network_parts` expose the two steps.  The node area ``a`` is the
+triangulated one and is not set by the build: call :func:`assign_node_areas`
+when it is needed.
 
 Radiative couplings, parameters, formulas and thermal data are left untouched,
 and the build refuses to run on a tmm that already holds nodes or conductive
@@ -40,10 +47,15 @@ if TYPE_CHECKING:
         DiagnosticCode,
         FacePairLink,
         MeridianProfile,
+        NetworkPart,
         TmmBuildOptions,
         TmmBuildReport,
+        assign_node_areas,
+        build_network_part,
         build_tmm_from_gmm,
+        commit_network_parts,
         diagnostic_code_name,
+        for_each_intra_primitive_link,
         intra_primitive_links,
         profile_of,
         through_thickness_conductance,
@@ -54,11 +66,16 @@ __all__ = [
     "DiagnosticCode",
     "FacePairLink",
     "MeridianProfile",
+    "NetworkPart",
     "TmmBuildOptions",
     "TmmBuildReport",
+    "assign_node_areas",
+    "build_network_part",
     "build_tmm_from_gmm",
+    "commit_network_parts",
     "diagnostic_code_name",
     "diagnostics",
+    "for_each_intra_primitive_link",
     "intra_primitive_links",
     "profile_of",
     "summary",
@@ -74,10 +91,11 @@ _CORE_CONDUCTION_EXPORTS = frozenset(__all__) - {"diagnostics", "summary"}
 #: model it costs.  ``INFO`` is a deliberate choice of the model's or of the
 #: builder's -- an inactive side, a cutter-only primitive, the near-axis
 #: conductance form.  ``WARNING`` is a conductively active side that ends up
-#: contributing less than it asked to.  ``UNSUPPORTED`` is geometry the builder
-#: has no parametrisation for at all.
+#: contributing less than it asked to, including the in-plane conductors a cut
+#: removes and the nodes it leaves uncoupled.
 _SEVERITIES: dict[str, Severity] = {
-    "CutGeometrySkipped": Severity.UNSUPPORTED,
+    "CutFacePairs": Severity.WARNING,
+    "UncoupledNodes": Severity.WARNING,
     "UnmeshedPrimitive": Severity.INFO,
     "InactiveSideSkipped": Severity.INFO,
     "DiscreteLinkFallback": Severity.INFO,
@@ -115,15 +133,23 @@ def summary(report: TmmBuildReport) -> str:
 
     Grouped by code with counts: a model that hits the same approximation on
     every primitive should read as one line, not as thousands of identical
-    ones.
+    ones.  A build that cut geometry adds a line with what the cuts did to the
+    network.
     """
     counted = DiagnosticCollector(on_diagnostic=lambda _: None)
     for item in diagnostics(report):
         counted.add(item.severity, item.code, item.message, source=item.source)
+    cuts = ""
+    if report.face_pairs_cut or report.face_pairs_removed:
+        cuts = (
+            f"cuts: {report.face_pairs_cut} face pairs cut, "
+            f"{report.face_pairs_removed} removed, "
+            f"{report.links_removed} in-plane conductors removed\n"
+        )
     return (
         f"{report.nodes_created} nodes, {report.conductors_created} conductors "
         f"from {report.items_processed} items ({report.items_skipped} skipped)\n"
-        f"{counted.summary()}"
+        f"{cuts}{counted.summary()}"
     )
 
 

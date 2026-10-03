@@ -52,6 +52,15 @@ UvMesher = pcc.gmm.UvMesher
 
 is_closed_solid = pcc.gmm.is_closed_solid
 
+#: Exact area and area-weighted centroid of one face pair.
+FacePairGeometry = pcc.gmm.FacePairGeometry
+
+#: The exact geometry of every face pair of a primitive under its thermal mesh,
+#: from the primitive's definition rather than its triangulation.
+FacePairGeometryEvaluator = pcc.gmm.FacePairGeometryEvaluator
+
+face_pair_geometry = pcc.gmm.face_pair_geometry
+
 __all__ = [
     "ActiveSide",
     "BulkMaterial",
@@ -61,6 +70,8 @@ __all__ = [
     "Cube",
     "Cylinder",
     "Disc",
+    "FacePairGeometry",
+    "FacePairGeometryEvaluator",
     "Geometry",
     "GeometryGroup",
     "GeometryGroupCutted",
@@ -80,6 +91,7 @@ __all__ = [
     "UvMesher",
     "active_side",
     "active_sides",
+    "face_pair_geometry",
     "is_closed_solid",
     "mesh",
     "ops",

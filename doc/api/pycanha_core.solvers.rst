@@ -5,6 +5,30 @@
 
 The C++ solver base classes.
 
+Solver options
+--------------
+
+.. autodata:: MKL_ENABLED
+
+.. autofunction:: default_solver_engine
+
+.. autofunction:: resolve_solver_type
+
+.. autoclass:: SolverEngine
+   :members:
+   :undoc-members:
+
+.. autoclass:: DirectSolverType
+   :members:
+   :undoc-members:
+
+.. autoclass:: IterativeSolverType
+   :members:
+   :undoc-members:
+
+Solvers
+-------
+
 .. autoclass:: Solver
    :members:
    :special-members: __init__
@@ -35,6 +59,12 @@ The C++ solver base classes.
    :exclude-members: __dict__, __weakref__, __module__
 
 .. autoclass:: SSLU
+   :members:
+   :special-members: __init__
+   :show-inheritance:
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: SSLU_CGS
    :members:
    :special-members: __init__
    :show-inheritance:

@@ -3,8 +3,8 @@ Generating a TMM from the geometry
 
 :meth:`~pycanha.ThermalModel.build_tmm_from_gmm` walks the GMM and builds the
 conductive part of the TMM from it. It creates one node per face that carries a
-node number on a conductive active side, and the conductive couplings those
-faces imply.
+node number on an active side, and the conductive couplings the conductively
+active faces imply.
 
 .. code-block:: python
 
@@ -46,6 +46,51 @@ So the ESATAN "Radiative" surface -- radiative on both sides, conductive on
 neither -- comes out as nodes with capacitance and no conductors, and a side
 selected by neither is dropped entirely.
 
+Every node is diffusive. To fix the temperature of some of them, turn them into
+boundary nodes after the build:
+
+.. code-block:: python
+
+   tm.tmm.nodes.set_types([100, 101, 102], pc.tmm.NodeType.BOUNDARY)
+
+Capacity, position and area
+---------------------------
+
+Each face contributes :math:`\rho \, c \, t \, A` to its node's capacity,
+with :math:`A` the exact area of the face for the primitive's definition -- not
+the area of its triangulation -- so curved primitives get exact capacities.
+The node position (``fx``, ``fy``, ``fz``) is the area-weighted centroid of its
+faces. Nothing is triangulated for geometry that is not cut, which is what
+keeps the build fast on large models.
+
+The node area ``a`` is not set by the build. It is the triangulated area, and
+filling it triangulates the geometry, so it is a separate call:
+
+.. code-block:: python
+
+   pc.conduction.assign_node_areas(tm)
+
+The exact face areas are available on their own through
+:class:`~pycanha.gmm.FacePairGeometryEvaluator`:
+
+.. code-block:: python
+
+   evaluator = pc.gmm.FacePairGeometryEvaluator(item.primitive, item.thermal_mesh)
+   areas, centroids = evaluator.all()     # one entry per face pair, direction 1 fastest
+
+Cut geometry
+------------
+
+Geometry inside a cut group (``panel - hole``) gets its nodes too. The faces a
+cut reaches keep the fraction of their area that survives: their capacity and
+through-thickness coupling are scaled by it, and a face cut away completely
+contributes nothing. The in-plane couplings that touch a cut face are removed,
+so heat does not cross the band of cut faces in the plane until a correction
+for them exists. The build reports both with a ``CutFacePairs`` warning, and
+with ``UncoupledNodes`` when a node ends up with no conductive coupling at all,
+which makes a steady-state solve singular unless something else (a radiative
+coupling) attaches it.
+
 Options
 -------
 
@@ -76,6 +121,9 @@ Reading the report
    report.items_processed
    report.items_skipped
    report.face_pair_links_computed
+   report.face_pairs_cut          # partly cut away
+   report.face_pairs_removed      # cut away completely
+   report.links_removed           # in-plane couplings removed by cuts
 
 Anything the build had to skip or approximate is reported in the same form as
 the file readers, so code that branches on a code works for both:
@@ -88,3 +136,19 @@ the file readers, so code that branches on a code works for both:
    print(pc.conduction.summary(report))
 
 The severities are the ones described in :doc:`/import_export/index`.
+
+Building one item at a time
+---------------------------
+
+The build is two steps, available separately: every geometry item builds its
+own :class:`~pycanha_core.conduction.NetworkPart` -- its nodes, capacities,
+positions and couplings as read-only arrays -- and the parts are merged and
+written into the TMM. Use them to inspect what one item contributes:
+
+.. code-block:: python
+
+   part = pc.conduction.build_network_part(item, pc.gmm.CoordinateTransformation())
+   part.node_numbers, part.thermal_capacity, part.conductance
+
+   tmm = pc.tmm.ThermalMathematicalModel("parts")
+   pc.conduction.commit_network_parts(tmm, [part])

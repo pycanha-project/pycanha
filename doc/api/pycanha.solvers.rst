@@ -16,6 +16,15 @@ documented on the :doc:`pycanha_core.solvers` page:
 * :class:`~pycanha_core.solvers.TSCN`
 * :class:`~pycanha_core.solvers.TSCNRL`
 
+So are the solver options, chosen per solver with ``engine`` and
+``solver_type`` (see :doc:`/user_guide/steady_state`):
+:class:`~pycanha_core.solvers.SolverEngine`,
+:class:`~pycanha_core.solvers.DirectSolverType`,
+:class:`~pycanha_core.solvers.IterativeSolverType`,
+:data:`~pycanha_core.solvers.MKL_ENABLED`,
+:func:`~pycanha_core.solvers.default_solver_engine` and
+:func:`~pycanha_core.solvers.resolve_solver_type`.
+
 Steady-state solvers
 --------------------
 
@@ -23,6 +32,12 @@ Steady-state solvers
    :members:
    :show-inheritance:
    :inherited-members: pycanha_core.solvers.SSLU
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: SSLU_CGS
+   :members:
+   :show-inheritance:
+   :inherited-members: pycanha_core.solvers.SSLU_CGS
    :exclude-members: __dict__, __weakref__, __module__
 
 Transient solvers

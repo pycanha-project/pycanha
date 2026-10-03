@@ -53,6 +53,24 @@ Couplings
    :special-members: __init__
    :exclude-members: __dict__, __weakref__, __module__
 
+Bulk calls
+----------
+
+``add_nodes``, ``add_couplings`` and the bulk ``get_values`` / ``set_values``
+take numpy arrays and return a :class:`BulkReport`.
+
+.. autoclass:: BulkReport
+   :members:
+   :exclude-members: __dict__, __weakref__, __module__
+
+.. autoclass:: CouplingMerge
+   :members:
+   :undoc-members:
+
+.. autoclass:: NodeAttribute
+   :members:
+   :undoc-members:
+
 Network and model
 -----------------
 

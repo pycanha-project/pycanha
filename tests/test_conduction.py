@@ -154,3 +154,50 @@ def test_a_summary_counts_repeats_rather_than_repeating_them() -> None:
 def test_a_clean_build_says_so() -> None:
     _, report = built(plate())
     assert "no diagnostics" in pc.conduction.summary(report)
+
+
+# -- what 0.22 changed in the build -------------------------------------------
+
+
+def test_the_build_leaves_the_node_area_to_assign_node_areas() -> None:
+    model, _ = built(plate())
+    nodes = model.tmm.nodes
+    # Capacities come from the exact face areas; the area attribute is not set.
+    assert nodes.get_C(100) == pytest.approx(2700.0 * 900.0 * 0.002 * 0.25)
+    assert nodes.get_a(100) == 0.0
+    report = pc.conduction.assign_node_areas(model)
+    assert report.rejected == 0
+    assert nodes.get_a(100) == pytest.approx(0.25)
+
+
+def test_a_cut_item_is_built_and_says_what_the_cut_removed() -> None:
+    model = pc.ThermalModel()
+    panel = GeometryItem("P", Rectangle([0, 0, 0], [1, 0, 0], [0, 1, 0]), plate())
+    # A cylinder of radius 0.3 on the z axis takes a quarter disc out of the
+    # face pair at the origin corner.
+    hole = GeometryItem(
+        "hole",
+        pc.gmm.Cylinder((0, 0, -1), (0, 0, 1), (0.3, 0, -1), 0.3, 0.0, 6.283185307179586),
+        ThermalMesh(),
+    )
+    model.gmm.add(panel - hole)
+    report = model.build_tmm_from_gmm()
+    assert report.nodes_created == 8
+    assert report.face_pairs_cut == 1
+    assert report.face_pairs_removed == 0
+    assert report.links_removed > 0
+
+    codes = {item.code: item.severity for item in pc.conduction.diagnostics(report)}
+    assert codes["CutFacePairs"] is Severity.WARNING
+    text = pc.conduction.summary(report)
+    assert f"cuts: 1 face pairs cut, 0 removed, {report.links_removed} in-plane" in text
+
+    # The cut face pair keeps the area that survives, so less capacity.
+    full = 2700.0 * 900.0 * 0.002 * 0.25
+    assert model.tmm.nodes.get_C(101) == pytest.approx(full)
+    assert model.tmm.nodes.get_C(100) < full
+
+
+def test_a_clean_build_has_no_cut_line() -> None:
+    _, report = built(plate())
+    assert "cuts:" not in pc.conduction.summary(report)

@@ -6,8 +6,10 @@
 Nodes, couplings and the containers that hold them. See
 :doc:`/user_guide/model_construction`.
 
-:class:`~pycanha_core.tmm.CouplingMatrices` is re-exported from
-:mod:`pycanha_core.tmm` unchanged and is documented on the
+:class:`~pycanha_core.tmm.CouplingMatrices` and the types of the bulk calls --
+:class:`~pycanha_core.tmm.BulkReport`, :class:`~pycanha_core.tmm.CouplingMerge`
+and :class:`~pycanha_core.tmm.NodeAttribute` -- are re-exported from
+:mod:`pycanha_core.tmm` unchanged and are documented on the
 :doc:`pycanha_core.tmm` page.
 
 Model container
