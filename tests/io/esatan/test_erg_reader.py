@@ -575,7 +575,150 @@ def test_box_faces_point_outwards(tmp_path: Path) -> None:
         assert float(np.dot(normal, outward)) > 0.0
 
 
-# -- transformations -------------------------------------------------------
+def _node_centres(model: GeometryModel) -> dict[int, np.ndarray]:
+    """Area-weighted centre of the triangles of each node, both sides."""
+    mesh = model.mesh
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    triangles = np.asarray(mesh.triangles, dtype=np.int64)
+    face_ids = np.asarray(mesh.face_ids, dtype=np.int64)
+    numbers = np.asarray(mesh.node_numbers)
+    sums: dict[int, np.ndarray] = {}
+    areas: dict[int, float] = {}
+    for tri, face in zip(triangles, face_ids, strict=True):
+        a, b, c = vertices[tri]
+        area = 0.5 * float(np.linalg.norm(np.cross(b - a, c - a)))
+        for side in (0, 1):
+            node = int(numbers[face - face % 2 + side])
+            sums[node] = sums.get(node, np.zeros(3)) + area * (a + b + c) / 3.0
+            areas[node] = areas.get(node, 0.0) + area
+    return {node: sums[node] / areas[node] for node in sums}
+
+
+_BOX_SHELL = (
+    "OPTICAL BLK;\nBLK = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];\n"
+    "BULK AL;\nDEFINE_BULK (bulk = AL, density = 2700.0, sp_heat = 900.0, "
+    'type = "Isotropic", cond = 150.0);\n'
+)
+_BOX_ATTRS = "opt1 = BLK, opt2 = BLK, bulk = AL, thick = 1.0e-3"
+
+
+def test_box_faces_are_numbered_in_esatan_order(tmp_path: Path) -> None:
+    # Node positions ESATAN-TMS 2026 writes for this box (NODES.data FX, FY, FZ,
+    # off the surface by half the thickness): faces w = 1, v = 0, u = 1, v = 1,
+    # u = 0, w = 0, with u, v, w the edges to point2, point3 and point4.
+    model, diagnostics = build(
+        tmp_path,
+        _BOX_SHELL + "GEOMETRY B;\nB = SHELL_BOX(point1 = [3.0, 0.0, 0.0], "
+        "point2 = [4.0, 0.0, 0.0], point3 = [3.0, 1.0, 0.0], point4 = [3.0, 0.0, 1.0], "
+        f"nbase1 = 3001, nbase2 = 3101, {_BOX_ATTRS}, nodes1 = 1, nodes2 = 1, nodes3 = 1);",
+    )
+    esatan = {
+        3001: (3.5, 0.5, 1.0),
+        3002: (3.5, 0.0, 0.5),
+        3003: (4.0, 0.5, 0.5),
+        3004: (3.5, 1.0, 0.5),
+        3005: (3.0, 0.5, 0.5),
+        3006: (3.5, 0.5, 0.0),
+    }
+    centres = _node_centres(model)
+    for node, point in esatan.items():
+        assert centres[node] == pytest.approx(point, abs=1e-3), node
+        assert centres[node + 100] == pytest.approx(point, abs=1e-3), node + 100
+    assert "ERG_BOX_NODE_ORDER" not in diagnostics.codes()
+
+
+def test_meshed_box_cells_are_numbered_in_esatan_order(tmp_path: Path) -> None:
+    # A box meshed 2 x 3 x 2 with ratios 3, 2 and 1.5: on the faces v = 1, u = 0
+    # and w = 0 one direction runs backwards (-u, -v, -v), the small cells
+    # staying at the box origin. Positions from ESATAN-TMS 2026's NODES.data.
+    model, _ = build(
+        tmp_path,
+        _BOX_SHELL + "GEOMETRY BXR;\nBXR = SHELL_BOX(point1 = [2.0, 0.0, 0.0], "
+        "point2 = [3.0, 0.0, 0.0], point3 = [2.0, 1.5, 0.0], point4 = [2.0, 0.0, 1.0], "
+        f"nbase1 = 6001, nbase2 = 7001, {_BOX_ATTRS}, nodes1 = 2, ratio1 = 3.0, "
+        "nodes2 = 3, ratio2 = 2.0, nodes3 = 2, ratio3 = 1.5);",
+    )
+    y = (0.107143, 0.428571, 1.07143)
+    esatan = {
+        6001: (2.125, y[0], 1.0),
+        6002: (2.625, y[0], 1.0),
+        6003: (2.125, y[1], 1.0),
+        6004: (2.625, y[1], 1.0),
+        6005: (2.125, y[2], 1.0),
+        6006: (2.625, y[2], 1.0),
+        6007: (2.125, 0.0, 0.2),
+        6008: (2.625, 0.0, 0.2),
+        6009: (2.125, 0.0, 0.7),
+        6010: (2.625, 0.0, 0.7),
+        6011: (3.0, y[0], 0.2),
+        6012: (3.0, y[1], 0.2),
+        6013: (3.0, y[2], 0.2),
+        6014: (3.0, y[0], 0.7),
+        6015: (3.0, y[1], 0.7),
+        6016: (3.0, y[2], 0.7),
+        6017: (2.625, 1.5, 0.2),
+        6018: (2.125, 1.5, 0.2),
+        6019: (2.625, 1.5, 0.7),
+        6020: (2.125, 1.5, 0.7),
+        6021: (2.0, y[2], 0.2),
+        6022: (2.0, y[1], 0.2),
+        6023: (2.0, y[0], 0.2),
+        6024: (2.0, y[2], 0.7),
+        6025: (2.0, y[1], 0.7),
+        6026: (2.0, y[0], 0.7),
+        6027: (2.125, y[2], 0.0),
+        6028: (2.625, y[2], 0.0),
+        6029: (2.125, y[1], 0.0),
+        6030: (2.625, y[1], 0.0),
+        6031: (2.125, y[0], 0.0),
+        6032: (2.625, y[0], 0.0),
+    }
+    centres = _node_centres(model)
+    for node, point in esatan.items():
+        assert centres[node] == pytest.approx(point, abs=1e-3), node
+
+
+_UNIT_BOX = (
+    _BOX_SHELL + "GEOMETRY A;\nA = SHELL_BOX(point1 = [0.0, 0.0, 0.0], point2 = [1.0, 0.0, 0.0], "
+    "point3 = [0.0, 1.0, 0.0], point4 = [0.0, 0.0, 1.0], "
+    f"nbase1 = 1, nbase2 = 101, {_BOX_ATTRS});\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("face", "gone"),
+    [
+        # faceN is face pair (N - 1) // 2, counted over the box's faces in
+        # ESATAN's order: w = 1, v = 0, u = 1, v = 1, u = 0, w = 0.
+        ("A:face1", (0.5, 0.5, 1.0)),
+        ("A:face2", (0.5, 0.5, 1.0)),
+        ("A:face3", (0.5, 0.0, 0.5)),
+        ("A:face12", (0.5, 0.5, 0.0)),
+    ],
+)
+def test_remove_face_takes_a_box_face_out(
+    tmp_path: Path, face: str, gone: tuple[float, float, float]
+) -> None:
+    model, diagnostics = build(tmp_path, _UNIT_BOX + f'REMOVE_FACE(face = "{face}");')
+    assert len(model.get_group("A").children) == 5
+    centres = list(_node_centres(model).values())
+    assert len(centres) == 10
+    assert not any(np.allclose(centre, gone, atol=1e-6) for centre in centres)
+    assert "ERG_FACE_REMOVED" in diagnostics.codes()
+    assert "ERG_FACE_EDIT" not in diagnostics.codes()
+
+
+def test_remove_face_of_an_unmeshed_shell(tmp_path: Path) -> None:
+    model, diagnostics = build(
+        tmp_path,
+        "GEOMETRY P;\nP = SHELL_SCS_RECTANGLE(xmax = 1.0, ymax = 1.0, nbase1 = 1);\n"
+        "GEOMETRY Q;\nQ = SHELL_SCS_RECTANGLE(xmax = 2.0, ymax = 2.0, nbase1 = 2);\n"
+        "GEOMETRY M;\nM = P + Q;\n"
+        'REMOVE_FACE(face = "P:face1");',
+    )
+    items = {g.name for g in model.children_recursive() if isinstance(g, GeometryItem)}
+    assert items == {"Q"}
+    assert "ERG_FACE_EDIT" not in diagnostics.codes()
 
 
 def test_rotation_then_translation_places_the_object(tmp_path: Path) -> None:

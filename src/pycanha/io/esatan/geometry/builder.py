@@ -158,6 +158,12 @@ class _Builder:
         """Prisms still read as geometry, as (line, wall count, is meshed)."""
         self._skipped: dict[str, str] = {}
         """Names deliberately not built, and the construct that each one was."""
+        self._removed: list[GeometryItem] = []
+        """Geometries taken out by REMOVE_FACE (whole face pairs).  The objects
+        themselves are kept: an id() of a dropped wrapper can be reused."""
+        self._faces: dict[str, list[GeometryItem]] = {}
+        """The faces of each decomposed box / prism, in ESATAN's order, as built
+        (REMOVE_FACE counts face pairs over all of them, removed or not)."""
 
     # -- entry point -------------------------------------------------------
 
@@ -166,39 +172,28 @@ class _Builder:
         for statement in parsed.statements:
             self._statement(statement)
         self._attach_roots(parsed.name)
-        for name, (line, meshed) in self._boxes.items():
+        for name, (line, _meshed) in self._boxes.items():
             # Reported here rather than where the box was built, because until
             # every statement has been seen it is not known whether the box was
             # geometry or a cutting tool -- and a cutter's faces never exist.
+            # The faces and their cells are numbered in ESATAN's order
+            # (box_faces), so no node-order warning is needed.
             self.diagnostics.info(
                 "ERG_BOX_DECOMPOSED",
                 f"'{name}' is a box; it becomes a group of six flat faces, one geometry each, "
                 "so a reference to the box as a single primitive will not resolve",
                 line=line,
             )
-            if meshed:
-                self.diagnostics.error(
-                    "ERG_BOX_NODE_ORDER",
-                    f"'{name}' is a meshed box: its faces are numbered in this reader's own "
-                    "face order, so per-face node numbers are a permutation of the source's",
-                    line=line,
-                )
-        for name, (line, walls, meshed) in self._prisms.items():
+        for name, (line, walls, _meshed) in self._prisms.items():
             # Deferred for the same reason as the box above: a prism used as a
-            # cutter is read as a closed solid, and never had these walls.
+            # cutter is read as a closed solid, and never had these walls.  The
+            # walls P1P2, P2P3, P3P1 with the height second are ESATAN's order.
             self.diagnostics.info(
                 "ERG_PRISM_DECOMPOSED",
                 f"'{name}' is a triangular prism; it becomes a group of {walls} side walls, "
                 "with no end caps -- the prism has none",
                 line=line,
             )
-            if meshed:
-                self.diagnostics.error(
-                    "ERG_BOX_NODE_ORDER",
-                    f"'{name}' is a meshed prism: its walls are numbered in this reader's own "
-                    "order, so per-face node numbers are a permutation of the source's",
-                    line=line,
-                )
         if self._unnumbered:
             # ESATAN would number these itself, continuing from the last
             # automatically numbered primitive.  Inventing numbers here would
@@ -240,7 +235,7 @@ class _Builder:
         attached: set[int] = set()
         for name in roots:
             geometry = self.geometries[name]
-            if id(geometry) in attached:
+            if id(geometry) in attached or self._is_removed(geometry):
                 continue
             attached.add(id(geometry))
             self.model.add(geometry)
@@ -406,6 +401,8 @@ class _Builder:
         elif function in _TRANSFORMS:
             self._apply_transform(function, call, statement.line)
         elif function in GEOMETRY_ALTERING_PROCEDURES:
+            if function == "REMOVE_FACE" and self._remove_face(call):
+                return
             self.diagnostics.error(
                 "ERG_FACE_EDIT",
                 f"{statement.name} was not applied: {GEOMETRY_ALTERING_PROCEDURES[function]}",
@@ -413,6 +410,64 @@ class _Builder:
             )
         else:
             self.unhandled.append(statement)
+
+    def _remove_face(self, call: ast.Call) -> bool:
+        """``REMOVE_FACE(face = "shell:faceN")``: take a face pair out of the model.
+
+        ESATAN removes the named face and the one behind it, and the pair "takes
+        no part in any calculations"; ``faceN`` counts the faces of the shell
+        side 1 / side 2 alternately, so face pair ``(N - 1) // 2`` in the
+        shell's own face order (for a box, across its six faces in ESATAN's
+        order).  A face pair that is a whole geometry here -- a face of a box
+        meshed 1 x 1, or an unmeshed shell -- is dropped from its group.  Making
+        it transparent instead is not equivalent: a transparent face lying in
+        the plane of a kept face hides that face from rays.  Returns False when
+        the pair is one cell of a meshed face, which needs a per-face-pair mask
+        in the core; the caller then reports the statement as not applied.
+        """
+        args = self._arguments(call)
+        name, _, face = args.text("face", "").partition(":")
+        name = name.strip()
+        number = face.strip().lower().removeprefix("face")
+        geometry = self.geometries.get(name)
+        if geometry is None or not number.isdigit() or int(number) < 1:
+            return False
+        pair = (int(number) - 1) // 2
+        items = self._faces.get(name) or list(_items_of(geometry))
+        for item in items:
+            count = item.thermal_mesh.num_face_pairs
+            if pair >= count:
+                pair -= count
+                continue
+            if count != 1:
+                return False
+            if self._is_removed(item):
+                return True
+            parent = self._parent_of(item)
+            if parent is not None:
+                parent.remove_child(item)
+            self._removed.append(item)
+            self.diagnostics.info(
+                "ERG_FACE_REMOVED",
+                f"'{name}:face{number}' removed: geometry '{item.name}' is left out",
+                line=call.line,
+            )
+            return True
+        return False
+
+    def _is_removed(self, geometry: object) -> bool:
+        return any(geometry is removed for removed in self._removed)
+
+    def _parent_of(self, item: GeometryItem) -> GeometryGroup | None:
+        """The registered group that holds *item* directly, if any."""
+        for geometry in self.geometries.values():
+            if (
+                isinstance(geometry, GeometryGroup)
+                and not isinstance(geometry, GeometryGroupCutted)
+                and any(child is item for child in geometry.children)
+            ):
+                return geometry
+        return None
 
     # -- values and materials ----------------------------------------------
 
@@ -760,13 +815,13 @@ class _Builder:
                 item.name, item, call, args, _BOTH_SIDES, line, directions=face.directions
             )
             # The faces of one solid share a node sequence in ESATAN; each face
-            # here continues where the previous one stopped, which keeps the
-            # numbers unique and the count right even though the order in which
-            # ESATAN visits the faces is not reproduced.
+            # here continues where the previous one stopped, in the order
+            # box_faces / prism_faces give them, which is ESATAN's.
             self._offset_nodes(item.thermal_mesh, offset)
             offset += item.thermal_mesh.num_face_pairs
             items.append(item)
         self._register(name, GeometryGroup(name, list(items)))
+        self._faces[name] = items
         return offset > len(faces)
 
     @staticmethod
@@ -826,7 +881,8 @@ class _Builder:
         reader supports: both run around the circumference of a surface of
         revolution and along the first edge of a planar one.
         """
-        for setter, source in zip(("dir1_mesh", "dir2_mesh"), directions, strict=True):
+        for setter, signed in zip(("dir1_mesh", "dir2_mesh"), directions, strict=True):
+            source = abs(signed)
             if not any(
                 f"{key}{source}" in args for key in ("nodes", "ratio", "meshtype", "meshpositions")
             ):
@@ -843,6 +899,10 @@ class _Builder:
                     "ERG_BAD_MESH", f"'{name}' direction {source}: {exc}", line=line
                 )
                 continue
+            if signed < 0:
+                # A box face that runs this direction backwards: the cuts stay
+                # where the box puts them, measured from the face's own start.
+                cuts = tuple(1.0 - cut for cut in reversed(cuts))
             setattr(mesh, setter, list(cuts))
 
     def _apply_activity(
@@ -1124,6 +1184,9 @@ class _Builder:
                     f"'{owner}' refers to '{expr.name}', which was never built",
                     line=line,
                 )
+            return None
+        if self._is_removed(geometry):
+            # Its only face pair was removed: nothing of it takes part.
             return None
         if expr.name in self.consumed:
             # A shell may take part in the hierarchy only once; reusing one
