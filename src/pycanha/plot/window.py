@@ -423,6 +423,14 @@ class ViewerWindow(QMainWindow):
         """
         if self.plotter is None:
             return
+        if self.scene.visible_cells.size == 0:
+            # Nothing to draw, and pyvista refuses an actor with no cells. Its
+            # scalar bar goes with it, and the camera stays where it is.
+            self.plotter.renderer.remove_actor(MESH_ACTOR, render=False)
+            self._drawn = None
+            self._drawn_poly = None
+            self.plotter.render()
+            return
         coloring = self.coloring()
         poly = self.scene.visible_polydata()
         if self._can_update_in_place(coloring, poly):

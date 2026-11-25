@@ -20,7 +20,9 @@ from pycanha.plot.panels.info_panel import selection_rows
 from pycanha.plot.picking import geometry_map
 from pycanha.plot.properties import MISSING
 from pycanha.plot.state import DEFAULT_COLOR_BY, PickerMode, Selection
-from pycanha.plot.window import ViewerWindow, brighten
+from pycanha.plot.window import MESH_ACTOR, ViewerWindow, brighten
+
+from .offscreen import OffscreenView, skip_without_a_renderer
 
 
 def _two_panel_model() -> pc.ThermalModel:
@@ -441,5 +443,88 @@ def test_a_model_with_no_geometry_still_opens(qtbot: object) -> None:
         assert window.scene.n_cells == 0
         assert window.coloring().values.shape[0] == 0
         assert window.highlight().size == 0
+    finally:
+        window.close()
+
+
+# ── nothing left visible, in a view that really draws ─────────────────────
+@pytest.fixture
+def drawn(model: gmm.GeometryModel, qtbot: object) -> Iterator[ViewerWindow]:
+    del qtbot
+    skip_without_a_renderer()
+    viewer = ViewerWindow(model, view=OffscreenView())
+    yield viewer
+    viewer.close()
+
+
+def _actors(window: ViewerWindow) -> set[str]:
+    return set(window.plotter.renderer.actors)
+
+
+def test_hiding_every_category_leaves_an_empty_view(drawn: ViewerWindow) -> None:
+    drawn.state.color_by = "item"
+    drawn.state.hidden_categories = {entry.value for entry in drawn.legend_panel.entries()}
+    assert drawn.scene.visible_cells.size == 0
+    assert MESH_ACTOR not in _actors(drawn)
+
+    drawn.state.hidden_categories = set()
+    assert MESH_ACTOR in _actors(drawn)
+
+
+def test_isolating_a_category_hidden_in_the_tree_leaves_an_empty_view(
+    drawn: ViewerWindow, model: gmm.GeometryModel
+) -> None:
+    drawn.state.color_by = "item"
+    item_id = model.get_item("a").id
+    drawn.state.hide([item_id])
+    drawn.legend_panel.isolate(item_id)
+    assert drawn.scene.visible_cells.size == 0
+    assert MESH_ACTOR not in _actors(drawn)
+
+    drawn.state.show_all()
+    assert MESH_ACTOR in _actors(drawn)
+
+
+def test_hiding_everything_takes_the_scalar_bar_and_keeps_the_camera(
+    drawn: ViewerWindow,
+) -> None:
+    drawn.state.color_by = "area"
+    assert len(drawn.plotter.scalar_bars) == 1
+    drawn.plotter.camera.position = (3.0, 4.0, 5.0)
+    drawn.state.hide(drawn.scene.item_ids)
+    assert MESH_ACTOR not in _actors(drawn)
+    assert len(drawn.plotter.scalar_bars) == 0
+
+    drawn.state.show_all()
+    assert MESH_ACTOR in _actors(drawn)
+    assert len(drawn.plotter.scalar_bars) == 1
+    assert drawn.plotter.camera.position == pytest.approx((3.0, 4.0, 5.0))
+
+
+@pytest.mark.parametrize("change", ["filter", "edges", "lighting", "color_by", "selection"])
+def test_an_empty_view_takes_every_other_change(drawn: ViewerWindow, change: str) -> None:
+    drawn.state.hide(drawn.scene.item_ids)
+    if change == "filter":
+        drawn.state.set_node_range(100, 101)
+    elif change == "edges":
+        drawn.state.edges = replace(drawn.state.edges, triangles=True, primitives=True)
+    elif change == "lighting":
+        drawn.state.lighting = True
+    elif change == "color_by":
+        drawn.state.color_by = "area"
+    else:
+        drawn.state.selection = Selection(item_id=drawn.scene.item_ids[0])
+    assert MESH_ACTOR not in _actors(drawn)
+
+    drawn.state.show_all()
+    assert MESH_ACTOR in _actors(drawn)
+
+
+def test_a_model_with_no_geometry_still_draws(qtbot: object) -> None:
+    del qtbot
+    skip_without_a_renderer()
+    window = ViewerWindow(pc.ThermalModel("empty").gmm, view=OffscreenView())
+    try:
+        assert MESH_ACTOR not in _actors(window)
     finally:
         window.close()
