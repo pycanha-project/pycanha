@@ -48,22 +48,22 @@ def align_temperature_outputs(
     return np.asarray(output_model.T.times), output_values, reference_values
 
 
-def test_sslu_matches_esatan_disc_steady_state() -> None:
+def test_steady_state_of_the_disc_model() -> None:
     model = pc.ThermalModel.from_esatan_tmd(str(STEADY_FIXTURE), name="disc")
     reference_temperatures = get_node_temperatures(model)
 
     set_uniform_temperature(model, 273.15, excluded_node_numbers={2000, BOUNDARY_NODE_SPACE})
 
-    solver = model.solvers.sslu
-    solver.max_iters = 100
-    solver.abstol_temp = 1e-4
+    solver = model.solvers.steady.steady_state
+    solver.max_iterations = 100
+    solver.tolerance = 1e-4
     solver.initialize()
     solver.solve()
 
     np.testing.assert_allclose(get_node_temperatures(model), reference_temperatures, atol=1e-4)
 
 
-def test_tscnrlds_matches_esatan_disc_transient() -> None:
+def test_transient_of_the_disc_model() -> None:
     model = pc.ThermalModel.from_esatan_tmd(str(STEADY_FIXTURE), name="disc")
     set_uniform_temperature(
         model,
@@ -74,34 +74,32 @@ def test_tscnrlds_matches_esatan_disc_transient() -> None:
     pc.tmm.read_tmd_transient(
         str(TRANSIENT_FIXTURE),
         model.tmm.thermal_data,
-        "esatan_transient",
+        "stored_transient",
     )
-    esatan_output = model.tmm.thermal_data.models.get_model("esatan_transient")
+    stored_output = model.tmm.thermal_data.models.get_model("stored_transient")
 
-    solver = model.solvers.tscnrlds
-    solver.max_iters = 100
-    solver.abstol_temp = 1e-7
+    solver = model.solvers.transient.crank_nicolson
+    solver.max_iterations = 100
+    solver.tolerance = 1e-7
     solver.set_simulation_time(0.0, 10000.0, 1.0, 100.0)
     solver.initialize()
     solver.solve()
 
     output_model = solver.output_model
-    output_times, output_values, esatan_values = align_temperature_outputs(
+    output_times, output_values, stored_values = align_temperature_outputs(
         output_model,
-        esatan_output,
+        stored_output,
     )
 
     assert len(output_model.node_numbers) == output_values.shape[1]
-    assert output_values.shape == esatan_values.shape
+    assert output_values.shape == stored_values.shape
 
     np.testing.assert_allclose(
         output_times,
-        np.asarray(esatan_output.T.times),
+        np.asarray(stored_output.T.times),
         rtol=0.0,
         atol=1e-12,
     )
-    # TODO: investigate the ~1.75% of node temperatures that drift past 2e-3 K
-    # against the ESATAN reference (atol relaxed from 2e-3 to 5e-3).
-    # Suspects: Stefan-Boltzmann constant value used here vs. in ESATAN; rerun
-    # the ESATAN reference case.
-    np.testing.assert_allclose(output_values, esatan_values, rtol=0.0, atol=5e-3)
+    # TODO(solvers): ~1.75% of the temperatures differ from the stored ones by more
+    # than 2e-3 K. A different value of the Stefan-Boltzmann constant could explain it.
+    np.testing.assert_allclose(output_values, stored_values, rtol=0.0, atol=5e-3)

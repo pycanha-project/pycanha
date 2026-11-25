@@ -134,5 +134,18 @@ def test_conduction_reexports_engine() -> None:
     assert pc.conduction.TmmBuildOptions is pcc.conduction.TmmBuildOptions
 
 
+def test_solver_groups_reexport_the_core_classes() -> None:
+    for group in ("steady", "transient", "sensitivity"):
+        core_group = getattr(pcc.solvers, group)
+        pycanha_group = getattr(pc.solvers, group)
+        for name in _public(core_group):
+            assert getattr(pycanha_group, name) is getattr(core_group, name)
+
+
+def test_build_flags_are_at_the_root() -> None:
+    assert pc.MKL_ENABLED is pcc.MKL_ENABLED
+    assert pc.ACCELERATE_ENABLED is pcc.ACCELERATE_ENABLED
+
+
 def test_solvers_does_not_leak_core_alias() -> None:
     assert "pcc" not in dir(pc.solvers)

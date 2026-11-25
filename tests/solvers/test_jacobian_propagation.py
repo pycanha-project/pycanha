@@ -52,18 +52,19 @@ def find_time_row(table: np.ndarray, time_value: float) -> int:
     return int(matching_rows[0])
 
 
-def test_tscnrlds_jacobian_solver_outputs_models() -> None:
+def test_jacobian_propagation_outputs_models() -> None:
     tm = make_jacobian_example_model()
     model = tm.tmm
-    solver = tm.solvers.tscnrlds_jacobian
-    solver.max_iters = 50
-    solver.abstol_temp = 1e-9
+    solver = tm.solvers.sensitivity.jacobian_propagation
+    solver.max_iterations = 50
+    solver.tolerance = 1e-9
+    solver.output_name = "sensitivity_run"
     solver.set_simulation_time(0.0, 5.0, 0.01, 0.1)
 
     solver.initialize()
     solver.solve()
 
-    assert model.thermal_data.models.has_model(solver.output_model_name) is True
+    assert model.thermal_data.models.has_model("sensitivity_run") is True
     assert solver.parameter_names == ["k", "C"]
     assert solver.derivative_parameter_names == ["k", "C"]
 
@@ -105,4 +106,4 @@ def test_tscnrlds_jacobian_solver_outputs_models() -> None:
         np.testing.assert_allclose(jacobian_output[row], expected_jacobian, atol=5e-6)
 
     solver.deinitialize()
-    assert solver.solver_initialized is False
+    assert solver.initialized is False

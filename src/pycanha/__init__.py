@@ -10,11 +10,15 @@ if TYPE_CHECKING:
     from .thermalmodel import ThermalModel
     from .tmm.node import NodeType
 
+    ACCELERATE_ENABLED = pcc.ACCELERATE_ENABLED
     LogLevel = pcc.LogLevel
+    MKL_ENABLED = pcc.MKL_ENABLED
     print_package_info = pcc.print_package_info
 
 
 __all__ = [
+    "ACCELERATE_ENABLED",
+    "MKL_ENABLED",
     "LogLevel",
     "NodeType",
     "ThermalModel",
@@ -62,7 +66,9 @@ def __getattr__(name: str) -> Any:
         return thermal_model
 
     root_exports = {
+        "ACCELERATE_ENABLED",
         "LogLevel",
+        "MKL_ENABLED",
         "print_package_info",
     }
 

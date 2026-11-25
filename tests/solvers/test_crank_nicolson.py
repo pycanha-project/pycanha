@@ -55,16 +55,18 @@ def five_node_model():
     return tm
 
 
-def test_tscnrlds_transient(five_node_model):
+def test_crank_nicolson_transient(five_node_model):
     tm = five_node_model
 
-    solver = tm.solvers.tscnrlds
-    solver.max_iters = 100
-    solver.abstol_temp = 1e-6
+    solver = tm.solvers.transient.crank_nicolson
+    solver.max_iterations = 100
+    solver.tolerance = 1e-6
     solver.set_simulation_time(0.0, 100000.0, 1000.0, 10000.0)
 
     solver.initialize()
     solver.solve()
+
+    assert solver.converged
 
     results = get_temperature_output(solver.output_model)
     calculated_times = results[:, 0]

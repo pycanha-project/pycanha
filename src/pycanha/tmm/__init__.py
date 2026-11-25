@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         NamedConstants,
         NodeAttribute,
         SparseTimeSeries,
+        StructureVersions,
         TemperatureVariable,
         TimeVariable,
         read_tmd_transient,
@@ -62,6 +63,7 @@ __all__ = [
     "Nodes",
     "RadiativeCouplings",
     "SparseTimeSeries",
+    "StructureVersions",
     "TemperatureVariable",
     "ThermalData",
     "ThermalMathematicalModel",
@@ -72,7 +74,8 @@ __all__ = [
 
 # Types re-exported verbatim from the compiled pycanha_core.tmm module
 # (time-dependent variables, lookup tables, interpolation enums, the
-# transient ESATAN reader, and the bulk-call report and selectors).
+# transient ESATAN reader, the bulk-call report and selectors, and the structure
+# versions).
 _CORE_TMM_EXPORTS = frozenset(
     {
         "BulkReport",
@@ -91,6 +94,7 @@ _CORE_TMM_EXPORTS = frozenset(
         "NamedConstants",
         "NodeAttribute",
         "SparseTimeSeries",
+        "StructureVersions",
         "TemperatureVariable",
         "TimeVariable",
         "read_tmd_transient",

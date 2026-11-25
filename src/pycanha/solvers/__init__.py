@@ -1,54 +1,120 @@
-"""Solver subpackage."""
+"""Solver subpackage.
 
-import pycanha_core as pcc
+The solver classes are grouped by the question they answer: :mod:`.steady`,
+:mod:`.transient` and :mod:`.sensitivity`. A model owns one solver of each type,
+for example ``model.solvers.transient.crank_nicolson``.
 
+Everything is re-exported from the core as it is, so the objects the core hands
+back are instances of these classes.
+"""
+
+from pycanha_core.solvers import (
+    AccelerateOrdering,
+    AccelerateSettings,
+    AccelerateView,
+    Backend,
+    CallbackContext,
+    CallbackRegistry,
+    EigenOrdering,
+    EigenSettings,
+    EigenView,
+    Factorization,
+    FieldExplanation,
+    ModelChangedError,
+    Mutability,
+    NonConvergedStep,
+    NotApplied,
+    Origin,
+    PardisoLevel,
+    PardisoOrdering,
+    PardisoSettings,
+    PardisoView,
+    ResolveContext,
+    ResolvedAccelerate,
+    ResolvedEigen,
+    ResolvedPardiso,
+    ResolvedSettings,
+    SensitivitySolvers,
+    SettingField,
+    Settings,
+    SettingsExplanation,
+    SolverMemory,
+    SolverRegistry,
+    SolverReport,
+    SolverType,
+    SolveStatus,
+    SteadySolvers,
+    Storage,
+    TransientSolvers,
+    accelerate_available,
+    all_dense_output_attributes,
+    all_output_attributes,
+    changed_init_fields,
+    check_settings_change,
+    explain_settings,
+    format_bytes,
+    parse_memory_size,
+    resolve,
+    resolve_context,
+    setting_field,
+    setting_fields,
+)
+
+from . import sensitivity, steady, transient
 from .solver import Solver
-from .ss import SteadyStateSolver
-from .sslu import SSLU
-from .sslu_cgs import SSLU_CGS
-from .ts import TransientSolver
-from .tscn import TSCN
-from .tscnrl import TSCNRL
-from .tscnrlds import TSCNRLDS
-from .tscnrlds_jacobian import TSCNRLDS_JACOBIAN
-
-CallbackContext = pcc.solvers.CallbackContext
-CallbackRegistry = pcc.solvers.CallbackRegistry
-SolverOutputConfig = pcc.solvers.SolverOutputConfig
-SolverRegistry = pcc.solvers.SolverRegistry
-
-# Engine and factorisation of the solvers (SSLU / TSCNRLDS ``engine`` and
-# ``solver_type``, SSLU_CGS ``solver_type``); each member's docstring says when
-# it is the right choice.
-SolverEngine = pcc.solvers.SolverEngine
-DirectSolverType = pcc.solvers.DirectSolverType
-IterativeSolverType = pcc.solvers.IterativeSolverType
-
-#: Whether this build has Intel MKL, and so SolverEngine.MKL and SSLU_CGS.
-MKL_ENABLED: bool = pcc.solvers.MKL_ENABLED
-default_solver_engine = pcc.solvers.default_solver_engine
-resolve_solver_type = pcc.solvers.resolve_solver_type
-
-del pcc  # implementation detail; users reach the core through pycanha only
 
 __all__ = [
-    "MKL_ENABLED",
-    "SSLU",
-    "SSLU_CGS",
-    "TSCN",
-    "TSCNRL",
-    "TSCNRLDS",
-    "TSCNRLDS_JACOBIAN",
+    "AccelerateOrdering",
+    "AccelerateSettings",
+    "AccelerateView",
+    "Backend",
     "CallbackContext",
     "CallbackRegistry",
-    "DirectSolverType",
-    "IterativeSolverType",
+    "EigenOrdering",
+    "EigenSettings",
+    "EigenView",
+    "Factorization",
+    "FieldExplanation",
+    "ModelChangedError",
+    "Mutability",
+    "NonConvergedStep",
+    "NotApplied",
+    "Origin",
+    "PardisoLevel",
+    "PardisoOrdering",
+    "PardisoSettings",
+    "PardisoView",
+    "ResolveContext",
+    "ResolvedAccelerate",
+    "ResolvedEigen",
+    "ResolvedPardiso",
+    "ResolvedSettings",
+    "SensitivitySolvers",
+    "SettingField",
+    "Settings",
+    "SettingsExplanation",
+    "SolveStatus",
     "Solver",
-    "SolverEngine",
-    "SolverOutputConfig",
+    "SolverMemory",
     "SolverRegistry",
-    "SteadyStateSolver",
-    "TransientSolver",
-    "default_solver_engine",
-    "resolve_solver_type",
+    "SolverReport",
+    "SolverType",
+    "SteadySolvers",
+    "Storage",
+    "TransientSolvers",
+    "accelerate_available",
+    "all_dense_output_attributes",
+    "all_output_attributes",
+    "changed_init_fields",
+    "check_settings_change",
+    "explain_settings",
+    "format_bytes",
+    "parse_memory_size",
+    "resolve",
+    "resolve_context",
+    "sensitivity",
+    "setting_field",
+    "setting_fields",
+    "steady",
+    "transient",
 ]

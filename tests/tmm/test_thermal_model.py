@@ -39,9 +39,9 @@ def build_basic_tm() -> pc.ThermalModel:
 
 
 def run_transient_solver(tm: pc.ThermalModel):
-    solver = tm.solvers.tscnrlds
-    solver.max_iters = 20
-    solver.abstol_temp = 1e-9
+    solver = tm.solvers.transient.crank_nicolson
+    solver.max_iterations = 20
+    solver.tolerance = 1e-9
     solver.set_simulation_time(0.0, 2.0, 0.1, 0.5)
     solver.initialize()
     solver.solve()
@@ -57,7 +57,7 @@ def test_default_owner_exposes_stable_wrapped_subsystems() -> None:
     assert tm.tmm is tm._tmm
     assert tm.solvers is tm.solvers
     assert tm.callbacks is tm.callbacks
-    assert tm.solvers.sslu is tm.solvers.sslu
+    assert tm.solvers.steady.steady_state is tm.solvers.steady.steady_state
     assert tm.tmm.nodes is tm.tmm._nodes
     assert tm.tmm.network is tm.tmm._network
 
@@ -134,5 +134,5 @@ def test_after_timestep_receives_callback_context() -> None:
     assert seen[0][0] == "CallbackContext"
     assert seen[0][1] == tm.name
     assert seen[0][2] == tm.tmm.name
-    assert seen[0][3] == "TSCNRLDS"
+    assert seen[0][3] == "CrankNicolson"
     assert seen[-1][4] > 0.0

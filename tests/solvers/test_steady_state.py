@@ -51,16 +51,18 @@ def five_node_model():
     return tm
 
 
-def test_sslu_steady_state(five_node_model):
+def test_steady_state(five_node_model):
     tm = five_node_model
     tmm = tm.tmm
 
-    solver = tm.solvers.sslu
-    solver.max_iters = 100
-    solver.abstol_temp = 1e-6
+    solver = tm.solvers.steady.steady_state
+    solver.max_iterations = 100
+    solver.tolerance = 1e-6
 
     solver.initialize()
     solver.solve()
+
+    assert solver.converged
 
     calculated_temps = np.array(
         [
