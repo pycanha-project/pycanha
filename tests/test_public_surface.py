@@ -7,6 +7,8 @@ is added without a pycanha-level path to it.
 
 from __future__ import annotations
 
+from importlib.metadata import version
+
 import pycanha_core as pcc
 from scipy.sparse import csr_matrix
 
@@ -149,3 +151,7 @@ def test_build_flags_are_at_the_root() -> None:
 
 def test_solvers_does_not_leak_core_alias() -> None:
     assert "pcc" not in dir(pc.solvers)
+
+
+def test_version_is_the_installed_distribution() -> None:
+    assert pc.__version__ == version("pycanha")
