@@ -3,7 +3,7 @@ name: Tests
 env:
   PYTHON_VERSIONS: '["3.13", "3.14"]'
   PYTHON_PRIMARY: "3.13"
-  UV_VERSION: "0.5.11"
+  UV_VERSION: "0.13.10"
 
 "on":
   push:
