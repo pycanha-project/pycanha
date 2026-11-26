@@ -72,7 +72,7 @@ class ThermalModel(pcc.tmm.ThermalModel):
         self,
         filepath: str,
         *,
-        engine: str = "cpp",
+        engine: str = "python",
         verbose: bool = False,
     ) -> Self:
         self.read_tmd(filepath, engine=engine, verbose=verbose)
@@ -84,7 +84,7 @@ class ThermalModel(pcc.tmm.ThermalModel):
         filepath: str,
         name: str = "",
         *,
-        engine: str = "cpp",
+        engine: str = "python",
         verbose: bool = False,
     ) -> Self:
         model = cls(name=name)

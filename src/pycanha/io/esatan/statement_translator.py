@@ -56,6 +56,19 @@ def translate_block(block_name: str, text: str) -> list[str]:
     return [_translate_logical_line(line) for line in _logical_lines(text)]
 
 
+def count_statements(text: str) -> int:
+    """Number of statements in an operations block (comments and blank lines aside)."""
+    count = 0
+    for line in _logical_lines(text):
+        if is_fortran_comment_line(line):
+            continue
+        stripped = line.strip()
+        cut = comment_start(stripped)
+        if (stripped if cut == -1 else stripped[:cut]).strip():
+            count += 1
+    return count
+
+
 def _logical_lines(text: str) -> list[str]:
     """Split ``text`` into logical lines, joining ``&`` continuations.
 

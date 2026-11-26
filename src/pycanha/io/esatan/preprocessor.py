@@ -135,7 +135,7 @@ def expand_includes(
         return expand_includes(candidate, _stack=new_stack)
 
     # Only an $INCLUDE in the code part of a line is expanded: one after a
-    # '#' or on a column-1 comment line is commented out, as ESATAN reads it.
+    # '#' or on a column-1 comment line is commented out.
     out: list[str] = []
     for line in text.splitlines(keepends=True):
         if "$INCLUDE" not in line.upper() or is_fortran_comment_line(line):

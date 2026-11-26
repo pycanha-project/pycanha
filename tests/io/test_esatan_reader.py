@@ -62,7 +62,7 @@ def test_python_engine_couplings_match_cpp_engine() -> None:
             ), f"{kind}({n1},{n2})"
 
 
-# A minimal TMD with the datasets, dtypes and shapes ESATAN writes.
+# A minimal TMD with the datasets, dtypes and shapes of the format.
 _ALL_COLUMNS = (
     "Temperature",
     "Capacitance",
@@ -123,8 +123,8 @@ def _read_python(path: Path) -> pc.tmm.ThermalMathematicalModel:
 
 
 def test_python_engine_sums_parallel_conductors(tmp_path: Path) -> None:
-    # ESATAN lists each of several conductors between the same two nodes as a
-    # row with its sequence number, and solves with their sum.
+    # A TMD lists each of several conductors between the same two nodes as a
+    # row with its sequence number; they are added.
     path = tmp_path / "dup.TMD"
     _write_tmd(
         path,
@@ -194,3 +194,90 @@ def test_python_engine_reads_model_without_gl(tmp_path: Path) -> None:
     )
     tmm = _read_python(path)
     assert tmm.radiative_couplings.get_coupling_value(1, 99) == pytest.approx(0.1)
+
+
+def _parallel_records() -> list[str]:
+    return [
+        r.message
+        for r in pc.log.records(200)
+        if r.level is pc.LogLevel.INFO and "parallel conductors" in r.message
+    ]
+
+
+def test_python_engine_records_parallel_conductors(tmp_path: Path) -> None:
+    path = tmp_path / "dup.TMD"
+    _write_tmd(
+        path,
+        nodes=[1, 2, 3, 99],
+        types="DDDB",
+        columns={"Temperature": [1.0, 2.0, 3.0, -270.0]},
+        gl=[(1, 2, 1, 0.5), (2, 1, 2, 0.3), (2, 3, 1, 1.0)],
+        gr=[(1, 4, 1, 0.01), (4, 1, 2, 0.02)],
+    )
+    pc.log.clear_records()
+    _read_python(path)
+    assert _parallel_records() == [
+        "TMD: 2 node pairs have parallel conductors, added into one coupling each: "
+        "GL(1,2) x2, GR(1,99) x2"
+    ]
+
+
+def test_python_engine_reads_the_first_dump(tmp_path: Path) -> None:
+    path = tmp_path / "dumps.TMD"
+    _write_tmd(
+        path,
+        nodes=[1, 2],
+        types="DB",
+        columns={"Temperature": [10.0, 20.0]},
+        gl=[(1, 2, 1, 1.0)],
+        gr=None,
+    )
+    # A second dump with other values, as a transient run writes.
+    with h5py.File(path, "a") as handle:
+        data: Any = handle["AnalysisSet1/DataGroup1"]
+        real = np.asarray(data["thermalNodesRealData"])
+        strings = np.asarray(data["thermalNodesStringData"])
+        cond = np.asarray(data["conductorDataGL"])
+        for name, first, second in (
+            ("thermalNodesRealData", real, real + 50.0),
+            ("thermalNodesStringData", strings, strings),
+            ("conductorDataGL", cond, cond * 3.0),
+        ):
+            del data[name]
+            data[name] = np.concatenate([first, second])
+    tmm = _read_python(path)
+    assert tmm.nodes.get_T(1) == pytest.approx(283.15)
+    assert tmm.conductive_couplings.get_coupling_value(1, 2) == pytest.approx(1.0)
+
+
+def test_python_engine_keeps_node_types(tmp_path: Path) -> None:
+    path = tmp_path / "types.TMD"
+    _write_tmd(
+        path,
+        nodes=[5, 3, 99, 7],
+        types="DBBD",
+        columns={"Temperature": [1.0, 2.0, 3.0, 4.0]},
+        gl=[(1, 2, 1, 1.0)],
+        gr=None,
+    )
+    tmm = _read_python(path)
+    assert tmm.nodes.num_nodes == 4
+    assert tmm.nodes.get_type(3) == pc.NodeType.BOUNDARY
+    assert tmm.nodes.get_type(99) == pc.NodeType.BOUNDARY
+    assert tmm.nodes.get_type(7) == pc.NodeType.DIFFUSIVE
+    assert tmm.nodes.get_T(7) == pytest.approx(277.15)
+
+
+def test_default_engine_is_python(tmp_path: Path) -> None:
+    # A file without GL: read by the default engine.
+    path = tmp_path / "nogl.TMD"
+    _write_tmd(
+        path,
+        nodes=[1, 99],
+        types="DB",
+        columns={"Temperature": [20.0, -270.0]},
+        gl=None,
+        gr=[(1, 2, 1, 0.1)],
+    )
+    model = pc.ThermalModel.from_esatan_tmd(str(path))
+    assert model.tmm.radiative_couplings.get_coupling_value(1, 99) == pytest.approx(0.1)

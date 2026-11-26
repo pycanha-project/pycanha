@@ -24,7 +24,7 @@ from pycanha.io.esatan.preprocessor import (
     sanitise_d_notation,
     strip_data_comments,
 )
-from pycanha.io.esatan.statement_translator import translate_block
+from pycanha.io.esatan.statement_translator import count_statements, translate_block
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -49,7 +49,7 @@ _NODE_ATTRIBUTE_INDICES: Final[dict[str, int]] = {
     "fy": 14,
     "fz": 15,
 }
-# Node attribute of each column name ESATAN writes in thermalNodesRealAttributes.
+# Node attribute of each column name of thermalNodesRealAttributes.
 _TMD_COLUMN_ATTRIBUTES: Final[dict[str, str]] = {
     "Temperature": "T",
     "Capacitance": "C",
@@ -114,7 +114,8 @@ _CONSTANT_DEF_RE = re.compile(
     r"((?:'(?:[^']|'')*'|[^;'])+?)\s*;",
     re.DOTALL | re.IGNORECASE,
 )
-_NODE_HEAD_RE = re.compile(r"\b([DBX])\s*(\d+)\s*(?:=\s*'([^']*)'\s*)?", re.IGNORECASE)
+# A doubled quote inside the label is one quote: 'O''NEIL'.
+_NODE_HEAD_RE = re.compile(r"\b([DBX])\s*(\d+)\s*(?:=\s*'((?:[^']|'')*)'\s*)?", re.IGNORECASE)
 # The order of the node entities given by position (ESATAN User Manual, $NODES).
 _POSITIONAL_NODE_ATTRS: Final[tuple[str, ...]] = (
     "T",
@@ -218,12 +219,16 @@ class ESATANReader:
         # after the whole network is built (entities need their nodes /
         # couplings to exist).
         self._pending_formulas: list[_PendingFormula] = []
-        # ESATAN adds the conductors declared more than once for the same pair
-        # (in either order). Keyed by (kind, smaller node, larger node): the
-        # sum of the numeric ones, and the index in ``_pending_formulas`` of
-        # the pair's formula when one of them is symbolic.
+        # Conductors declared more than once for the same pair (in either
+        # order) are parallel paths and are added. Keyed by (kind, smaller
+        # node, larger node): the sum of the numeric ones, and the index in
+        # ``_pending_formulas`` of the pair's formula when one of them is
+        # symbolic.
         self._conductor_sums: dict[tuple[str, int, int], float] = {}
         self._conductor_formula_idx: dict[tuple[str, int, int], int] = {}
+        # Number of conductors of each pair declared more than once in the
+        # current parse_conductors call, for its one summary record.
+        self._parallel_counts: dict[tuple[str, int, int], int] = {}
         # Best-effort Python translation of the imperative blocks, keyed by
         # block keyword (e.g. "$INITIAL"); emitted to <basename>.py on request.
         self._translated_blocks: dict[str, list[str]] = {}
@@ -265,9 +270,16 @@ class ESATANReader:
     def read_tmd(
         self,
         filepath: str | Path,
-        engine: str = "cpp",
+        engine: str = "python",
         verbose: bool = False,
     ) -> None:
+        """Read the network of the first dump of a ``.TMD`` file into the model.
+
+        ``engine="python"`` (default) reads it with h5py; ``engine="cpp"``
+        uses the reader of pycanha-core, which keeps only one of several
+        conductors between the same two nodes and needs both GL and GR in
+        the file.
+        """
         path = Path(filepath)
 
         if engine == "cpp":
@@ -296,9 +308,10 @@ class ESATANReader:
             data_group: Any = analysis_group[_DATA_GROUP]
 
             node_numbers_with_inactive = np.asarray(analysis_group["thermalNodes"])[:, 0]
-            node_real_data = np.asarray(data_group["thermalNodesRealData"])[0]
-            node_string_data = np.asarray(data_group["thermalNodesStringData"])[0]
-            node_types = node_string_data[:, 0].astype("U")
+            # Only the first dump is read: indexing the h5py dataset reads
+            # that slice alone, where np.asarray would load every dump.
+            node_real_data = np.asarray(data_group["thermalNodesRealData"][0])
+            node_types = np.asarray(data_group["thermalNodesStringData"][0, :, 0]).astype("U")
 
             active_node_mask = node_types != "X"
             active_node_numbers = node_numbers_with_inactive[active_node_mask]
@@ -321,12 +334,13 @@ class ESATANReader:
                 _tmd_node_columns(analysis_group),
                 t_abs,
             )
-            self._add_tmd_couplings(
+            parallel = self._add_tmd_couplings(
                 analysis_group, data_group, active_node_mask, "GL", self._tmm.conductive_couplings
             )
-            self._add_tmd_couplings(
+            parallel |= self._add_tmd_couplings(
                 analysis_group, data_group, active_node_mask, "GR", self._tmm.radiative_couplings
             )
+            _log_parallel_conductors("TMD", parallel)
 
     def _add_tmd_nodes(
         self,
@@ -336,23 +350,26 @@ class ESATANReader:
         columns: dict[str, int],
         t_abs: float,
     ) -> None:
-        for node_number, node_type, node_values in zip(
-            node_numbers,
-            node_types,
-            node_real_data,
-            strict=True,
+        values = {
+            name: np.ascontiguousarray(node_real_data[:, column], dtype=np.float64)
+            for name, column in columns.items()
+        }
+        if "T" in values:
+            values["T"] = values["T"] + t_abs
+        numbers = np.ascontiguousarray(node_numbers, dtype=np.int64)
+        boundary = node_types == "B"
+        # One bulk insertion per node type.
+        for node_type, mask in (
+            (pcc.NodeType.DIFFUSIVE, ~boundary),
+            (pcc.NodeType.BOUNDARY, boundary),
         ):
-            node = pcc.tmm.Node(int(node_number))
-            if node_type == "B":
-                node.type = pcc.NodeType.BOUNDARY
-
-            for attribute_name, attribute_index in columns.items():
-                value = float(node_values[attribute_index])
-                if attribute_name == "T":
-                    value += t_abs
-                setattr(node, attribute_name, value)
-
-            self._tmm.add_node(node)
+            if not mask.any():
+                continue
+            self._tmm.add_nodes(
+                np.ascontiguousarray(numbers[mask]),
+                node_type,
+                **{name: np.ascontiguousarray(column[mask]) for name, column in values.items()},
+            )
 
     def _add_tmd_couplings(
         self,
@@ -361,27 +378,32 @@ class ESATANReader:
         active_node_mask: np.ndarray,
         kind: str,
         couplings: Any,
-    ) -> None:
-        """Add the ``kind`` ("GL" / "GR") conductors of the file to ``couplings``."""
+    ) -> dict[tuple[str, int, int], int]:
+        """Add the ``kind`` ("GL" / "GR") conductors of the file to ``couplings``.
+
+        Returns the pairs that had parallel conductors, with their count.
+        """
         # A model without conductors of this kind has no such datasets.
         if f"conductors{kind}" not in analysis_group or f"conductorData{kind}" not in data_group:
-            return
+            return {}
         node_numbers = np.asarray(analysis_group["thermalNodes"])[:, 0]
         pair_indices = np.asarray(analysis_group[f"conductors{kind}"])[:, :2] - 1
-        values = np.asarray(data_group[f"conductorData{kind}"])[0, :, 0]
+        # First dump only (see _read_tmd_python).
+        values = np.asarray(data_group[f"conductorData{kind}"][0, :, 0])
 
         valid_pair_mask = (
             active_node_mask[pair_indices[:, 0]] & active_node_mask[pair_indices[:, 1]]
         )
         pairs = pair_indices[valid_pair_mask]
-        # ESATAN allows several conductors between the same two nodes (one row
-        # each, with a sequence number in the third column) and adds them.
+        # Several conductors between the same two nodes are parallel paths (one
+        # row each, with a sequence number in the third column): they are added.
         couplings.add_couplings(
             np.ascontiguousarray(node_numbers[pairs[:, 0]], dtype=np.int64),
             np.ascontiguousarray(node_numbers[pairs[:, 1]], dtype=np.int64),
             np.ascontiguousarray(values[valid_pair_mask], dtype=np.float64),
             pcc.tmm.CouplingMerge.SUM,
         )
+        return _parallel_counts(kind, node_numbers[pairs])
 
     # ------------------------------------------------------------- .d driver
 
@@ -405,16 +427,22 @@ class ESATANReader:
         raw = expand_includes(path)
         sanitised = sanitise_d_notation(raw)
 
-        # Capture model name from the $MODEL header.
+        # Capture model name from the $MODEL header. A second $MODEL is a
+        # submodel: refused until submodels are supported, rather than
+        # merged into the main model with its nodes lost.
+        models = _MODEL_RE.findall(strip_data_comments(sanitised))
+        if len(models) > 1:
+            names = ", ".join(name for name, _ in models)
+            msg = (
+                f"{path.name}: more than one $MODEL ({names}); submodels are not "
+                "supported yet. # TODO: support submodels."
+            )
+            raise EsatanParseError(msg)
         model_match = _MODEL_RE.search(sanitised)
         if model_match is not None:
-            options = (model_match.group(2) or "").strip()
-            if any(opt for opt in options.lstrip(",").split(",") if "SUBMODEL" in opt.upper()):
-                msg = (
-                    "Submodels and supernodes are not supported yet. "
-                    "# TODO: implement submodel handling in a future phase."
-                )
-                raise EsatanParseError(msg)
+            options = (model_match.group(2) or "").strip().lstrip(",").strip()
+            if options:
+                log.warning(f"$MODEL {model_match.group(1)}: options {options!r} are not applied")
             # ThermalModel.name is a read-only property that proxies the owned
             # TMM, so set the name on the TMM (which always has a setter).
             self._tmm.name = model_match.group(1)
@@ -639,8 +667,10 @@ class ESATANReader:
         substitutions = self._effective_subs(subs)
         text = _apply_substitutions(text, substitutions)
 
+        self._parallel_counts = {}
         for definition in _split_top_level(text, ";"):
             self._parse_one_conductor(definition, wanted)
+        _log_parallel_conductors("$CONDUCTORS", self._parallel_counts)
 
     # ------------------------------------------- stubs for later phases
 
@@ -653,28 +683,37 @@ class ESATANReader:
 
     def parse_subroutines(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
-        self._block_texts["$SUBROUTINES"] = text
-        self._translated_blocks["$SUBROUTINES"] = translate_block("$SUBROUTINES", text)
+        self._translate_operations("$SUBROUTINES", text)
 
     def parse_initial(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
-        self._block_texts["$INITIAL"] = text
-        self._translated_blocks["$INITIAL"] = translate_block("$INITIAL", text)
+        self._translate_operations("$INITIAL", text)
 
     def parse_execution(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
-        self._block_texts["$EXECUTION"] = text
-        self._translated_blocks["$EXECUTION"] = translate_block("$EXECUTION", text)
+        self._translate_operations("$EXECUTION", text)
 
     def parse_variables1(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
-        self._block_texts["$VARIABLES1"] = text
-        self._translated_blocks["$VARIABLES1"] = translate_block("$VARIABLES1", text)
+        self._translate_operations("$VARIABLES1", text)
 
     def parse_variables2(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
-        self._block_texts["$VARIABLES2"] = text
-        self._translated_blocks["$VARIABLES2"] = translate_block("$VARIABLES2", text)
+        self._translate_operations("$VARIABLES2", text)
+
+    def _translate_operations(self, block: str, text: str) -> None:
+        """Keep and translate an operations block; say that it is not applied."""
+        self._block_texts[block] = text
+        self._translated_blocks[block] = translate_block(block, text)
+        count = count_statements(text)
+        if count:
+            # The model is built without these statements (loads, boundary
+            # temperatures, case switches...), so its results can differ.
+            statements = "1 statement" if count == 1 else f"{count} statements"
+            log.warning(
+                f"{block}: {statements} not applied to the model "
+                "(translated to a Python sketch only)"
+            )
 
     def parse_outputs(self, text: str, subs: dict[str, str] | None = None) -> None:
         _ = subs
@@ -758,8 +797,7 @@ class ESATANReader:
 
         rest = text[head_match.end() :]
         # Detect supernode merge syntax: "= A:5 + B:12" or any colon path. A
-        # colon inside the label is not one: ESATAN labels the shells of a
-        # cut geometry '<model>:<shell>'.
+        # colon inside the label is not one ('<model>:<shell>').
         if ":" in _without_strings(text):
             log.error(
                 f"$NODES: submodel/supernode references not supported yet in {text!r}; "
@@ -884,6 +922,8 @@ class ESATANReader:
         """
         key = (kind, min(n1, n2), max(n1, n2))
         idx = self._conductor_formula_idx.get(key)
+        if idx is not None or key in self._conductor_sums:
+            self._parallel_counts[key] = self._parallel_counts.get(key, 1) + 1
 
         if value is not None:
             total = self._conductor_sums.get(key, 0.0) + value
@@ -987,8 +1027,8 @@ class ESATANReader:
 
         The formula engine has entities for T, C, the heat sources and the
         conductors only. These geometric entities are fixed data in a deck,
-        so their value is what ESATAN computes with. A user constant of the
-        same name is left alone.
+        so their value can stand in for them. A user constant of the same
+        name is left alone.
         """
         nodes = self._tmm.nodes
         params = self._tmm.parameters
@@ -999,7 +1039,8 @@ class ESATANReader:
             if params.contains(name) or not nodes.is_node(num):
                 return name
             getter = getattr(nodes, "get_" + ESATAN_NODE_ATTRS[match.group(1).upper()])
-            return repr(float(getter(num)))
+            # In parentheses: a negative value must stay one operand (-0.5**2).
+            return f"({float(getter(num))!r})"
 
         return _NODE_ATTR_REF_RE.sub(value, expr)
 
@@ -1021,7 +1062,19 @@ def _node_entity_assignments(node_num: int, rest: str) -> list[tuple[str, str]]:
     """
     assignments: list[tuple[str, str]] = []
     by_name = False
-    for position, raw_assignment in enumerate(_split_top_level(rest, ",")):
+    fragments = _split_top_level(rest, ",", keep_empty=True)
+    if fragments and not fragments[0]:
+        # What precedes the comma after the head.
+        fragments = fragments[1:]
+    for position, raw_assignment in enumerate(fragments):
+        if not raw_assignment:
+            # Not legal; taken as "not given", so the later values keep
+            # their positions.
+            log.warning(
+                f"$NODES: empty value at position {position + 1} in the definition "
+                f"of node {node_num}; left unset"
+            )
+            continue
         if "=" in raw_assignment:
             by_name = True
             attr_text, expr = raw_assignment.split("=", 1)
@@ -1055,17 +1108,27 @@ def _apply_substitutions(text: str, subs: dict[str, str]) -> str:
     return text
 
 
-def _split_top_level(text: str, sep: str) -> list[str]:
-    """Split ``text`` on top-level occurrences of ``sep``, respecting parens.
+def _split_top_level(text: str, sep: str, *, keep_empty: bool = False) -> list[str]:
+    """Split ``text`` on top-level occurrences of ``sep``, respecting parens and strings.
 
-    A separator inside ``GL(1,2)`` or ``CNDFN1(...)`` does not split.  Each
-    fragment is stripped and empty fragments are dropped.
+    A separator inside ``GL(1,2)`` or ``CNDFN1(...)`` does not split, and
+    neither a separator nor a parenthesis inside a quoted string counts:
+    ``D7 = 'PANEL;A(1', T = 0.0;`` is one definition.  Each fragment is
+    stripped and empty fragments are dropped, unless ``keep_empty``.
     """
     parts: list[str] = []
     buf: list[str] = []
     depth = 0
+    quote = ""
     for ch in text:
-        if ch == "(":
+        if quote:
+            if ch == quote:
+                quote = ""
+            buf.append(ch)
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+        elif ch == "(":
             depth += 1
         elif ch == ")":
             depth -= 1
@@ -1075,7 +1138,31 @@ def _split_top_level(text: str, sep: str) -> list[str]:
         else:
             buf.append(ch)
     parts.append("".join(buf).strip())
+    if keep_empty:
+        return parts
     return [p for p in parts if p]
+
+
+def _parallel_counts(kind: str, pairs: np.ndarray) -> dict[tuple[str, int, int], int]:
+    """Pairs (node numbers, ``(n, 2)``) given more than once -> how many times."""
+    if pairs.size == 0:
+        return {}
+    ordered = np.sort(pairs, axis=1)
+    unique, counts = np.unique(ordered, axis=0, return_counts=True)
+    return {
+        (kind, int(a), int(b)): int(c)
+        for (a, b), c in zip(unique[counts > 1], counts[counts > 1], strict=True)
+    }
+
+
+def _log_parallel_conductors(source: str, counts: dict[tuple[str, int, int], int]) -> None:
+    """One INFO record for the parallel conductors added into one coupling."""
+    if not counts:
+        return
+    shown = ", ".join(f"{k}({a},{b}) x{c}" for (k, a, b), c in list(counts.items())[:5])
+    more = ", ..." if len(counts) > 5 else ""
+    pairs = "1 node pair has" if len(counts) == 1 else f"{len(counts)} node pairs have"
+    log.info(f"{source}: {pairs} parallel conductors, added into one coupling each: {shown}{more}")
 
 
 _ARRAY_SHORTHAND_RE = re.compile(r"(\d+)\s*@\s*(.+)")

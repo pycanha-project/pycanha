@@ -95,7 +95,7 @@ class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
         verbose: bool = False,
         **kwargs: object,
     ) -> None:
-        engine = kwargs.pop("engine", "cpp")
+        engine = kwargs.pop("engine", "python")
         if kwargs:
             unexpected = ", ".join(sorted(kwargs))
             msg = f"Unexpected keyword arguments: {unexpected}"
@@ -111,7 +111,7 @@ class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
         self,
         filepath: str,
         *,
-        engine: str = "cpp",
+        engine: str = "python",
         verbose: bool = False,
     ) -> Self:
         self.read_tmd(filepath, engine=engine, verbose=verbose)
@@ -174,7 +174,7 @@ class ThermalMathematicalModel(pcc.tmm.ThermalMathematicalModel):
         filepath: str,
         name: str = "",
         *,
-        engine: str = "cpp",
+        engine: str = "python",
         verbose: bool = False,
     ) -> Self:
         model = cls(name=name)

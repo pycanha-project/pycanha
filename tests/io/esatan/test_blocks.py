@@ -8,10 +8,20 @@ can exercise the parsers without depending on pycanha's wrappers.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 import pycanha as pc
-from pycanha.io.esatan_reader import ESATANReader
+from pycanha.io.esatan.errors import EsatanParseError
+from pycanha.io.esatan_reader import ESATANReader, _split_top_level
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def _messages(level: pc.LogLevel) -> list[str]:
+    return [r.message for r in pc.log.records(200) if r.level is level]
 
 
 @pytest.fixture
@@ -166,10 +176,24 @@ class TestParseNodes:
         assert pytest.approx(1.0e-7 * 2900.0 * 1400.0) == node.C
 
     def test_colon_in_label(self, reader: ESATANReader) -> None:
-        # ESATAN labels the shells of a cut geometry '<model>:<shell>'.
+        # A label may name a shell as '<model>:<shell>'.
         reader.parse_nodes("D7 = 'MODEL:SHELL', T = 0.0, C = 1.0;\n")
         node = reader._tmm.nodes.get_node_from_node_num(7)
         assert pytest.approx(1.0) == node.C
+
+    @pytest.mark.parametrize("label", ["PANEL;A", "PANEL(A", "PANEL)A", "PANEL,A", "O''NEIL"])
+    def test_separator_or_paren_in_label(self, reader: ESATANReader, label: str) -> None:
+        # Neither the node nor the next one may be lost, and the label must
+        # not take a position: 1.0 is T and 2.0 is C.
+        reader.parse_nodes(f"D7 = '{label}', 1.0, 2.0;\nD8 = 'next', T = 3.0, C = 4.0;\n")
+        nodes = reader._tmm.nodes
+        assert nodes.num_nodes == 2
+        assert pytest.approx(2.0) == nodes.get_node_from_node_num(7).C
+        assert pytest.approx(4.0) == nodes.get_node_from_node_num(8).C
+
+    def test_split_ignores_double_quoted_strings(self) -> None:
+        text = "D7 = \"a;(b\", T = 1.0; D8 = 'c', T = 2.0;"
+        assert _split_top_level(text, ";") == ['D7 = "a;(b", T = 1.0', "D8 = 'c', T = 2.0"]
 
     def test_supernode_reference_skipped(self, reader: ESATANReader) -> None:
         reader.parse_nodes("D8 = SUB:5 + SUB:12;\n")
@@ -266,8 +290,8 @@ class TestParseConductors:
         )
 
     def test_parallel_numeric_conductors_summed(self, reader: ESATANReader) -> None:
-        # ESATAN adds the conductors declared more than once for the same
-        # pair, in either node order.
+        # Conductors declared more than once for the same pair, in either
+        # node order, are added.
         self._setup_nodes(reader)
         reader.parse_conductors(
             "GL(1,2) = 0.5;\nGL(1,2) = 0.3;\nGL(2,3) = 1.0;\nGL(3,2) = 0.4;\n"
@@ -359,3 +383,100 @@ class TestIntrinsicsRejected:
         # The pair's formula is rejected; its numeric conductors still add up.
         assert reader._tmm.conductive_couplings.get_coupling_value(1, 2) == pytest.approx(0.75)
         assert len(list(reader._tmm.formulas.formulas)) == 0
+
+
+# ------------------------------------------------------- stage 4 additions
+
+
+class TestNodeValues:
+    def test_empty_position_is_left_unset(self, reader: ESATANReader) -> None:
+        pc.log.clear_records()
+        reader.parse_nodes("D4, , 3.0;\n")
+        node = reader._tmm.nodes.get_node_from_node_num(4)
+        # The empty position is T; 3.0 keeps its own position, C.
+        assert node.T == 0.0
+        assert pytest.approx(3.0) == node.C
+        assert any("empty value at position 1" in m for m in _messages(pc.LogLevel.WARN))
+
+    def test_negative_attribute_in_expression(self, reader: ESATANReader) -> None:
+        reader.parse_nodes("D1 = 'a', T = 1.0, FX = 0.1;\nD2 = 'b', T = 2.0, FX = -0.5;\n")
+        reader.parse_conductors("GL(1,2) = FX2**2;\nGR(1,2) = FX1 - FX2;\n")
+        reader._apply_pending_formulas()
+        tmm = reader._tmm
+        assert tmm.conductive_couplings.get_coupling_value(1, 2) == pytest.approx(0.25)
+        assert tmm.radiative_couplings.get_coupling_value(1, 2) == pytest.approx(0.6)
+
+
+class TestParallelConductorRecord:
+    def _nodes(self, reader: ESATANReader) -> None:
+        reader.parse_nodes("D1, 1.0;\nD2, 2.0;\nD3, 3.0;\n")
+
+    def test_one_info_record_per_block(self, reader: ESATANReader) -> None:
+        self._nodes(reader)
+        pc.log.clear_records()
+        reader.parse_conductors(
+            "GL(1,2) = 0.5; GL(2,1) = 0.3; GL(1,2) = 0.2;\nGR(2,3) = 0.1; GR(2,3) = 0.1;\n"
+            "GL(2,3) = 1.0;\n"
+        )
+        records = [m for m in _messages(pc.LogLevel.INFO) if "parallel conductors" in m]
+        assert records == [
+            "$CONDUCTORS: 2 node pairs have parallel conductors, added into one coupling "
+            "each: GL(1,2) x3, GR(2,3) x2"
+        ]
+        assert reader._tmm.conductive_couplings.get_coupling_value(1, 2) == pytest.approx(1.0)
+
+    def test_no_record_without_parallel_conductors(self, reader: ESATANReader) -> None:
+        self._nodes(reader)
+        pc.log.clear_records()
+        reader.parse_conductors("GL(1,2) = 0.5; GL(2,3) = 0.3;\n")
+        assert not [m for m in _messages(pc.LogLevel.INFO) if "parallel conductors" in m]
+
+    def test_symbolic_parallel_conductor_counted(self, reader: ESATANReader) -> None:
+        self._nodes(reader)
+        reader.parse_constants("$REAL\n  k = 2.0;\n")
+        pc.log.clear_records()
+        reader.parse_conductors("GL(1,2) = k; GL(1,2) = 0.5;\n")
+        assert (
+            "$CONDUCTORS: 1 node pair has parallel conductors, added into one coupling "
+            "each: GL(1,2) x2" in _messages(pc.LogLevel.INFO)
+        )
+
+
+class TestOperationsBlocks:
+    def test_one_warning_per_block_with_its_count(self, reader: ESATANReader) -> None:
+        pc.log.clear_records()
+        reader.parse_initial("C a comment\n      T1 = 5.0\n      QI2 = 1.0  # load\n\n")
+        reader.parse_variables1("      QR4 = 0.05 * T1\n")
+        warnings = _messages(pc.LogLevel.WARN)
+        assert "$INITIAL: 2 statements not applied to the model" in " ".join(warnings)
+        assert "$VARIABLES1: 1 statement not applied to the model" in " ".join(warnings)
+
+    def test_no_warning_for_a_block_of_comments(self, reader: ESATANReader) -> None:
+        pc.log.clear_records()
+        reader.parse_execution("C nothing here\n# nor here\n")
+        assert not [m for m in _messages(pc.LogLevel.WARN) if "$EXECUTION" in m]
+
+
+class TestModelHeader:
+    _BODY = "$NODES\nD1 = 'a', T = 1.0, C = 1.0;\n"
+
+    def test_second_model_raises(self, reader: ESATANReader, tmp_path: Path) -> None:
+        deck = tmp_path / "two.d"
+        deck.write_text(
+            f"$MODEL MAIN\n{self._BODY}$MODEL SUBA\n{self._BODY}$ENDMODEL SUBA\n$ENDMODEL MAIN\n"
+        )
+        with pytest.raises(EsatanParseError, match="more than one \\$MODEL"):
+            reader.parse_analysis_file(deck)
+
+    def test_commented_second_model_is_ignored(self, reader: ESATANReader, tmp_path: Path) -> None:
+        deck = tmp_path / "one.d"
+        deck.write_text(f"$MODEL MAIN\n# $MODEL OLD\n{self._BODY}$ENDMODEL MAIN\n")
+        reader.parse_analysis_file(deck)
+        assert reader._tmm.nodes.num_nodes == 1
+
+    def test_model_options_are_reported(self, reader: ESATANReader, tmp_path: Path) -> None:
+        deck = tmp_path / "acd.d"
+        deck.write_text(f"$MODEL MAIN, ACDFILE\n{self._BODY}$ENDMODEL MAIN\n")
+        pc.log.clear_records()
+        reader.parse_analysis_file(deck)
+        assert "$MODEL MAIN: options 'ACDFILE' are not applied" in _messages(pc.LogLevel.WARN)
